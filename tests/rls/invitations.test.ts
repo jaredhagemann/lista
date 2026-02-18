@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import {
   createTestUser,
   createTestTeam,
+  addTeamMember,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -74,6 +75,100 @@ describe("invitations RLS", () => {
       .update({ role: "manager" })
       .eq("id", invId);
     expect(error).toBeNull();
+  });
+
+  it("manager can INSERT invitations", async () => {
+    const coach = await createTestUser();
+    const manager = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, manager.user.id, "manager");
+
+    const { error } = await manager.client.from("invitations").insert({
+      team_id: teamId,
+      email: "recruit@test.local",
+      role: "player",
+      invited_by: manager.user.id,
+    });
+    expect(error).toBeNull();
+  });
+
+  it("player team member cannot INSERT invitations", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const { error } = await player.client.from("invitations").insert({
+      team_id: teamId,
+      email: "friend@test.local",
+      role: "player",
+      invited_by: player.user.id,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("parent team member cannot INSERT invitations", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, parent.user.id, "parent");
+
+    const { error } = await parent.client.from("invitations").insert({
+      team_id: teamId,
+      email: "another@test.local",
+      role: "player",
+      invited_by: parent.user.id,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("player team member cannot UPDATE invitations", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const invId = crypto.randomUUID();
+    await adminClient.from("invitations").insert({
+      id: invId,
+      team_id: teamId,
+      email: "target@test.local",
+      role: "player",
+    });
+
+    const { error } = await player.client
+      .from("invitations")
+      .update({ role: "manager" })
+      .eq("id", invId);
+    // RLS blocks the update — verify role unchanged
+    const { data } = await adminClient
+      .from("invitations")
+      .select()
+      .eq("id", invId);
+    expect(data![0].role).toBe("player");
+  });
+
+  it("player team member cannot DELETE invitations", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const invId = crypto.randomUUID();
+    await adminClient.from("invitations").insert({
+      id: invId,
+      team_id: teamId,
+      email: "nodelete@test.local",
+      role: "player",
+    });
+
+    await player.client.from("invitations").delete().eq("id", invId);
+    // Verify invitation still exists
+    const { data } = await adminClient
+      .from("invitations")
+      .select()
+      .eq("id", invId);
+    expect(data!.length).toBe(1);
   });
 
   it("invited user can view own invitation", async () => {
