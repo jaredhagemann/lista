@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,53 +25,57 @@ import { toast } from "sonner";
 import type { Database } from "@/types/database";
 
 type InvitationRole = Database["public"]["Tables"]["invitations"]["Row"]["role"];
-type Invitation = Database["public"]["Tables"]["invitations"]["Row"];
+
+interface InviteResult {
+  emailSent: boolean;
+  inviteUrl: string;
+}
 
 export function InviteMemberDialog({ teamId }: { teamId: string }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InvitationRole>("parent");
   const [loading, setLoading] = useState(false);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [result, setResult] = useState<InviteResult | null>(null);
+  const [sentEmail, setSentEmail] = useState("");
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
-  const supabase = createClient();
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const res = await fetch("/api/invitations/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId, email, role }),
+      });
 
-    const { data: rawInvitation, error } = await supabase
-      .from("invitations")
-      .insert({
-        team_id: teamId,
-        email,
-        role,
-        invited_by: user?.id,
-      })
-      .select()
-      .single();
+      const data = await res.json();
 
-    const invitation = rawInvitation as Invitation;
+      if (!res.ok) {
+        toast.error(data.error ?? "Failed to send invitation");
+        setLoading(false);
+        return;
+      }
 
-    if (error) {
-      toast.error(error.message);
+      setSentEmail(email);
+      setResult({ emailSent: data.emailSent, inviteUrl: data.inviteUrl });
+      toast.success(
+        data.emailSent
+          ? "Invitation sent!"
+          : "Invitation created"
+      );
+    } catch {
+      toast.error("Failed to send invitation");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const link = `${window.location.origin}/invite/${invitation.id}`;
-    setInviteLink(link);
-    setLoading(false);
-    toast.success("Invitation created!");
   }
 
   async function copyLink() {
-    if (inviteLink) {
-      await navigator.clipboard.writeText(inviteLink);
+    if (result?.inviteUrl) {
+      await navigator.clipboard.writeText(result.inviteUrl);
       setCopied(true);
       toast.success("Link copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
@@ -84,7 +87,8 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
     if (!open) {
       setEmail("");
       setRole("parent");
-      setInviteLink(null);
+      setResult(null);
+      setSentEmail("");
       setCopied(false);
     }
   }
@@ -101,35 +105,42 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
         <DialogHeader>
           <DialogTitle>Invite a team member</DialogTitle>
           <DialogDescription>
-            Generate an invite link to send to a new team member.
+            Send an invite email to a new team member.
           </DialogDescription>
         </DialogHeader>
 
-        {inviteLink ? (
+        {result ? (
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Invite link</Label>
-              <div className="flex gap-2">
-                <Input value={inviteLink} readOnly />
-                <Button variant="outline" size="icon" onClick={copyLink}>
-                  {copied ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+            {result.emailSent ? (
               <p className="text-sm text-muted-foreground">
-                Share this link with the person you want to invite.
+                Invitation sent to <strong>{sentEmail}</strong>.
               </p>
-            </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Invitation created but the email could not be delivered. Share
+                  this link manually:
+                </p>
+                <div className="flex gap-2">
+                  <Input value={result.inviteUrl} readOnly />
+                  <Button variant="outline" size="icon" onClick={copyLink}>
+                    {copied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
             <DialogFooter>
               <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Done
               </Button>
               <Button
                 onClick={() => {
-                  setInviteLink(null);
+                  setResult(null);
+                  setSentEmail("");
                   setEmail("");
                 }}
               >
@@ -168,7 +179,7 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
             </div>
             <DialogFooter className="mt-4">
               <Button type="submit" disabled={loading}>
-                {loading ? "Creating..." : "Create invite link"}
+                {loading ? "Sending..." : "Send Invite"}
               </Button>
             </DialogFooter>
           </form>

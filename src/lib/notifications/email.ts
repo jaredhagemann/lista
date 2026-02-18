@@ -72,3 +72,26 @@ export function buildEventEmailHtml({
     </div>
   `;
 }
+
+export function buildInviteEmailHtml({
+  teamName,
+  role,
+  inviteUrl,
+}: {
+  teamName: string;
+  role: string;
+  inviteUrl: string;
+}) {
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #1a1a1a;">You've been invited to join a team</h2>
+      <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin: 16px 0;">
+        <p style="margin: 4px 0;"><strong>Team:</strong> ${teamName}</p>
+        <p style="margin: 4px 0;"><strong>Role:</strong> <span style="background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 4px; font-size: 13px;">${role}</span></p>
+      </div>
+      <a href="${inviteUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500;">Accept Invitation</a>
+      <p style="color: #666; font-size: 13px; margin-top: 16px;">Or copy this link: ${inviteUrl}</p>
+      <p style="color: #666; font-size: 14px;">— lista</p>
+    </div>
+  `;
+}
