@@ -51,9 +51,11 @@ Two API routes handle notifications beyond basic CRUD:
 
 Defined in `supabase/migrations/`, types generated in `src/types/database.ts`. Key tables: `organizations` → `teams` → `team_members` (with roles: coach, manager, parent, player), `events`, `availability`, `invitations`, `profiles`, `push_subscriptions`, `notification_preferences`.
 
-### RLS Tests
+### Testing
 
 `tests/rls/` contains integration tests for every table's RLS policies. Tests use a helper (`tests/rls/helpers.ts`) that creates real Supabase users via `auth.admin.createUser()`, signs them in, and verifies policy enforcement. Each test file has an `afterAll` cleanup.
+
+All new feature development must be test-driven: write tests before implementation, and ensure they pass before considering a feature complete. If a feature request does not include enough detail to write meaningful tests (expected behavior, edge cases, access control rules, etc.), ask for clarification before proceeding with implementation.
 
 ## Environment Variables
 
