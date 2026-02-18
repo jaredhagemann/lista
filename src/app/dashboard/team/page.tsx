@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { InviteMemberDialog } from "@/components/team/invite-member-dialog";
 import type { Database } from "@/types/database";
 
 type TeamMemberWithTeam = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -34,6 +35,7 @@ export default async function TeamPage() {
 
   const membership = rawMembership as TeamMemberWithTeam;
   const team = membership.teams as { id: string; name: string };
+  const isAdmin = membership.role === "coach" || membership.role === "manager";
 
   // Get all team members with profiles
   const { data: rawMembers } = await supabase
@@ -53,7 +55,10 @@ export default async function TeamPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">{team.name} — Roster</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">{team.name} — Roster</h1>
+        {isAdmin && <InviteMemberDialog teamId={team.id} />}
+      </div>
 
       <Card>
         <CardHeader>

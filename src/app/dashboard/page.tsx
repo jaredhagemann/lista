@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Users } from "lucide-react";
 import Link from "next/link";
 import { CreateTeamForm } from "@/components/team/create-team-form";
-import { InviteMemberDialog } from "@/components/team/invite-member-dialog";
 import type { Database } from "@/types/database";
 
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -65,15 +64,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{currentTeam.name}</h1>
-          {currentTeam.season && (
-            <p className="text-muted-foreground">{currentTeam.season}</p>
-          )}
-        </div>
-        {isAdmin && (
-          <InviteMemberDialog teamId={currentTeam.id} />
+      <div>
+        <h1 className="text-2xl font-bold">{currentTeam.name}</h1>
+        {currentTeam.season && (
+          <p className="text-muted-foreground">{currentTeam.season}</p>
         )}
       </div>
 
