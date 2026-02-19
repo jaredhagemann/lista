@@ -1,32 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  MemberDetailSheet,
-  type TeamMemberWithProfile,
-} from "@/components/team/member-detail-sheet";
 import type { Database } from "@/types/database";
 
-type ContactRow = Database["public"]["Tables"]["contacts"]["Row"];
+type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
+type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+
+export type TeamMemberWithProfile = TeamMemberRow & {
+  profiles: ProfileRow;
+};
 
 interface TeamRosterProps {
   members: TeamMemberWithProfile[];
-  contactsByProfile: Record<string, ContactRow[]>;
   isAdmin: boolean;
   teamId: string;
 }
 
 export function TeamRoster({
   members,
-  contactsByProfile,
-  isAdmin,
-  teamId,
 }: TeamRosterProps) {
-  const [selectedMember, setSelectedMember] =
-    useState<TeamMemberWithProfile | null>(null);
+  const router = useRouter();
 
   const players = members
     .filter((m) => m.role === "player")
@@ -60,7 +56,7 @@ export function TeamRoster({
     return (
       <div
         className="flex cursor-pointer items-center justify-between rounded-md p-3 hover:bg-accent"
-        onClick={() => setSelectedMember(member)}
+        onClick={() => router.push(`/dashboard/team/${member.id}`)}
       >
         <div className="flex items-center gap-3">
           <Avatar>
@@ -112,19 +108,6 @@ export function TeamRoster({
           </div>
         </CardContent>
       </Card>
-
-      {selectedMember && (
-        <MemberDetailSheet
-          member={selectedMember}
-          contacts={contactsByProfile[selectedMember.profile_id] ?? []}
-          isAdmin={isAdmin}
-          teamId={teamId}
-          open={!!selectedMember}
-          onOpenChange={(open) => {
-            if (!open) setSelectedMember(null);
-          }}
-        />
-      )}
     </>
   );
 }

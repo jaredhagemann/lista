@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { InviteMemberDialog } from "@/components/team/invite-member-dialog";
 import { TeamRoster } from "@/components/team/team-roster";
 import type { Database } from "@/types/database";
-import type { TeamMemberWithProfile } from "@/components/team/member-detail-sheet";
+import type { TeamMemberWithProfile } from "@/components/team/team-roster";
 
 type TeamMemberWithTeam = Database["public"]["Tables"]["team_members"]["Row"] & {
   teams: Database["public"]["Tables"]["teams"]["Row"];
@@ -42,22 +42,6 @@ export default async function TeamPage() {
 
   const members = (rawMembers ?? []) as TeamMemberWithProfile[];
 
-  // Fetch contacts for all team members
-  const memberProfileIds = members.map((m) => m.profile_id);
-  const { data: allContacts } = await supabase
-    .from("contacts")
-    .select("*")
-    .in("profile_id", memberProfileIds);
-
-  type ContactRow = Database["public"]["Tables"]["contacts"]["Row"];
-  const contactsByProfile: Record<string, ContactRow[]> = {};
-  for (const contact of (allContacts ?? []) as ContactRow[]) {
-    if (!contactsByProfile[contact.profile_id]) {
-      contactsByProfile[contact.profile_id] = [];
-    }
-    contactsByProfile[contact.profile_id].push(contact);
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -67,7 +51,6 @@ export default async function TeamPage() {
 
       <TeamRoster
         members={members}
-        contactsByProfile={contactsByProfile}
         isAdmin={isAdmin}
         teamId={team.id}
       />
