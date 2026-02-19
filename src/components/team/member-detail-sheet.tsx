@@ -185,7 +185,7 @@ export function MemberDetailSheet({
 
             {/* Contacts section */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Contacts</h3>
+              <h3 className="text-sm font-semibold">Contact Information</h3>
               {contacts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No contacts listed.
