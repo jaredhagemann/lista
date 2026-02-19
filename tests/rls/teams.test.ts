@@ -77,6 +77,37 @@ describe("teams RLS", () => {
     expect(data![0].name).not.toBe("Hacked");
   });
 
+  it("team admin can UPDATE season", async () => {
+    const { client, user } = await createTestUser();
+    const { teamId } = await createTestTeam(user.id);
+
+    const { error } = await client
+      .from("teams")
+      .update({ season: "Fall 2026" })
+      .eq("id", teamId);
+    expect(error).toBeNull();
+
+    // Verify the update
+    const { data } = await client.from("teams").select().eq("id", teamId);
+    expect(data![0].season).toBe("Fall 2026");
+  });
+
+  it("non-admin member cannot UPDATE season", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const { error } = await player.client
+      .from("teams")
+      .update({ season: "Hacked Season" })
+      .eq("id", teamId);
+    // RLS blocks the update — no error, but 0 rows affected
+    // Verify season unchanged
+    const { data } = await adminClient.from("teams").select().eq("id", teamId);
+    expect(data![0].season).not.toBe("Hacked Season");
+  });
+
   it("REGRESSION: full team creation flow with client-side UUIDs works", async () => {
     const { client, user } = await createTestUser();
 
