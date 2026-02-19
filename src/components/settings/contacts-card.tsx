@@ -188,7 +188,7 @@ export function ContactsCard({
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Contacts</CardTitle>
+              <CardTitle>Contact Information</CardTitle>
               <CardDescription>
                 Manage your contacts for team communications.
               </CardDescription>
