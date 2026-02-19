@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ProfileForm } from "@/components/settings/profile-form";
+import { ContactsCard } from "@/components/settings/contacts-card";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
@@ -40,8 +41,16 @@ export default async function SettingsPage() {
     .limit(1)
     .single();
 
+  const { data: rawContacts } = await supabase
+    .from("contacts")
+    .select("*")
+    .eq("profile_id", user.id)
+    .order("created_at");
+
+  type Contact = Database["public"]["Tables"]["contacts"]["Row"];
   const profile = rawProfile as Profile | null;
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
+  const contacts = (rawContacts ?? []) as Contact[];
   const membership = rawMembership as TeamMemberWithTeam | null;
   const isAdmin = membership?.role === "coach" || membership?.role === "manager";
 
@@ -55,6 +64,7 @@ export default async function SettingsPage() {
         </TabsList>
         <TabsContent value="profile" className="space-y-8">
           <ProfileForm profile={profile} />
+          <ContactsCard profileId={user.id} contacts={contacts} />
           <NotificationPrefsForm profileId={user.id} prefs={notifPrefs} />
           <PushSubscriptionButton />
         </TabsContent>

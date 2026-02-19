@@ -4,7 +4,7 @@ import { EventDetail } from "@/components/calendar/event-detail";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
-  profiles: { full_name: string } | null;
+  profiles: { first_name: string; last_name: string } | null;
 };
 
 export default async function EventDetailPage({
@@ -22,7 +22,7 @@ export default async function EventDetailPage({
 
   const { data: rawEvent, error } = await supabase
     .from("events")
-    .select("*, profiles!events_created_by_fkey(full_name)")
+    .select("*, profiles!events_created_by_fkey(first_name, last_name)")
     .eq("id", eventId)
     .single();
 
@@ -45,8 +45,10 @@ export default async function EventDetailPage({
   }
 
   const isAdmin = membership.role === "coach" || membership.role === "manager";
-  const creatorName =
-    (event.profiles as { full_name: string } | null)?.full_name ?? "Unknown";
+  const creatorProfile = event.profiles as { first_name: string; last_name: string } | null;
+  const creatorName = creatorProfile
+    ? [creatorProfile.first_name, creatorProfile.last_name].filter(Boolean).join(" ")
+    : "Unknown";
 
   return (
     <EventDetail

@@ -20,8 +20,10 @@ import type { Database } from "@/types/database";
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 export function ProfileForm({ profile }: { profile: Profile | null }) {
-  const [fullName, setFullName] = useState(profile?.full_name ?? "");
-  const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [firstName, setFirstName] = useState(profile?.first_name ?? "");
+  const [lastName, setLastName] = useState(profile?.last_name ?? "");
+  const [birthday, setBirthday] = useState(profile?.birthday ?? "");
+  const [gender, setGender] = useState(profile?.gender ?? "");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
@@ -33,8 +35,10 @@ export function ProfileForm({ profile }: { profile: Profile | null }) {
     const { error } = await supabase
       .from("profiles")
       .update({
-        full_name: fullName,
-        phone: phone || null,
+        first_name: firstName,
+        last_name: lastName,
+        birthday: birthday || null,
+        gender: gender || null,
       })
       .eq("id", profile!.id);
 
@@ -57,12 +61,20 @@ export function ProfileForm({ profile }: { profile: Profile | null }) {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="fullName">Full name</Label>
+            <Label htmlFor="firstName">First name</Label>
             <Input
-              id="fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              id="firstName"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="lastName">Last name</Label>
+            <Input
+              id="lastName"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
             />
           </div>
           <div className="space-y-2">
@@ -73,13 +85,21 @@ export function ProfileForm({ profile }: { profile: Profile | null }) {
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
+            <Label htmlFor="birthday">Birthday</Label>
             <Input
-              id="phone"
-              type="tel"
-              placeholder="(555) 123-4567"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              id="birthday"
+              type="date"
+              value={birthday}
+              onChange={(e) => setBirthday(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="gender">Gender</Label>
+            <Input
+              id="gender"
+              placeholder="e.g. Male, Female, Non-binary"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
             />
           </div>
         </CardContent>

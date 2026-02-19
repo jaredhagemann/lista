@@ -29,7 +29,7 @@ export async function createTestUser(
     email: testEmail,
     password,
     email_confirm: true,
-    user_metadata: { full_name: fullName || "Test User" },
+    user_metadata: { first_name: fullName || "Test User" },
   });
 
   if (error) throw new Error(`Failed to create test user: ${error.message}`);
@@ -91,7 +91,7 @@ export async function createTestTeam(
 export async function addTeamMember(
   teamId: string,
   profileId: string,
-  role: "coach" | "manager" | "parent" | "player" = "player"
+  role: "coach" | "manager" | "player" = "player"
 ) {
   const { error } = await adminClient
     .from("team_members")
@@ -120,6 +120,7 @@ export async function cleanupTestData() {
   }
 
   for (const userId of createdUserIds) {
+    await adminClient.from("contacts").delete().eq("profile_id", userId);
     await adminClient.from("push_subscriptions").delete().eq("profile_id", userId);
     await adminClient.from("notification_preferences").delete().eq("profile_id", userId);
     await adminClient.from("profiles").delete().eq("id", userId);

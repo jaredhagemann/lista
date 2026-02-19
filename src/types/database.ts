@@ -62,36 +62,98 @@ export type Database = {
       profiles: {
         Row: {
           id: string;
-          full_name: string;
+          first_name: string;
+          last_name: string;
           email: string;
-          phone: string | null;
+          birthday: string | null;
+          gender: string | null;
           avatar_url: string | null;
           created_at: string;
         };
         Insert: {
           id: string;
-          full_name: string;
+          first_name: string;
+          last_name?: string;
           email: string;
-          phone?: string | null;
+          birthday?: string | null;
+          gender?: string | null;
           avatar_url?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
-          full_name?: string;
+          first_name?: string;
+          last_name?: string;
           email?: string;
-          phone?: string | null;
+          birthday?: string | null;
+          gender?: string | null;
           avatar_url?: string | null;
           created_at?: string;
         };
         Relationships: [];
+      };
+      contacts: {
+        Row: {
+          id: string;
+          profile_id: string;
+          relationship: string;
+          first_name: string;
+          last_name: string;
+          email: string | null;
+          phone: string | null;
+          street: string | null;
+          city: string | null;
+          state: string | null;
+          zip: string | null;
+          receives_email: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          profile_id: string;
+          relationship: string;
+          first_name: string;
+          last_name?: string;
+          email?: string | null;
+          phone?: string | null;
+          street?: string | null;
+          city?: string | null;
+          state?: string | null;
+          zip?: string | null;
+          receives_email?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          profile_id?: string;
+          relationship?: string;
+          first_name?: string;
+          last_name?: string;
+          email?: string | null;
+          phone?: string | null;
+          street?: string | null;
+          city?: string | null;
+          state?: string | null;
+          zip?: string | null;
+          receives_email?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "contacts_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       team_members: {
         Row: {
           id: string;
           team_id: string;
           profile_id: string;
-          role: "coach" | "manager" | "parent" | "player";
+          role: "coach" | "manager" | "player";
           jersey_number: number | null;
           created_at: string;
         };
@@ -99,7 +161,7 @@ export type Database = {
           id?: string;
           team_id: string;
           profile_id: string;
-          role: "coach" | "manager" | "parent" | "player";
+          role: "coach" | "manager" | "player";
           jersey_number?: number | null;
           created_at?: string;
         };
@@ -107,7 +169,7 @@ export type Database = {
           id?: string;
           team_id?: string;
           profile_id?: string;
-          role?: "coach" | "manager" | "parent" | "player";
+          role?: "coach" | "manager" | "player";
           jersey_number?: number | null;
           created_at?: string;
         };
@@ -242,7 +304,9 @@ export type Database = {
           id: string;
           team_id: string;
           email: string;
-          role: "coach" | "manager" | "parent" | "player";
+          role: "coach" | "manager" | "player";
+          first_name: string | null;
+          last_name: string | null;
           invited_by: string | null;
           accepted_at: string | null;
           created_at: string;
@@ -251,7 +315,9 @@ export type Database = {
           id?: string;
           team_id: string;
           email: string;
-          role: "coach" | "manager" | "parent" | "player";
+          role: "coach" | "manager" | "player";
+          first_name?: string | null;
+          last_name?: string | null;
           invited_by?: string | null;
           accepted_at?: string | null;
           created_at?: string;
@@ -260,7 +326,9 @@ export type Database = {
           id?: string;
           team_id?: string;
           email?: string;
-          role?: "coach" | "manager" | "parent" | "player";
+          role?: "coach" | "manager" | "player";
+          first_name?: string | null;
+          last_name?: string | null;
           invited_by?: string | null;
           accepted_at?: string | null;
           created_at?: string;

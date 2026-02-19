@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/card";
 
 export function SignupForm() {
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +39,8 @@ export function SignupForm() {
       password,
       options: {
         data: {
-          full_name: fullName,
+          first_name: firstName,
+          last_name: lastName,
         },
         emailRedirectTo: `${window.location.origin}/auth/callback${
           inviteId ? `?next=/invite/${inviteId}` : ""
@@ -90,16 +92,28 @@ export function SignupForm() {
                 {error}
               </div>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full name</Label>
-              <Input
-                id="fullName"
-                type="text"
-                placeholder="Jane Smith"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First name</Label>
+                <Input
+                  id="firstName"
+                  type="text"
+                  placeholder="Jane"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last name</Label>
+                <Input
+                  id="lastName"
+                  type="text"
+                  placeholder="Smith"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

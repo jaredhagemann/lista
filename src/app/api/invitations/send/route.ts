@@ -17,10 +17,12 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { teamId, email, role } = body as {
+  const { teamId, email, role, firstName, lastName } = body as {
     teamId: string;
     email: string;
     role: InvitationRole;
+    firstName?: string;
+    lastName?: string;
   };
 
   if (!teamId || !email || !role) {
@@ -50,6 +52,8 @@ export async function POST(request: Request) {
     team_id: teamId,
     email,
     role,
+    first_name: firstName || null,
+    last_name: lastName || null,
     invited_by: user.id,
   });
 

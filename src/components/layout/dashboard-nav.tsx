@@ -40,12 +40,11 @@ export function DashboardNav({
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const initials = profile?.full_name
-    ?.split(" ")
-    .map((n) => n[0])
+  const initials = [profile?.first_name, profile?.last_name]
+    .filter(Boolean)
+    .map((n) => n![0])
     .join("")
-    .toUpperCase()
-    .slice(0, 2) ?? "?";
+    .toUpperCase() || "?";
 
   const currentTeam = memberships[0]?.teams;
   const currentRole = memberships[0]?.role;
@@ -110,7 +109,7 @@ export function DashboardNav({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">{profile?.full_name}</p>
+                <p className="text-sm font-medium">{[profile?.first_name, profile?.last_name].filter(Boolean).join(" ")}</p>
                 <p className="text-xs text-muted-foreground">{profile?.email}</p>
               </div>
               <DropdownMenuSeparator />

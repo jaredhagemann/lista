@@ -107,17 +107,17 @@ describe("invitations RLS", () => {
     expect(error).not.toBeNull();
   });
 
-  it("parent team member cannot INSERT invitations", async () => {
+  it("second player team member cannot INSERT invitations", async () => {
     const coach = await createTestUser();
-    const parent = await createTestUser();
+    const player2 = await createTestUser();
     const { teamId } = await createTestTeam(coach.user.id);
-    await addTeamMember(teamId, parent.user.id, "parent");
+    await addTeamMember(teamId, player2.user.id, "player");
 
-    const { error } = await parent.client.from("invitations").insert({
+    const { error } = await player2.client.from("invitations").insert({
       team_id: teamId,
       email: "another@test.local",
       role: "player",
-      invited_by: parent.user.id,
+      invited_by: player2.user.id,
     });
     expect(error).not.toBeNull();
   });

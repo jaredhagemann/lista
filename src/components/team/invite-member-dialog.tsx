@@ -32,8 +32,10 @@ interface InviteResult {
 }
 
 export function InviteMemberDialog({ teamId }: { teamId: string }) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<InvitationRole>("parent");
+  const [role, setRole] = useState<InvitationRole>("player");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<InviteResult | null>(null);
   const [sentEmail, setSentEmail] = useState("");
@@ -48,7 +50,13 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
       const res = await fetch("/api/invitations/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId, email, role }),
+        body: JSON.stringify({
+          teamId,
+          email,
+          role,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+        }),
       });
 
       const data = await res.json();
@@ -85,8 +93,10 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
   function handleOpenChange(open: boolean) {
     setOpen(open);
     if (!open) {
+      setFirstName("");
+      setLastName("");
       setEmail("");
-      setRole("parent");
+      setRole("player");
       setResult(null);
       setSentEmail("");
       setCopied(false);
@@ -98,7 +108,7 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
       <DialogTrigger asChild>
         <Button>
           <UserPlus className="mr-2 h-4 w-4" />
-          Invite member
+          Add
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -141,6 +151,8 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
                 onClick={() => {
                   setResult(null);
                   setSentEmail("");
+                  setFirstName("");
+                  setLastName("");
                   setEmail("");
                 }}
               >
@@ -151,12 +163,34 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
         ) : (
           <form onSubmit={handleInvite}>
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="invite-first-name">First name</Label>
+                  <Input
+                    id="invite-first-name"
+                    type="text"
+                    placeholder="Jane"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invite-last-name">Last name</Label>
+                  <Input
+                    id="invite-last-name"
+                    type="text"
+                    placeholder="Smith"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="invite-email">Email</Label>
                 <Input
                   id="invite-email"
                   type="email"
-                  placeholder="parent@example.com"
+                  placeholder="player@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -169,7 +203,6 @@ export function InviteMemberDialog({ teamId }: { teamId: string }) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="parent">Parent</SelectItem>
                     <SelectItem value="player">Player</SelectItem>
                     <SelectItem value="coach">Coach</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
