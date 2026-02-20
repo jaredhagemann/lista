@@ -91,12 +91,21 @@ export function DashboardNav({
 
         <div className="flex items-center gap-3">
           {currentTeam && (
-            <span className="hidden text-sm text-muted-foreground md:inline">
-              {currentTeam.name}
-              {currentRole && (
-                <span className="ml-1 capitalize">({currentRole})</span>
+            <div className="hidden items-center gap-2 text-sm text-muted-foreground md:flex">
+              {currentTeam.logo_url && (
+                <img
+                  src={currentTeam.logo_url}
+                  alt={`${currentTeam.name} logo`}
+                  className="h-6 w-6 rounded object-cover"
+                />
               )}
-            </span>
+              <span>
+                {currentTeam.name}
+                {currentRole && (
+                  <span className="ml-1 capitalize">({currentRole})</span>
+                )}
+              </span>
+            </div>
           )}
 
           <DropdownMenu>
