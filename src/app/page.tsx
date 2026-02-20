@@ -20,7 +20,7 @@ export default async function HomePage() {
       <div className="space-y-4">
         <h1 className="text-5xl font-bold tracking-tight">lista</h1>
         <p className="mx-auto max-w-md text-lg text-muted-foreground">
-          Free, ad-free team management for club soccer. Scheduling,
+          Zero-cost, ad-free team management. Scheduling,
           notifications, and roster management — without the subscription.
         </p>
       </div>

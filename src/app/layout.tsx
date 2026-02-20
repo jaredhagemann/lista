@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "lista — Team Management",
   description:
-    "Zero-cost, ad-free team management for club sports. Scheduling, notifications, and roster management.",
+    "Zero-cost, ad-free team management. Scheduling, notifications, and roster management.",
   manifest: "/manifest.json",
 };
 

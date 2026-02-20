@@ -1,7 +1,7 @@
 {
   "name": "lista — Team Management",
   "short_name": "lista",
-  "description": "Zero-cost, ad-free team management for club sports",
+  "description": "Zero-cost, ad-free team management",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",
