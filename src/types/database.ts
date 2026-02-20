@@ -401,10 +401,12 @@ export type Database = {
           id: string
           league: string | null
           league_url: string | null
+          logo_url: string | null
           name: string
           organization_id: string | null
           season: string | null
           sport: string | null
+          team_photo_url: string | null
           timezone: string | null
           zip: string | null
         }
@@ -418,10 +420,12 @@ export type Database = {
           id?: string
           league?: string | null
           league_url?: string | null
+          logo_url?: string | null
           name: string
           organization_id?: string | null
           season?: string | null
           sport?: string | null
+          team_photo_url?: string | null
           timezone?: string | null
           zip?: string | null
         }
@@ -435,10 +439,12 @@ export type Database = {
           id?: string
           league?: string | null
           league_url?: string | null
+          logo_url?: string | null
           name?: string
           organization_id?: string | null
           season?: string | null
           sport?: string | null
+          team_photo_url?: string | null
           timezone?: string | null
           zip?: string | null
         }

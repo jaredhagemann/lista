@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar, Home, Settings, Users, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import type { Database } from "@/types/database";
@@ -103,6 +103,7 @@ export function DashboardNav({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
+                  {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt={initials} />}
                   <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                 </Avatar>
               </Button>

@@ -30,7 +30,7 @@ export default async function TeamPage() {
   }
 
   const membership = rawMembership as TeamMemberWithTeam;
-  const team = membership.teams as { id: string; name: string };
+  const team = membership.teams as Database["public"]["Tables"]["teams"]["Row"];
   const isAdmin = membership.role === "coach" || membership.role === "manager";
 
   // Get all team members with profiles
@@ -45,9 +45,26 @@ export default async function TeamPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{team.name}</h1>
+        <div className="flex items-center gap-3">
+          {team.logo_url && (
+            <img
+              src={team.logo_url}
+              alt={`${team.name} logo`}
+              className="h-10 w-10 rounded-lg object-cover"
+            />
+          )}
+          <h1 className="text-2xl font-bold">{team.name}</h1>
+        </div>
         {isAdmin && <InviteMemberDialog teamId={team.id} />}
       </div>
+
+      {team.team_photo_url && (
+        <img
+          src={team.team_photo_url}
+          alt={`${team.name} team photo`}
+          className="w-full rounded-lg object-cover"
+        />
+      )}
 
       <TeamRoster
         members={members}

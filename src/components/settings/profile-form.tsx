@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
+import { ImageUpload } from "@/components/ui/image-upload";
 import type { Database } from "@/types/database";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -60,6 +61,26 @@ export function ProfileForm({ profile }: { profile: Profile | null }) {
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Profile photo</Label>
+            <ImageUpload
+              bucket="avatars"
+              folder={profile!.id}
+              currentUrl={profile?.avatar_url ?? null}
+              onUpload={async (url) => {
+                const { error } = await supabase
+                  .from("profiles")
+                  .update({ avatar_url: url })
+                  .eq("id", profile!.id);
+                if (error) {
+                  toast.error(error.message);
+                } else {
+                  router.refresh();
+                }
+              }}
+              shape="circle"
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="firstName">First name</Label>
             <Input

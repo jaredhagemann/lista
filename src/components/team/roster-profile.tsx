@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Card,
   CardContent,
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { ContactsCard } from "@/components/settings/contacts-card";
 import type { Database } from "@/types/database";
 
@@ -83,6 +84,7 @@ export function RosterProfile({
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <Avatar className="h-10 w-10">
+            {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={fullName} />}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
           <div>
@@ -139,7 +141,16 @@ function ReadOnlyMode({
         <CardHeader>
           <CardTitle>Profile</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {profile.avatar_url && (
+            <div className="flex justify-center">
+              <img
+                src={profile.avatar_url}
+                alt={`${profile.first_name} ${profile.last_name}`}
+                className="h-20 w-20 rounded-full object-cover"
+              />
+            </div>
+          )}
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between">
               <dt className="text-muted-foreground">First name</dt>
@@ -335,6 +346,26 @@ function EditMode({
         </CardHeader>
         <form onSubmit={handleSaveProfile}>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Profile photo</Label>
+              <ImageUpload
+                bucket="avatars"
+                folder={profile.id}
+                currentUrl={profile.avatar_url}
+                onUpload={async (url) => {
+                  const { error } = await supabase
+                    .from("profiles")
+                    .update({ avatar_url: url })
+                    .eq("id", profile.id);
+                  if (error) {
+                    toast.error(error.message);
+                  } else {
+                    router.refresh();
+                  }
+                }}
+                shape="circle"
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="firstName">First name</Label>
               <Input

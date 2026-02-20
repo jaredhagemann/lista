@@ -195,6 +195,47 @@ describe("teams RLS", () => {
     expect(error!.code).toBe("23514");
   });
 
+  it("admin can UPDATE logo_url and team_photo_url", async () => {
+    const { client, user } = await createTestUser();
+    const { teamId } = await createTestTeam(user.id);
+
+    const { error } = await client
+      .from("teams")
+      .update({
+        logo_url: "https://example.com/logo.png",
+        team_photo_url: "https://example.com/team.png",
+      })
+      .eq("id", teamId);
+    expect(error).toBeNull();
+
+    const { data } = await client.from("teams").select().eq("id", teamId);
+    expect(data![0].logo_url).toBe("https://example.com/logo.png");
+    expect(data![0].team_photo_url).toBe("https://example.com/team.png");
+  });
+
+  it("non-admin cannot UPDATE logo_url or team_photo_url", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    await player.client
+      .from("teams")
+      .update({ logo_url: "https://example.com/hacked.png" })
+      .eq("id", teamId);
+
+    const { data } = await adminClient.from("teams").select().eq("id", teamId);
+    expect(data![0].logo_url).toBeNull();
+
+    await player.client
+      .from("teams")
+      .update({ team_photo_url: "https://example.com/hacked.png" })
+      .eq("id", teamId);
+
+    const { data: data2 } = await adminClient.from("teams").select().eq("id", teamId);
+    expect(data2![0].team_photo_url).toBeNull();
+  });
+
   it("REGRESSION: full team creation flow with client-side UUIDs works", async () => {
     const { client, user } = await createTestUser();
 

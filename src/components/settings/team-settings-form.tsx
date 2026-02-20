@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { ImageUpload } from "@/components/ui/image-upload";
 import type { Database } from "@/types/database";
 
 type Team = Database["public"]["Tables"]["teams"]["Row"];
@@ -330,6 +331,75 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
                 placeholder="e.g. Spring 2026"
               />
             )}
+          </div>
+        </div>
+
+        {/* Images */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3">Images</h3>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-muted-foreground">Team Logo</span>
+              {editing ? (
+                <ImageUpload
+                  bucket="team-images"
+                  folder={team.id}
+                  currentUrl={team.logo_url}
+                  onUpload={async (url) => {
+                    const { error } = await supabase
+                      .from("teams")
+                      .update({ logo_url: url })
+                      .eq("id", team.id);
+                    if (error) {
+                      toast.error(error.message);
+                    } else {
+                      router.refresh();
+                    }
+                  }}
+                  shape="rounded"
+                />
+              ) : team.logo_url ? (
+                <img
+                  src={team.logo_url}
+                  alt="Team logo"
+                  className="h-20 w-20 rounded-lg object-cover"
+                />
+              ) : (
+                <span className="text-sm text-muted-foreground">—</span>
+              )}
+            </div>
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-muted-foreground">Team Photo</span>
+              {editing ? (
+                <ImageUpload
+                  bucket="team-images"
+                  folder={team.id}
+                  currentUrl={team.team_photo_url}
+                  onUpload={async (url) => {
+                    const { error } = await supabase
+                      .from("teams")
+                      .update({ team_photo_url: url })
+                      .eq("id", team.id);
+                    if (error) {
+                      toast.error(error.message);
+                    } else {
+                      router.refresh();
+                    }
+                  }}
+                  shape="rounded"
+                  width={200}
+                  height={120}
+                />
+              ) : team.team_photo_url ? (
+                <img
+                  src={team.team_photo_url}
+                  alt="Team photo"
+                  className="h-30 w-50 rounded-lg object-cover"
+                />
+              ) : (
+                <span className="text-sm text-muted-foreground">—</span>
+              )}
+            </div>
           </div>
         </div>
 
