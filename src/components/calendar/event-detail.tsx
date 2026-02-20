@@ -211,7 +211,7 @@ export function EventDetail({
             setShowEdit(false);
             router.refresh();
           }}
-          teamId={event.team_id}
+          teamId={event.team_id!}
           editingEvent={event}
         />
       )}

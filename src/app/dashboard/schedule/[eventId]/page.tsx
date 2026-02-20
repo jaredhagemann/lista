@@ -36,7 +36,7 @@ export default async function EventDetailPage({
   const { data: membership } = await supabase
     .from("team_members")
     .select("role")
-    .eq("team_id", event.team_id)
+    .eq("team_id", event.team_id!)
     .eq("profile_id", user.id)
     .single();
 

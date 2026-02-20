@@ -385,7 +385,7 @@ function EditMode({
       </Card>
 
       {/* Contacts card (full edit mode) */}
-      <ContactsCard profileId={member.profile_id} contacts={contacts} />
+      <ContactsCard profileId={member.profile_id!} contacts={contacts} />
 
       {/* Admin actions */}
       {isAdmin && (

@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     const { data: rawMembers } = await supabase
       .from("team_members")
       .select("profile_id, profiles(email)")
-      .eq("team_id", event.team_id);
+      .eq("team_id", event.team_id!);
 
     if (!rawMembers) continue;
     const members = rawMembers as unknown as MemberWithProfile[];

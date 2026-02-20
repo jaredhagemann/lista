@@ -96,7 +96,7 @@ export function ContactsCard({
     setCity(contact.city ?? "");
     setState(contact.state ?? "");
     setZip(contact.zip ?? "");
-    setReceivesEmail(contact.receives_email);
+    setReceivesEmail(contact.receives_email ?? false);
     setDialogOpen(true);
   }
 

@@ -55,7 +55,7 @@ export function EventFormDialog({
 
   const [title, setTitle] = useState(editingEvent?.title ?? "");
   const [eventType, setEventType] = useState<"practice" | "game" | "other">(
-    editingEvent?.event_type ?? "practice"
+    (editingEvent?.event_type as "practice" | "game" | "other") ?? "practice"
   );
   const [location, setLocation] = useState(editingEvent?.location ?? "");
   const [description, setDescription] = useState(

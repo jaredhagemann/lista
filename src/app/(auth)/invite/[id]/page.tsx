@@ -54,7 +54,7 @@ export default async function InvitePage({
       invitationId={invitation.id}
       teamName={(invitation.teams as { name: string })?.name ?? "Unknown Team"}
       role={invitation.role}
-      teamId={invitation.team_id}
+      teamId={invitation.team_id!}
     />
   );
 }

@@ -39,7 +39,7 @@ export default async function MemberProfilePage({
   const { data: rawCurrentMembership } = await supabase
     .from("team_members")
     .select("*")
-    .eq("team_id", member.team_id)
+    .eq("team_id", member.team_id!)
     .eq("profile_id", user.id)
     .single();
 
@@ -57,7 +57,7 @@ export default async function MemberProfilePage({
   const { data: rawContacts } = await supabase
     .from("contacts")
     .select("*")
-    .eq("profile_id", member.profile_id)
+    .eq("profile_id", member.profile_id!)
     .order("created_at");
 
   const contacts = (rawContacts ?? []) as ContactRow[];
@@ -68,7 +68,7 @@ export default async function MemberProfilePage({
       contacts={contacts}
       canEdit={canEdit}
       isAdmin={isAdmin}
-      teamId={member.team_id}
+      teamId={member.team_id!}
     />
   );
 }
