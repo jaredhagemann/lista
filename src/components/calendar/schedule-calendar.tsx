@@ -22,10 +22,14 @@ export function ScheduleCalendar({
   events,
   teamId,
   isAdmin,
+  homeUniform,
+  awayUniform,
 }: {
   events: Event[];
   teamId: string;
   isAdmin: boolean;
+  homeUniform?: string | null;
+  awayUniform?: string | null;
 }) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
@@ -46,8 +50,8 @@ export function ScheduleCalendar({
       borderColor: eventTypeColors[event.event_type] ?? "#6b7280",
       extendedProps: {
         event_type: event.event_type,
-        location: event.location,
-        description: event.description,
+        location_id: event.location_id,
+        notes: event.notes,
       },
     }));
 
@@ -141,6 +145,8 @@ export function ScheduleCalendar({
           defaultStart={selectedDate?.start}
           defaultEnd={selectedDate?.end}
           editingEvent={editingEvent}
+          homeUniform={homeUniform}
+          awayUniform={awayUniform}
         />
       )}
     </div>

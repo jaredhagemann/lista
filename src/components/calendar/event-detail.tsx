@@ -36,12 +36,16 @@ import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
 
+type EventWithLocation = Event & {
+  locations: { name: string; address: string | null } | null;
+};
+
 export function EventDetail({
   event,
   isAdmin,
   creatorName,
 }: {
-  event: Event;
+  event: EventWithLocation;
   isAdmin: boolean;
   creatorName: string;
 }) {
@@ -168,10 +172,17 @@ export function EventDetail({
               })}
             </span>
           </div>
-          {event.location && (
-            <div className="flex items-center gap-3 text-sm">
-              <MapPin className="h-4 w-4 text-muted-foreground" />
-              <span>{event.location}</span>
+          {event.locations && (
+            <div className="flex items-start gap-3 text-sm">
+              <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
+              <div>
+                <span>{event.locations.name}</span>
+                {event.locations.address && (
+                  <p className="text-muted-foreground">
+                    {event.locations.address}
+                  </p>
+                )}
+              </div>
             </div>
           )}
           <div className="flex items-center gap-3 text-sm">
@@ -185,11 +196,60 @@ export function EventDetail({
             </div>
           )}
 
-          {event.description && (
+          {event.event_type === "game" && (event.opponent || event.home_away || event.uniform || event.game_result) && (
+            <div className="border-t pt-4">
+              <h3 className="mb-2 font-medium">Game details</h3>
+              <div className="space-y-2 text-sm">
+                {event.opponent && (
+                  <div>
+                    <span className="text-muted-foreground">Opponent:</span>{" "}
+                    {event.opponent}
+                  </div>
+                )}
+                {event.home_away && (
+                  <div>
+                    <Badge variant="outline" className="capitalize">
+                      {event.home_away}
+                    </Badge>
+                  </div>
+                )}
+                {event.uniform && (
+                  <div>
+                    <span className="text-muted-foreground">Uniform:</span>{" "}
+                    <span className="capitalize">{event.uniform}</span>
+                  </div>
+                )}
+                {event.game_result && (
+                  <div>
+                    <span className="text-muted-foreground">Result:</span>{" "}
+                    <Badge
+                      variant={
+                        event.game_result === "win"
+                          ? "default"
+                          : event.game_result === "loss"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                      className="capitalize"
+                    >
+                      {event.game_result}
+                    </Badge>
+                    {event.score_for != null && event.score_against != null && (
+                      <span className="ml-2">
+                        {event.score_for} – {event.score_against}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {event.notes && (
             <div className="border-t pt-4">
               <h3 className="mb-2 font-medium">Notes</h3>
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                {event.description}
+                {event.notes}
               </p>
             </div>
           )}

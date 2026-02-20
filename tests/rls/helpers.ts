@@ -110,6 +110,7 @@ export async function cleanupTestData() {
       ) || []
     );
     await adminClient.from("events").delete().eq("team_id", teamId);
+    await adminClient.from("locations").delete().eq("team_id", teamId);
     await adminClient.from("invitations").delete().eq("team_id", teamId);
     await adminClient.from("team_members").delete().eq("team_id", teamId);
     await adminClient.from("teams").delete().eq("id", teamId);

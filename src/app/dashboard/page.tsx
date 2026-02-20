@@ -9,7 +9,9 @@ import type { Database } from "@/types/database";
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
   teams: Database["public"]["Tables"]["teams"]["Row"];
 };
-type Event = Database["public"]["Tables"]["events"]["Row"];
+type Event = Database["public"]["Tables"]["events"]["Row"] & {
+  locations: { name: string } | null;
+};
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -47,7 +49,7 @@ export default async function DashboardPage() {
   // Fetch upcoming events
   const { data: rawUpcomingEvents } = await supabase
     .from("events")
-    .select("*")
+    .select("*, locations(name)")
     .eq("team_id", currentTeam.id)
     .eq("is_cancelled", false)
     .gte("start_time", new Date().toISOString())
@@ -104,9 +106,9 @@ export default async function DashboardPage() {
                         minute: "2-digit",
                       })}
                     </p>
-                    {event.location && (
+                    {event.locations?.name && (
                       <p className="text-sm text-muted-foreground">
-                        {event.location}
+                        {event.locations.name}
                       </p>
                     )}
                   </Link>

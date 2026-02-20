@@ -29,7 +29,7 @@ export default async function SchedulePage() {
   }
 
   const membership = rawMembership as TeamMember;
-  const team = membership.teams as { id: string; name: string };
+  const team = membership.teams as Database["public"]["Tables"]["teams"]["Row"];
   const isAdmin = membership.role === "coach" || membership.role === "manager";
 
   // Fetch all events for the team
@@ -50,6 +50,8 @@ export default async function SchedulePage() {
         events={events}
         teamId={team.id}
         isAdmin={isAdmin}
+        homeUniform={team.home_uniform}
+        awayUniform={team.away_uniform}
       />
     </div>
   );

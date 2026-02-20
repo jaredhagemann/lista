@@ -6,6 +6,7 @@ import type { Database } from "@/types/database";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
   teams: { name: string };
+  locations: { name: string } | null;
 };
 type MemberWithProfile = {
   profile_id: string;
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
   // Find events in the next 24 hours that aren't cancelled
   const { data: rawEvents, error } = await supabase
     .from("events")
-    .select("*, teams(name)")
+    .select("*, teams(name), locations(name)")
     .eq("is_cancelled", false)
     .gte("start_time", now.toISOString())
     .lte("start_time", in24h.toISOString());
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
       eventType: event.event_type,
       startTime: event.start_time,
       endTime: event.end_time,
-      location: event.location,
+      location: event.locations?.name ?? null,
       teamName,
       action: "reminder",
     });
@@ -115,7 +116,7 @@ export async function GET(request: Request) {
           { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
           {
             title: `Reminder: ${event.title}`,
-            body: `Tomorrow at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.location ? ` — ${event.location}` : ""}`,
+            body: `Tomorrow at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
             url: `/dashboard/schedule/${event.id}`,
           }
         );

@@ -5,6 +5,7 @@ import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   profiles: { first_name: string; last_name: string } | null;
+  locations: { name: string; address: string | null } | null;
 };
 
 export default async function EventDetailPage({
@@ -22,7 +23,7 @@ export default async function EventDetailPage({
 
   const { data: rawEvent, error } = await supabase
     .from("events")
-    .select("*, profiles!events_created_by_fkey(first_name, last_name)")
+    .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address)")
     .eq("id", eventId)
     .single();
 
@@ -52,7 +53,7 @@ export default async function EventDetailPage({
 
   return (
     <EventDetail
-      event={event as Database["public"]["Tables"]["events"]["Row"]}
+      event={event}
       isAdmin={isAdmin}
       creatorName={creatorName}
     />

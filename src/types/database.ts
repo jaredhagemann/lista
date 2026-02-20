@@ -109,51 +109,101 @@ export type Database = {
           },
         ]
       }
+      locations: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          id: string
+          name: string
+          team_id: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          team_id: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "locations_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           created_at: string | null
           created_by: string | null
-          description: string | null
           end_time: string
           event_type: string
+          game_result: string | null
+          home_away: string | null
           id: string
           is_cancelled: boolean | null
-          location: string | null
+          location_id: string | null
+          notes: string | null
+          opponent: string | null
           parent_event_id: string | null
           recurrence_rule: string | null
+          score_against: number | null
+          score_for: number | null
           start_time: string
           team_id: string | null
           title: string
+          uniform: string | null
         }
         Insert: {
           created_at?: string | null
           created_by?: string | null
-          description?: string | null
           end_time: string
           event_type: string
+          game_result?: string | null
+          home_away?: string | null
           id?: string
           is_cancelled?: boolean | null
-          location?: string | null
+          location_id?: string | null
+          notes?: string | null
+          opponent?: string | null
           parent_event_id?: string | null
           recurrence_rule?: string | null
+          score_against?: number | null
+          score_for?: number | null
           start_time: string
           team_id?: string | null
           title: string
+          uniform?: string | null
         }
         Update: {
           created_at?: string | null
           created_by?: string | null
-          description?: string | null
           end_time?: string
           event_type?: string
+          game_result?: string | null
+          home_away?: string | null
           id?: string
           is_cancelled?: boolean | null
-          location?: string | null
+          location_id?: string | null
+          notes?: string | null
+          opponent?: string | null
           parent_event_id?: string | null
           recurrence_rule?: string | null
+          score_against?: number | null
+          score_for?: number | null
           start_time?: string
           team_id?: string | null
           title?: string
+          uniform?: string | null
         }
         Relationships: [
           {
@@ -161,6 +211,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {

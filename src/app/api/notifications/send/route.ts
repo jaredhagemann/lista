@@ -6,6 +6,7 @@ import type { Database } from "@/types/database";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
   teams: { name: string };
+  locations: { name: string } | null;
 };
 type MemberWithProfile = {
   profile_id: string;
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
   // Fetch event details
   const { data: rawEvent, error: eventError } = await supabase
     .from("events")
-    .select("*, teams(name)")
+    .select("*, teams(name), locations(name)")
     .eq("id", eventId)
     .single();
 
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     eventType: event.event_type,
     startTime: event.start_time,
     endTime: event.end_time,
-    location: event.location,
+    location: event.locations?.name ?? null,
     teamName,
     action,
   });
@@ -112,7 +113,7 @@ export async function POST(request: Request) {
           { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
           {
             title: `${action === "created" ? "New" : action === "cancelled" ? "Cancelled" : action === "reminder" ? "Reminder" : "Updated"}: ${event.title}`,
-            body: `${new Date(event.start_time).toLocaleDateString()} at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.location ? ` — ${event.location}` : ""}`,
+            body: `${new Date(event.start_time).toLocaleDateString()} at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
             url: `/dashboard/schedule/${event.id}`,
           }
         ).catch((err) => console.error("Push notification failed:", err))
