@@ -1,22 +1,35 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import FullCalendar from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
-import interactionPlugin from "@fullcalendar/interaction";
-import type { EventClickArg, DateSelectArg } from "@fullcalendar/core";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { EventFormDialog } from "./event-form-dialog";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
 
-const eventTypeColors: Record<string, string> = {
-  practice: "#2563eb",
-  game: "#dc2626",
-  other: "#7c3aed",
+const eventTypeColors: Record<string, { bg: string; text: string }> = {
+  practice: { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-700 dark:text-blue-300" },
+  game: { bg: "bg-red-100 dark:bg-red-900/40", text: "text-red-700 dark:text-red-300" },
+  other: { bg: "bg-purple-100 dark:bg-purple-900/40", text: "text-purple-700 dark:text-purple-300" },
 };
+
+const eventDotColors: Record<string, string> = {
+  practice: "bg-blue-600",
+  game: "bg-red-600",
+  other: "bg-purple-600",
+};
+
+const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function isSameDay(d1: Date, d2: Date) {
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
 
 export function ScheduleCalendar({
   events,
@@ -32,110 +45,223 @@ export function ScheduleCalendar({
   awayUniform?: string | null;
 }) {
   const router = useRouter();
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [showForm, setShowForm] = useState(false);
   const [selectedDate, setSelectedDate] = useState<{
     start: Date;
     end: Date;
   } | null>(null);
-  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
-  const calendarEvents = events
-    .filter((e) => !e.is_cancelled)
-    .map((event) => ({
-      id: event.id,
-      title: event.title,
-      start: event.start_time,
-      end: event.end_time,
-      backgroundColor: eventTypeColors[event.event_type] ?? "#6b7280",
-      borderColor: eventTypeColors[event.event_type] ?? "#6b7280",
-      extendedProps: {
-        event_type: event.event_type,
-        location_id: event.location_id,
-        notes: event.notes,
-      },
-    }));
+  const today = new Date();
 
-  const handleDateSelect = useCallback(
-    (selectInfo: DateSelectArg) => {
-      if (!isAdmin) return;
-      setSelectedDate({ start: selectInfo.start, end: selectInfo.end });
-      setEditingEvent(null);
-      setShowForm(true);
-    },
-    [isAdmin]
-  );
+  const monthLabel = currentMonth.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 
-  const handleEventClick = useCallback(
-    (clickInfo: EventClickArg) => {
-      const eventId = clickInfo.event.id;
-      router.push(`/dashboard/schedule/${eventId}`);
-    },
-    [router]
-  );
+  const goToPrevMonth = () => {
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1)
+    );
+  };
 
-  const handleFormClose = useCallback(() => {
+  const goToNextMonth = () => {
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1)
+    );
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+
+  // Build calendar grid data
+  const { daysInMonth, startDayOfWeek } = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startDayOfWeek = new Date(year, month, 1).getDay();
+    return { daysInMonth, startDayOfWeek };
+  }, [currentMonth]);
+
+  // Group non-cancelled events by day
+  const eventsByDay = useMemo(() => {
+    const map = new Map<number, Event[]>();
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+
+    for (const event of events) {
+      if (event.is_cancelled) continue;
+      const start = new Date(event.start_time);
+      if (start.getFullYear() === year && start.getMonth() === month) {
+        const day = start.getDate();
+        const list = map.get(day) ?? [];
+        list.push(event);
+        map.set(day, list);
+      }
+    }
+    return map;
+  }, [events, currentMonth]);
+
+  const handleDayClick = (day: number) => {
+    if (!isAdmin) return;
+    const date = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      day
+    );
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
+    setSelectedDate({ start: date, end: nextDay });
+    setShowForm(true);
+  };
+
+  const handleEventClick = (e: React.MouseEvent, eventId: string) => {
+    e.stopPropagation();
+    router.push(`/dashboard/schedule/${eventId}`);
+  };
+
+  const handleFormClose = () => {
     setShowForm(false);
     setSelectedDate(null);
-    setEditingEvent(null);
     router.refresh();
-  }, [router]);
+  };
+
+  const MAX_VISIBLE_EVENTS = 2;
 
   return (
     <div>
-      <style>{`
-        .fc {
-          --fc-border-color: hsl(var(--border));
-          --fc-today-bg-color: hsl(var(--accent) / 0.3);
-          --fc-page-bg-color: transparent;
-          font-family: inherit;
-        }
-        .fc .fc-button-primary {
-          background-color: hsl(var(--primary));
-          border-color: hsl(var(--primary));
-          font-size: 0.875rem;
-        }
-        .fc .fc-button-primary:not(:disabled).fc-button-active,
-        .fc .fc-button-primary:not(:disabled):active {
-          background-color: hsl(var(--primary));
-          border-color: hsl(var(--primary));
-          opacity: 0.8;
-        }
-        .fc .fc-toolbar-title {
-          font-size: 1.25rem;
-          font-weight: 600;
-        }
-        .fc .fc-event {
-          cursor: pointer;
-          border-radius: 4px;
-          font-size: 0.8rem;
-          padding: 1px 4px;
-        }
-        .fc .fc-daygrid-day-number {
-          font-size: 0.875rem;
-          padding: 4px 8px;
-        }
-        .fc th {
-          font-weight: 500;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-        }
-      `}</style>
-      <FullCalendar
-        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-        initialView="dayGridMonth"
-        headerToolbar={{
-          left: "prev,next today",
-          center: "title",
-          right: "dayGridMonth,timeGridWeek,timeGridDay",
-        }}
-        selectable={isAdmin}
-        selectMirror={true}
-        dayMaxEvents={3}
-        events={calendarEvents}
-        select={handleDateSelect}
-        eventClick={handleEventClick}
-        height="auto"
-      />
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={goToPrevMonth}>
+            <ChevronLeft className="size-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={goToNextMonth}>
+            <ChevronRight className="size-4" />
+          </Button>
+          <h2 className="text-lg font-semibold ml-2">{monthLabel}</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={goToToday}>
+            Today
+          </Button>
+          {isAdmin && (
+            <Button size="sm" onClick={() => {
+              setSelectedDate(null);
+              setShowForm(true);
+            }}>
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">New Event</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="border rounded-lg overflow-hidden">
+        {/* Day-of-week header */}
+        <div className="grid grid-cols-7 border-b bg-muted/50">
+          {DAYS_OF_WEEK.map((day) => (
+            <div
+              key={day}
+              className="py-2 text-center text-xs font-medium text-muted-foreground uppercase"
+            >
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Day cells */}
+        <div className="grid grid-cols-7">
+          {/* Empty cells for padding before first day */}
+          {Array.from({ length: startDayOfWeek }, (_, i) => (
+            <div
+              key={`empty-${i}`}
+              className="min-h-24 border-b border-r bg-muted/20"
+            />
+          ))}
+
+          {/* Day cells */}
+          {Array.from({ length: daysInMonth }, (_, i) => {
+            const day = i + 1;
+            const dayEvents = eventsByDay.get(day) ?? [];
+            const isToday = isSameDay(
+              new Date(
+                currentMonth.getFullYear(),
+                currentMonth.getMonth(),
+                day
+              ),
+              today
+            );
+            const hasMore = dayEvents.length > MAX_VISIBLE_EVENTS;
+            const visibleEvents = hasMore
+              ? dayEvents.slice(0, MAX_VISIBLE_EVENTS)
+              : dayEvents;
+            const remainingCount = dayEvents.length - MAX_VISIBLE_EVENTS;
+
+            return (
+              <div
+                key={day}
+                className={`min-h-24 border-b border-r p-1 transition-colors ${
+                  isAdmin ? "cursor-pointer hover:bg-accent/50" : ""
+                } ${isToday ? "bg-accent/30" : ""}`}
+                onClick={() => handleDayClick(day)}
+              >
+                <div
+                  className={`text-sm mb-1 ${
+                    isToday
+                      ? "inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground font-semibold"
+                      : "pl-1 pt-0.5 text-muted-foreground"
+                  }`}
+                >
+                  {day}
+                </div>
+
+                {/* Desktop: show event badges */}
+                <div className="hidden sm:flex flex-col gap-0.5">
+                  {visibleEvents.map((event) => {
+                    const colors =
+                      eventTypeColors[event.event_type] ?? eventTypeColors.other;
+                    return (
+                      <button
+                        key={event.id}
+                        onClick={(e) => handleEventClick(e, event.id)}
+                        className={`w-full text-left text-[11px] leading-tight px-1.5 py-0.5 rounded truncate ${colors.bg} ${colors.text} hover:opacity-80 transition-opacity`}
+                      >
+                        {event.title}
+                      </button>
+                    );
+                  })}
+                  {hasMore && (
+                    <span className="text-[11px] text-muted-foreground pl-1.5">
+                      +{remainingCount} more
+                    </span>
+                  )}
+                </div>
+
+                {/* Mobile: show colored dots */}
+                <div className="flex sm:hidden flex-wrap gap-1 px-0.5">
+                  {dayEvents.map((event) => {
+                    const dotColor =
+                      eventDotColors[event.event_type] ?? eventDotColors.other;
+                    return (
+                      <button
+                        key={event.id}
+                        onClick={(e) => handleEventClick(e, event.id)}
+                        className={`size-2 rounded-full ${dotColor}`}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {showForm && isAdmin && (
         <EventFormDialog
@@ -144,7 +270,7 @@ export function ScheduleCalendar({
           teamId={teamId}
           defaultStart={selectedDate?.start}
           defaultEnd={selectedDate?.end}
-          editingEvent={editingEvent}
+          editingEvent={null}
           homeUniform={homeUniform}
           awayUniform={awayUniform}
         />
