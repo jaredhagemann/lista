@@ -66,26 +66,33 @@ export function EventFormDialog({
     editingEvent?.location_id ?? ""
   );
   const [notes, setNotes] = useState(editingEvent?.notes ?? "");
-  const [startTime, setStartTime] = useState(
-    editingEvent
-      ? toLocalDatetime(new Date(editingEvent.start_time))
-      : defaultStart
-        ? toLocalDatetime(defaultStart)
-        : ""
-  );
-  const [endTime, setEndTime] = useState(
-    editingEvent
-      ? toLocalDatetime(new Date(editingEvent.end_time))
-      : defaultEnd
-        ? toLocalDatetime(
-            new Date(
-              defaultEnd.getTime() === defaultStart?.getTime()
-                ? defaultStart.getTime() + 90 * 60 * 1000
-                : defaultEnd.getTime()
-            )
-          )
-        : ""
-  );
+  const defaultStartTime = (() => {
+    if (editingEvent) return toLocalDatetime(new Date(editingEvent.start_time));
+    const base = defaultStart ? new Date(defaultStart) : new Date();
+    base.setHours(12, 0, 0, 0);
+    return toLocalDatetime(base);
+  })();
+
+  const defaultEndTime = (() => {
+    if (editingEvent) return toLocalDatetime(new Date(editingEvent.end_time));
+    const base = defaultStart ? new Date(defaultStart) : new Date();
+    base.setHours(13, 0, 0, 0);
+    return toLocalDatetime(base);
+  })();
+
+  const [startTime, setStartTime] = useState(defaultStartTime);
+  const [endTime, setEndTime] = useState(defaultEndTime);
+
+  function handleStartTimeChange(newStart: string) {
+    if (newStart && startTime && endTime) {
+      const durationMs =
+        new Date(endTime).getTime() - new Date(startTime).getTime();
+      setEndTime(
+        toLocalDatetime(new Date(new Date(newStart).getTime() + durationMs))
+      );
+    }
+    setStartTime(newStart);
+  }
 
   // Game-specific fields
   const [opponent, setOpponent] = useState(editingEvent?.opponent ?? "");
@@ -369,7 +376,7 @@ export function EventFormDialog({
                   id="startTime"
                   type="datetime-local"
                   value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
+                  onChange={(e) => handleStartTimeChange(e.target.value)}
                   required
                 />
               </div>
