@@ -375,6 +375,7 @@ export function EventFormDialog({
                 <Input
                   id="startTime"
                   type="datetime-local"
+                  step={300}
                   value={startTime}
                   onChange={(e) => handleStartTimeChange(e.target.value)}
                   required
@@ -385,6 +386,7 @@ export function EventFormDialog({
                 <Input
                   id="endTime"
                   type="datetime-local"
+                  step={300}
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
                   required
