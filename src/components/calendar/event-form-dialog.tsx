@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { buildRRule, expandRecurrence } from "@/lib/utils/rrule";
+import { buildRRule, expandRecurrenceFromLocalString } from "@/lib/utils/rrule";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -223,8 +223,11 @@ export function EventFormDialog({
         return;
       }
 
-      // Expand recurrence and create child events
-      const occurrences = expandRecurrence(rruleString, startDate);
+      // Expand recurrence and create child events.
+      // Uses startTime (the raw datetime-local string) so that rrule's UTC arithmetic
+      // aligns with wall-clock intent — avoids the day-shift bug for afternoon events
+      // in western timezones (e.g. 4 PM PST = midnight UTC = wrong day for rrule).
+      const occurrences = expandRecurrenceFromLocalString(startTime, rruleString);
 
       // Skip the first one (it's the parent event itself)
       // Exclude game_result/score fields from child events
