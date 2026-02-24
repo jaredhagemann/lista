@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { ScheduleCalendar } from "@/components/calendar/schedule-calendar";
+import { ScheduleView } from "@/components/calendar/schedule-view";
 import type { Database } from "@/types/database";
 
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -46,7 +46,7 @@ export default async function SchedulePage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Schedule</h1>
       </div>
-      <ScheduleCalendar
+      <ScheduleView
         events={events}
         teamId={team.id}
         isAdmin={isAdmin}
