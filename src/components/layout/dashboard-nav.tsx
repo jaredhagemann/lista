@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, Home, Settings, Users, LogOut, Menu, X } from "lucide-react";
+import { Calendar, ClipboardList, Home, Settings, Users, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import type { Database } from "@/types/database";
 
@@ -24,6 +24,7 @@ type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
 const navItems = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/dashboard/schedule", label: "Schedule", icon: Calendar },
+  { href: "/dashboard/availability", label: "Availability", icon: ClipboardList },
   { href: "/dashboard/team", label: "Team", icon: Users },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];

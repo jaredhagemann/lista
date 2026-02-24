@@ -60,6 +60,37 @@ export default async function EventDetailPage({
     ? [creatorProfile.first_name, creatorProfile.last_name].filter(Boolean).join(" ")
     : "Unknown";
 
+  // Fetch availability rows and team members in parallel
+  const [{ data: availabilityRows }, { data: teamMembersRaw }] = await Promise.all([
+    supabase
+      .from("availability")
+      .select("profile_id, status")
+      .eq("event_id", eventId),
+    supabase
+      .from("team_members")
+      .select("profile_id, profiles(first_name, last_name)")
+      .eq("team_id", event.team_id!),
+  ]);
+
+  const availabilityData = (availabilityRows ?? [])
+    .filter((r): r is typeof r & { profile_id: string } => r.profile_id != null)
+    .map((r) => ({
+      profileId: r.profile_id,
+      status: r.status as "available" | "maybe" | "unavailable",
+    }));
+
+  const membersData = (teamMembersRaw ?? [])
+    .filter((m): m is typeof m & { profile_id: string } => m.profile_id != null)
+    .map((m) => {
+      const profile = m.profiles as { first_name: string; last_name: string } | null;
+      return {
+        profileId: m.profile_id,
+        name: profile
+          ? [profile.first_name, profile.last_name].filter(Boolean).join(" ")
+          : "Unknown",
+      };
+    });
+
   return (
     <EventDetail
       event={event}
@@ -68,6 +99,9 @@ export default async function EventDetailPage({
       initialEdit={edit === "true"}
       homeUniform={membership.teams?.home_uniform ?? null}
       awayUniform={membership.teams?.away_uniform ?? null}
+      currentUserId={user.id}
+      availabilityRows={availabilityData}
+      members={membersData}
     />
   );
 }

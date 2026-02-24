@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EditRecurringPrompt } from "./edit-recurring-prompt";
+import { RsvpButtons } from "@/components/availability/rsvp-buttons";
+import { ResponseList } from "@/components/availability/response-list";
 import {
   buildRRule,
   expandRecurrenceFromLocalString,
@@ -737,6 +739,9 @@ export function EventDetail({
   initialEdit = false,
   homeUniform,
   awayUniform,
+  currentUserId,
+  availabilityRows,
+  members,
 }: {
   event: EventWithLocation;
   isAdmin: boolean;
@@ -744,6 +749,9 @@ export function EventDetail({
   initialEdit?: boolean;
   homeUniform?: string | null;
   awayUniform?: string | null;
+  currentUserId: string;
+  availabilityRows: { profileId: string; status: "available" | "maybe" | "unavailable" }[];
+  members: { profileId: string; name: string }[];
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -1055,6 +1063,39 @@ export function EventDetail({
           )}
         </CardContent>
       </Card>
+
+      {/* Availability */}
+      {!event.is_cancelled && (() => {
+        const isPast = new Date(event.start_time) < new Date();
+        const myRow = availabilityRows.find((r) => r.profileId === currentUserId);
+        return (
+          <Card>
+            <CardContent className="pt-6 space-y-6">
+              {!isPast && (
+                <RsvpButtons
+                  eventId={event.id}
+                  profileId={currentUserId}
+                  initialStatus={myRow?.status ?? null}
+                />
+              )}
+              {isPast && (
+                <p className="text-sm text-muted-foreground">
+                  RSVP is closed — this event has already started.
+                </p>
+              )}
+              <div className="border-t pt-4">
+                <ResponseList
+                  eventId={event.id}
+                  members={members}
+                  initialRows={availabilityRows}
+                  isAdmin={isAdmin}
+                  currentUserId={currentUserId}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Recurring edit prompt */}
       <EditRecurringPrompt
