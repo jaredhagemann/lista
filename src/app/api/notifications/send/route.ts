@@ -77,6 +77,7 @@ export async function POST(request: Request) {
     location: event.locations?.name ?? null,
     teamName,
     action,
+    arrivalTime: event.arrival_time,
   });
 
   const emailPromises = members

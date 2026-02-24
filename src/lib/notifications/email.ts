@@ -39,6 +39,7 @@ export function buildEventEmailHtml({
   location,
   teamName,
   action,
+  arrivalTime,
 }: {
   eventTitle: string;
   eventType: string;
@@ -47,6 +48,7 @@ export function buildEventEmailHtml({
   location: string | null;
   teamName: string;
   action: "created" | "updated" | "cancelled" | "reminder";
+  arrivalTime?: number | null;
 }) {
   const start = new Date(startTime);
   const end = new Date(endTime);
@@ -58,6 +60,11 @@ export function buildEventEmailHtml({
     reminder: "Event reminder",
   }[action];
 
+  const arrivalLine =
+    arrivalTime != null
+      ? `<p style="margin: 4px 0;"><strong>Arrive by:</strong> ${new Date(start.getTime() - arrivalTime * 60 * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} (${arrivalTime} min early)</p>`
+      : "";
+
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #1a1a1a;">${actionText}: ${eventTitle}</h2>
@@ -66,6 +73,7 @@ export function buildEventEmailHtml({
         <p style="margin: 4px 0;"><strong>Type:</strong> ${eventType}</p>
         <p style="margin: 4px 0;"><strong>Date:</strong> ${start.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</p>
         <p style="margin: 4px 0;"><strong>Time:</strong> ${start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} — ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</p>
+        ${arrivalLine}
         ${location ? `<p style="margin: 4px 0;"><strong>Location:</strong> ${location}</p>` : ""}
       </div>
       <p style="color: #666; font-size: 14px;">— lista</p>

@@ -143,6 +143,7 @@ export type Database = {
       }
       events: {
         Row: {
+          arrival_time: number | null
           created_at: string | null
           created_by: string | null
           end_time: string
@@ -164,6 +165,7 @@ export type Database = {
           uniform: string | null
         }
         Insert: {
+          arrival_time?: number | null
           created_at?: string | null
           created_by?: string | null
           end_time: string
@@ -185,6 +187,7 @@ export type Database = {
           uniform?: string | null
         }
         Update: {
+          arrival_time?: number | null
           created_at?: string | null
           created_by?: string | null
           end_time?: string

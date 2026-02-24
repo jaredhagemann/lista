@@ -105,6 +105,9 @@ export function EventFormDialog({
   const [scoreAgainst, setScoreAgainst] = useState(
     editingEvent?.score_against?.toString() ?? ""
   );
+  const [arrivalTime, setArrivalTime] = useState(
+    editingEvent?.arrival_time?.toString() ?? ""
+  );
 
   // Locations
   const [locations, setLocations] = useState<Location[]>([]);
@@ -186,6 +189,7 @@ export function EventFormDialog({
         eventType === "game" && isEditing && scoreAgainst !== ""
           ? parseInt(scoreAgainst, 10)
           : null,
+      arrival_time: arrivalTime !== "" ? parseInt(arrivalTime, 10) : null,
     };
 
     if (isEditing && editingEvent) {
@@ -367,6 +371,24 @@ export function EventFormDialog({
                   </Button>
                 </div>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="arrivalTime">Arrival time</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="arrivalTime"
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 15"
+                  value={arrivalTime}
+                  onChange={(e) => setArrivalTime(e.target.value)}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">
+                  minutes before start
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

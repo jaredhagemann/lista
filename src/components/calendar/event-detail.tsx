@@ -172,6 +172,23 @@ export function EventDetail({
               })}
             </span>
           </div>
+          {event.arrival_time != null && (
+            <div className="flex items-center gap-3 text-sm">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span>
+                Arrive by{" "}
+                {new Date(
+                  startDate.getTime() - event.arrival_time * 60 * 1000
+                ).toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}{" "}
+                <span className="text-muted-foreground">
+                  ({event.arrival_time} min early)
+                </span>
+              </span>
+            </div>
+          )}
           {event.locations && (
             <div className="flex items-start gap-3 text-sm">
               <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />

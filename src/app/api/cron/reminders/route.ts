@@ -79,6 +79,7 @@ export async function GET(request: Request) {
       location: event.locations?.name ?? null,
       teamName,
       action: "reminder",
+      arrivalTime: event.arrival_time,
     });
 
     // Send emails to members who have email enabled
