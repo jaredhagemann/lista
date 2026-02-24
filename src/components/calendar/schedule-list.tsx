@@ -117,6 +117,7 @@ export function ScheduleList({
 
   // Dialog state
   const [deletingEvent, setDeletingEvent] = useState<EventWithLocation | null>(null);
+  const [cancellingEvent, setCancellingEvent] = useState<EventWithLocation | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -200,6 +201,21 @@ export function ScheduleList({
       toast.error(error.message);
     } else {
       toast.success("Event duplicated");
+      fetchEvents();
+    }
+  }
+
+  async function handleCancel(event: EventWithLocation) {
+    const { error } = await supabase
+      .from("events")
+      .update({ is_cancelled: true })
+      .eq("id", event.id);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Event cancelled");
+      setCancellingEvent(null);
       fetchEvents();
     }
   }
@@ -456,6 +472,13 @@ export function ScheduleList({
                             >
                               Duplicate
                             </DropdownMenuItem>
+                            {!event.is_cancelled && (
+                              <DropdownMenuItem
+                                onClick={() => setCancellingEvent(event)}
+                              >
+                                Cancel event
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
@@ -533,6 +556,29 @@ export function ScheduleList({
           awayUniform={awayUniform}
         />
       )}
+
+      {/* Cancel confirmation */}
+      <AlertDialog
+        open={!!cancellingEvent}
+        onOpenChange={(open) => !open && setCancellingEvent(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel event?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{cancellingEvent ? getEventTitle(cancellingEvent) : ""}&rdquo; will be marked as cancelled. Team members will still be able to see it on the schedule.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancellingEvent && handleCancel(cancellingEvent)}
+            >
+              Cancel event
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete confirmation */}
       <AlertDialog
