@@ -118,6 +118,7 @@ export function ScheduleList({
   // Dialog state
   const [deletingEvent, setDeletingEvent] = useState<EventWithLocation | null>(null);
   const [cancellingEvent, setCancellingEvent] = useState<EventWithLocation | null>(null);
+  const [restoringEvent, setRestoringEvent] = useState<EventWithLocation | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -216,6 +217,21 @@ export function ScheduleList({
     } else {
       toast.success("Event cancelled");
       setCancellingEvent(null);
+      fetchEvents();
+    }
+  }
+
+  async function handleRestore(event: EventWithLocation) {
+    const { error } = await supabase
+      .from("events")
+      .update({ is_cancelled: false })
+      .eq("id", event.id);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Event restored");
+      setRestoringEvent(null);
       fetchEvents();
     }
   }
@@ -472,11 +488,17 @@ export function ScheduleList({
                             >
                               Duplicate
                             </DropdownMenuItem>
-                            {!event.is_cancelled && (
+                            {!event.is_cancelled ? (
                               <DropdownMenuItem
                                 onClick={() => setCancellingEvent(event)}
                               >
                                 Cancel event
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => setRestoringEvent(event)}
+                              >
+                                Restore event
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
@@ -556,6 +578,29 @@ export function ScheduleList({
           awayUniform={awayUniform}
         />
       )}
+
+      {/* Restore confirmation */}
+      <AlertDialog
+        open={!!restoringEvent}
+        onOpenChange={(open) => !open && setRestoringEvent(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore event?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{restoringEvent ? getEventTitle(restoringEvent) : ""}&rdquo; will be restored and no longer marked as cancelled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => restoringEvent && handleRestore(restoringEvent)}
+            >
+              Restore event
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Cancel confirmation */}
       <AlertDialog
