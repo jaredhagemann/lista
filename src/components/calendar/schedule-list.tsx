@@ -116,7 +116,6 @@ export function ScheduleList({
   const [loading, setLoading] = useState(true);
 
   // Dialog state
-  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [deletingEvent, setDeletingEvent] = useState<EventWithLocation | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
@@ -446,7 +445,9 @@ export function ScheduleList({
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => setEditingEvent(event)}
+                              onClick={() =>
+                                router.push(`/dashboard/schedule/${event.id}?edit=true`)
+                              }
                             >
                               Edit
                             </DropdownMenuItem>
@@ -517,21 +518,6 @@ export function ScheduleList({
             </Button>
           </div>
         </div>
-      )}
-
-      {/* Edit dialog */}
-      {editingEvent && (
-        <EventFormDialog
-          open={!!editingEvent}
-          onClose={() => {
-            setEditingEvent(null);
-            fetchEvents();
-          }}
-          teamId={teamId}
-          editingEvent={editingEvent}
-          homeUniform={homeUniform}
-          awayUniform={awayUniform}
-        />
       )}
 
       {/* Create dialog */}

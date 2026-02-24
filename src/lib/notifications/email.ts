@@ -81,6 +81,57 @@ export function buildEventEmailHtml({
   `;
 }
 
+export interface FieldChange {
+  field: string;
+  before: string;
+  after: string;
+}
+
+export function buildSeriesUpdateEmailHtml({
+  eventTitle,
+  teamName,
+  changes,
+}: {
+  eventTitle: string;
+  teamName: string;
+  changes: FieldChange[];
+}) {
+  const rows = changes
+    .map(
+      (c) => `
+      <tr>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; font-weight: 500;">${c.field}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; color: #6b7280;">${c.before}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${c.after}</td>
+      </tr>`
+    )
+    .join("");
+
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #1a1a1a;">${eventTitle} schedule has been updated</h2>
+      <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin: 16px 0;">
+        <p style="margin: 4px 0;"><strong>Team:</strong> ${teamName}</p>
+      </div>
+      ${
+        changes.length > 0
+          ? `<table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <thead>
+          <tr style="background: #f9fafb;">
+            <th style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: left;">Field</th>
+            <th style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: left;">Before</th>
+            <th style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: left;">After</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`
+          : `<p style="color: #6b7280; font-size: 14px;">The schedule has been updated.</p>`
+      }
+      <p style="color: #666; font-size: 14px; margin-top: 16px;">— lista</p>
+    </div>
+  `;
+}
+
 export function buildInviteEmailHtml({
   teamName,
   role,

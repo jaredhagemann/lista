@@ -1,5 +1,23 @@
 import { RRule, RRuleSet } from "rrule";
 
+export function parseRRule(rruleString: string): {
+  interval: 1 | 2;
+  daysOfWeek: number[];
+  until: Date | null;
+} {
+  const rule = RRule.fromString(rruleString);
+  const { interval = 1, byweekday, until } = rule.origOptions;
+  const days = byweekday
+    ? (Array.isArray(byweekday) ? byweekday : [byweekday]).map(
+        (d: unknown) => {
+          if (typeof d === "number") return d;
+          return (d as { weekday: number }).weekday;
+        }
+      )
+    : [];
+  return { interval: interval === 2 ? 2 : 1, daysOfWeek: days, until: until ?? null };
+}
+
 export interface RecurrenceConfig {
   frequency: "weekly" | "biweekly";
   daysOfWeek: number[]; // 0=Monday, 1=Tuesday, ..., 6=Sunday (rrule convention)

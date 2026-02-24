@@ -269,8 +269,7 @@ export function ScheduleCalendar({
           onClose={handleFormClose}
           teamId={teamId}
           defaultStart={selectedDate?.start}
-          defaultEnd={selectedDate?.end}
-          editingEvent={null}
+
           homeUniform={homeUniform}
           awayUniform={awayUniform}
         />
