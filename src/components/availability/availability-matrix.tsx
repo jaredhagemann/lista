@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -10,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
@@ -160,6 +162,8 @@ export function AvailabilityMatrix({
 }) {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
   const [typeFilter, setTypeFilter] = useState<EventType | "all">("all");
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // statusMap: eventId -> profileId -> status
   const [statusMap, setStatusMap] = useState<Map<string, Map<string, AvailabilityStatus | null>>>(
@@ -195,15 +199,25 @@ export function AvailabilityMatrix({
     return true;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredEvents.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedEvents = filteredEvents.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  function applyTimeFilter(v: TimeFilter) { setTimeFilter(v); setCurrentPage(1); }
+  function applyTypeFilter(v: EventType | "all") { setTypeFilter(v); setCurrentPage(1); }
+  function applyPageSize(v: number) { setPageSize(v); setCurrentPage(1); }
+
   if (filteredEvents.length === 0) {
     return (
       <div className="space-y-4">
         <div className="flex gap-2 flex-wrap">
           <Filters
             timeFilter={timeFilter}
-            setTimeFilter={setTimeFilter}
+            setTimeFilter={applyTimeFilter}
             typeFilter={typeFilter}
-            setTypeFilter={setTypeFilter}
+            setTypeFilter={applyTypeFilter}
+            pageSize={pageSize}
+            setPageSize={applyPageSize}
           />
         </div>
         <div className="rounded-lg border p-8 text-center text-muted-foreground">
@@ -224,9 +238,11 @@ export function AvailabilityMatrix({
       <div className="flex gap-2 flex-wrap">
         <Filters
           timeFilter={timeFilter}
-          setTimeFilter={setTimeFilter}
+          setTimeFilter={applyTimeFilter}
           typeFilter={typeFilter}
-          setTypeFilter={setTypeFilter}
+          setTypeFilter={applyTypeFilter}
+          pageSize={pageSize}
+          setPageSize={applyPageSize}
         />
       </div>
 
@@ -238,7 +254,7 @@ export function AvailabilityMatrix({
               <th className="sticky left-0 z-10 bg-muted/50 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide min-w-[140px]">
                 Member
               </th>
-              {filteredEvents.map((e) => {
+              {pagedEvents.map((e) => {
                 const d = new Date(e.start_time);
                 return (
                   <th
@@ -293,7 +309,7 @@ export function AvailabilityMatrix({
                           <span className="ml-1 text-xs text-muted-foreground">(you)</span>
                         )}
                       </td>
-                      {filteredEvents.map((e) => {
+                      {pagedEvents.map((e) => {
                         const status = statusMap.get(e.id)?.get(member.profileId) ?? null;
                         const isPast = new Date(e.start_time) < now;
 
@@ -327,7 +343,7 @@ export function AvailabilityMatrix({
                     <>
                       <tr>
                         <td
-                          colSpan={filteredEvents.length + 1}
+                          colSpan={pagedEvents.length + 1}
                           className="sticky left-0 bg-muted/50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                         >
                           Players
@@ -340,7 +356,7 @@ export function AvailabilityMatrix({
                     <>
                       <tr>
                         <td
-                          colSpan={filteredEvents.length + 1}
+                          colSpan={pagedEvents.length + 1}
                           className="sticky left-0 bg-muted/50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground border-t"
                         >
                           Staff
@@ -355,6 +371,33 @@ export function AvailabilityMatrix({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination footer */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
+          <span>
+            Page {safePage} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-8"
+            disabled={safePage === 1}
+            onClick={() => setCurrentPage((p) => p - 1)}
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-8"
+            disabled={safePage === totalPages}
+            onClick={() => setCurrentPage((p) => p + 1)}
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -364,11 +407,15 @@ function Filters({
   setTimeFilter,
   typeFilter,
   setTypeFilter,
+  pageSize,
+  setPageSize,
 }: {
   timeFilter: TimeFilter;
   setTimeFilter: (v: TimeFilter) => void;
   typeFilter: EventType | "all";
   setTypeFilter: (v: EventType | "all") => void;
+  pageSize: number;
+  setPageSize: (v: number) => void;
 }) {
   return (
     <>
@@ -391,6 +438,19 @@ function Filters({
           <SelectItem value="practice">Practice</SelectItem>
           <SelectItem value="game">Game</SelectItem>
           <SelectItem value="other">Other</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+        <SelectTrigger className="w-36">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Array.from({ length: 16 }, (_, i) => i + 5).map((n) => (
+            <SelectItem key={n} value={String(n)}>
+              {n} per page
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </>
