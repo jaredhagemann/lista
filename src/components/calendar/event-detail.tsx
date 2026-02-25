@@ -16,6 +16,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -757,6 +767,8 @@ export function EventDetail({
   const supabase = createClient();
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showCancel, setShowCancel] = useState(false);
+  const [showRestore, setShowRestore] = useState(false);
 
   const isRecurring =
     event.parent_event_id != null || event.recurrence_rule != null;
@@ -800,6 +812,21 @@ export function EventDetail({
     }
 
     toast.success("Event cancelled");
+    router.refresh();
+  }
+
+  async function handleRestore() {
+    const { error } = await supabase
+      .from("events")
+      .update({ is_cancelled: false })
+      .eq("id", event.id);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Event restored");
     router.refresh();
   }
 
@@ -1054,11 +1081,17 @@ export function EventDetail({
             </div>
           )}
 
-          {isAdmin && !event.is_cancelled && (
+          {isAdmin && (
             <div className="border-t pt-4">
-              <Button variant="outline" onClick={handleCancel}>
-                Cancel this event
-              </Button>
+              {!event.is_cancelled ? (
+                <Button variant="outline" onClick={() => setShowCancel(true)}>
+                  Cancel this event
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => setShowRestore(true)}>
+                  Restore this event
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
@@ -1096,6 +1129,42 @@ export function EventDetail({
           </Card>
         );
       })()}
+
+      {/* Cancel confirmation */}
+      <AlertDialog open={showCancel} onOpenChange={setShowCancel}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel event?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{event.title}&rdquo; will be marked as cancelled. Team members will still be able to see it on the schedule.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancel}>
+              Cancel event
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Restore confirmation */}
+      <AlertDialog open={showRestore} onOpenChange={setShowRestore}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore event?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{event.title}&rdquo; will be restored and no longer marked as cancelled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRestore}>
+              Restore event
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Recurring edit prompt */}
       <EditRecurringPrompt
