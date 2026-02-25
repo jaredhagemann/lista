@@ -5,6 +5,16 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -164,6 +174,7 @@ export function AvailabilityMatrix({
   const [typeFilter, setTypeFilter] = useState<EventType | "all">("all");
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [bulkPending, setBulkPending] = useState<AvailabilityStatus | null>(null);
 
   // statusMap: eventId -> profileId -> status
   const [statusMap, setStatusMap] = useState<Map<string, Map<string, AvailabilityStatus | null>>>(
@@ -206,6 +217,58 @@ export function AvailabilityMatrix({
   function applyTimeFilter(v: TimeFilter) { setTimeFilter(v); setCurrentPage(1); }
   function applyTypeFilter(v: EventType | "all") { setTypeFilter(v); setCurrentPage(1); }
   function applyPageSize(v: number) { setPageSize(v); setCurrentPage(1); }
+
+  // Bulk-set: all future events where the current user has no response
+  const futureUncheckedEvents = events.filter(
+    (e) =>
+      new Date(e.start_time) >= now &&
+      (statusMap.get(e.id)?.get(currentUserId) ?? null) === null
+  );
+
+  async function handleBulkConfirm() {
+    if (!bulkPending) return;
+    const status = bulkPending;
+    setBulkPending(null);
+
+    const rows = futureUncheckedEvents.map((e) => ({
+      event_id: e.id,
+      profile_id: currentUserId,
+      status,
+    }));
+    if (rows.length === 0) return;
+
+    // Optimistic update
+    setStatusMap((prev) => {
+      const next = new Map(prev);
+      for (const e of futureUncheckedEvents) {
+        const inner = new Map(next.get(e.id) ?? []);
+        inner.set(currentUserId, status);
+        next.set(e.id, inner);
+      }
+      return next;
+    });
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("availability")
+      .upsert(rows, { onConflict: "event_id,profile_id" });
+
+    if (error) {
+      toast.error(error.message);
+      // Roll back optimistic update
+      setStatusMap((prev) => {
+        const next = new Map(prev);
+        for (const e of futureUncheckedEvents) {
+          const inner = new Map(next.get(e.id) ?? []);
+          inner.set(currentUserId, null);
+          next.set(e.id, inner);
+        }
+        return next;
+      });
+    } else {
+      toast.success(`Set to ${statusConfig[status].label} for ${rows.length} event${rows.length === 1 ? "" : "s"}`);
+    }
+  }
 
   if (filteredEvents.length === 0) {
     return (
@@ -304,9 +367,26 @@ export function AvailabilityMatrix({
                           rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20"
                         }`}
                       >
-                        {member.name}
+                        <div>
+                          <span>{member.name}</span>
+                          {isCurrentUser && (
+                            <span className="ml-1 text-xs text-muted-foreground">(you)</span>
+                          )}
+                        </div>
                         {isCurrentUser && (
-                          <span className="ml-1 text-xs text-muted-foreground">(you)</span>
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-xs text-muted-foreground">Set multiple:</span>
+                            {(["available", "maybe", "unavailable"] as AvailabilityStatus[]).map((s) => (
+                              <button
+                                key={s}
+                                onClick={() => setBulkPending(s)}
+                                title={statusConfig[s].label}
+                                className={`text-xs font-semibold rounded px-1.5 py-0.5 ${statusConfig[s].bg} ${statusConfig[s].text} hover:opacity-75 transition-opacity`}
+                              >
+                                {statusConfig[s].symbol}
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </td>
                       {pagedEvents.map((e) => {
@@ -371,6 +451,34 @@ export function AvailabilityMatrix({
           </tbody>
         </table>
       </div>
+
+      {/* Bulk-set confirmation */}
+      <AlertDialog open={bulkPending !== null} onOpenChange={(open) => !open && setBulkPending(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Set availability for multiple events?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkPending && (
+                <>
+                  This will mark you as{" "}
+                  <span className={`font-semibold ${statusConfig[bulkPending].text}`}>
+                    {statusConfig[bulkPending].label}
+                  </span>{" "}
+                  for{" "}
+                  <span className="font-semibold">{futureUncheckedEvents.length} upcoming event{futureUncheckedEvents.length === 1 ? "" : "s"}</span>{" "}
+                  where you haven&apos;t responded yet. Events where you&apos;ve already set a response won&apos;t be changed.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkConfirm}>
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Pagination footer */}
       {totalPages > 1 && (
