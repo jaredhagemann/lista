@@ -1160,7 +1160,7 @@ export function EventDetail({
           <AlertDialogFooter>
             <AlertDialogCancel>Back</AlertDialogCancel>
             <AlertDialogAction onClick={handleRestore}>
-              Restore event
+              Restore
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

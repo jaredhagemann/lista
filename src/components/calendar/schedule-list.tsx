@@ -498,7 +498,7 @@ export function ScheduleList({
                               <DropdownMenuItem
                                 onClick={() => setRestoringEvent(event)}
                               >
-                                Restore event
+                                Restore
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
@@ -596,7 +596,7 @@ export function ScheduleList({
             <AlertDialogAction
               onClick={() => restoringEvent && handleRestore(restoringEvent)}
             >
-              Restore event
+              Restore
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
