@@ -17,7 +17,7 @@ interface SendEmailParams {
 
 export async function sendEmail({ to, subject, html }: SendEmailParams) {
   const { data, error } = await getResend().emails.send({
-    from: "lista <notifications@lista.app>",
+    from: "lista <notifications@lista.team>",
     to,
     subject,
     html,
@@ -127,6 +127,22 @@ export function buildSeriesUpdateEmailHtml({
       </table>`
           : `<p style="color: #6b7280; font-size: 14px;">The schedule has been updated.</p>`
       }
+      <p style="color: #666; font-size: 14px; margin-top: 16px;">— lista</p>
+    </div>
+  `;
+}
+
+export function buildConfirmationEmailHtml({
+  confirmUrl,
+}: {
+  confirmUrl: string;
+}) {
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #1a1a1a;">Confirm your lista account</h2>
+      <p style="color: #444; margin: 12px 0;">Thanks for signing up! Click the button below to confirm your email address and activate your account.</p>
+      <a href="${confirmUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; margin: 16px 0;">Confirm my account</a>
+      <p style="color: #666; font-size: 13px; margin-top: 12px;">Or copy this link: ${confirmUrl}</p>
       <p style="color: #666; font-size: 14px; margin-top: 16px;">— lista</p>
     </div>
   `;
