@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { AvailabilityMatrix } from "@/components/availability/availability-matrix";
+import { getActiveMembership } from "@/lib/get-active-membership";
 
 export default async function AvailabilityPage() {
   const supabase = await createClient();
@@ -10,21 +11,12 @@ export default async function AvailabilityPage() {
 
   if (!user) redirect("/login");
 
-  // Get the user's team membership
-  const { data: membership } = await supabase
-    .from("team_members")
-    .select("team_id, role")
-    .eq("profile_id", user.id)
-    .order("created_at")
-    .limit(1)
-    .single();
-
+  const membership = await getActiveMembership(supabase, user.id);
   if (!membership || !membership.team_id) redirect("/dashboard");
 
   const teamId = membership.team_id;
   const isAdmin = membership.role === "coach" || membership.role === "manager";
 
-  // Fetch events, members, and all availability rows in parallel
   const [{ data: eventsRaw }, { data: teamMembersRaw }] = await Promise.all([
     supabase
       .from("events")
@@ -47,7 +39,10 @@ export default async function AvailabilityPage() {
   const members = (teamMembersRaw ?? [])
     .filter((m): m is typeof m & { profile_id: string } => m.profile_id != null)
     .map((m) => {
-      const profile = m.profiles as { first_name: string; last_name: string } | null;
+      const profile = m.profiles as {
+        first_name: string;
+        last_name: string;
+      } | null;
       return {
         profileId: m.profile_id,
         role: m.role,
@@ -82,7 +77,7 @@ export default async function AvailabilityPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Availability</h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="mt-1 text-sm text-muted-foreground">
           See who&apos;s available for upcoming events.
         </p>
       </div>

@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar, ClipboardList, Home, Settings, Users, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
+import { TeamSwitcher } from "@/components/team/team-switcher";
 import type { Database } from "@/types/database";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -32,23 +33,23 @@ const navItems = [
 export function DashboardNav({
   profile,
   memberships,
+  activeMembership,
 }: {
   profile: Profile | null;
   memberships: TeamMember[];
+  activeMembership: TeamMember | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const initials = [profile?.first_name, profile?.last_name]
-    .filter(Boolean)
-    .map((n) => n![0])
-    .join("")
-    .toUpperCase() || "?";
-
-  const currentTeam = memberships[0]?.teams;
-  const currentRole = memberships[0]?.role;
+  const initials =
+    [profile?.first_name, profile?.last_name]
+      .filter(Boolean)
+      .map((n) => n![0])
+      .join("")
+      .toUpperCase() || "?";
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -91,21 +92,12 @@ export function DashboardNav({
         </div>
 
         <div className="flex items-center gap-3">
-          {currentTeam && (
-            <div className="hidden items-center gap-2 text-sm text-muted-foreground md:flex">
-              {currentTeam.logo_url && (
-                <img
-                  src={currentTeam.logo_url}
-                  alt={`${currentTeam.name} logo`}
-                  className="h-6 w-6 rounded object-cover"
-                />
-              )}
-              <span>
-                {currentTeam.name}
-                {currentRole && (
-                  <span className="ml-1 capitalize">({currentRole})</span>
-                )}
-              </span>
+          {memberships.length > 0 && (
+            <div className="hidden md:flex">
+              <TeamSwitcher
+                memberships={memberships}
+                activeMembership={activeMembership}
+              />
             </div>
           )}
 

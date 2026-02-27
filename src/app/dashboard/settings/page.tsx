@@ -4,12 +4,10 @@ import { NotificationPrefsForm } from "@/components/settings/notification-prefs-
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
 type NotifPrefs = Database["public"]["Tables"]["notification_preferences"]["Row"];
-type TeamMemberWithTeam = Database["public"]["Tables"]["team_members"]["Row"] & {
-  teams: Database["public"]["Tables"]["teams"]["Row"];
-};
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -19,22 +17,18 @@ export default async function SettingsPage() {
 
   if (!user) redirect("/login");
 
-  const { data: rawNotifPrefs } = await supabase
-    .from("notification_preferences")
-    .select("*")
-    .eq("profile_id", user.id)
-    .single();
-
-  const { data: rawMembership } = await supabase
-    .from("team_members")
-    .select("*, teams(*)")
-    .eq("profile_id", user.id)
-    .limit(1)
-    .single();
+  const [{ data: rawNotifPrefs }, membership] = await Promise.all([
+    supabase
+      .from("notification_preferences")
+      .select("*")
+      .eq("profile_id", user.id)
+      .single(),
+    getActiveMembership(supabase, user.id),
+  ]);
 
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
-  const membership = rawMembership as TeamMemberWithTeam | null;
-  const isAdmin = membership?.role === "coach" || membership?.role === "manager";
+  const isAdmin =
+    membership?.role === "coach" || membership?.role === "manager";
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">

@@ -4,11 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Users } from "lucide-react";
 import Link from "next/link";
 import { CreateTeamForm } from "@/components/team/create-team-form";
+import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
-type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
-  teams: Database["public"]["Tables"]["teams"]["Row"];
-};
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   locations: { name: string } | null;
 };
@@ -19,38 +17,30 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: rawMemberships } = await supabase
-    .from("team_members")
-    .select("*, teams(*)")
-    .eq("profile_id", user!.id);
-
-  const memberships = (rawMemberships ?? []) as TeamMember[];
-  const currentMembership = memberships[0] as TeamMember | undefined;
-  const currentTeam = currentMembership?.teams as
+  const membership = await getActiveMembership(supabase, user!.id);
+  const team = membership?.teams as
     | { id: string; name: string; season: string | null }
     | undefined;
   const isAdmin =
-    currentMembership?.role === "coach" ||
-    currentMembership?.role === "manager";
+    membership?.role === "coach" || membership?.role === "manager";
 
-  // If no team, show create team form
-  if (!currentTeam) {
+  if (!team) {
     return (
       <div className="mx-auto max-w-lg pt-8">
         <h1 className="mb-6 text-2xl font-bold">Welcome to lista</h1>
         <p className="mb-6 text-muted-foreground">
-          Get started by creating your team or ask your coach for an invite link.
+          Get started by creating your team or ask your coach for an invite
+          link.
         </p>
         <CreateTeamForm />
       </div>
     );
   }
 
-  // Fetch upcoming events
   const { data: rawUpcomingEvents } = await supabase
     .from("events")
     .select("*, locations(name)")
-    .eq("team_id", currentTeam.id)
+    .eq("team_id", team.id)
     .eq("is_cancelled", false)
     .gte("start_time", new Date().toISOString())
     .order("start_time", { ascending: true })
@@ -58,23 +48,21 @@ export default async function DashboardPage() {
 
   const upcomingEvents = (rawUpcomingEvents ?? []) as Event[];
 
-  // Fetch team member count
   const { count: memberCount } = await supabase
     .from("team_members")
     .select("*", { count: "exact", head: true })
-    .eq("team_id", currentTeam.id);
+    .eq("team_id", team.id);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">{currentTeam.name}</h1>
-        {currentTeam.season && (
-          <p className="text-muted-foreground">{currentTeam.season}</p>
+        <h1 className="text-2xl font-bold">{team.name}</h1>
+        {team.season && (
+          <p className="text-muted-foreground">{team.season}</p>
         )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Upcoming Events */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
@@ -136,7 +124,6 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Team Overview */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Team</CardTitle>

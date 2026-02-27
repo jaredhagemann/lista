@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { setActiveTeam } from "@/app/actions/team";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +15,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-export function CreateTeamForm() {
+
+export function CreateTeamForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const [teamName, setTeamName] = useState("");
   const [season, setSeason] = useState("");
   const [orgName, setOrgName] = useState("");
@@ -84,7 +86,64 @@ export function CreateTeamForm() {
       return;
     }
 
-    router.refresh();
+    await setActiveTeam(teamId);
+
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      router.push("/dashboard");
+      router.refresh();
+    }
+  }
+
+  const formContent = (
+    <form onSubmit={handleSubmit}>
+      <div className="space-y-4 p-1">
+        {error && (
+          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="orgName">Club / organization name</Label>
+          <Input
+            id="orgName"
+            placeholder="e.g. Westside FC"
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="teamName">Team name</Label>
+          <Input
+            id="teamName"
+            placeholder="e.g. U12 Boys Blue"
+            value={teamName}
+            onChange={(e) => setTeamName(e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="season">Season (optional)</Label>
+          <Input
+            id="season"
+            placeholder="e.g. Spring 2026"
+            value={season}
+            onChange={(e) => setSeason(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="mt-4">
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? "Creating..." : "Create team"}
+        </Button>
+      </div>
+    </form>
+  );
+
+  // When rendered inside a dialog (onSuccess provided), skip the Card wrapper
+  if (onSuccess) {
+    return formContent;
   }
 
   return (
@@ -95,48 +154,7 @@ export function CreateTeamForm() {
           Set up your team and start managing your schedule.
         </CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4">
-          {error && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="orgName">Club / organization name</Label>
-            <Input
-              id="orgName"
-              placeholder="e.g. Westside FC"
-              value={orgName}
-              onChange={(e) => setOrgName(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="teamName">Team name</Label>
-            <Input
-              id="teamName"
-              placeholder="e.g. U12 Boys Blue"
-              value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="season">Season (optional)</Label>
-            <Input
-              id="season"
-              placeholder="e.g. Spring 2026"
-              value={season}
-              onChange={(e) => setSeason(e.target.value)}
-            />
-          </div>
-        </CardContent>
-        <CardFooter>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating..." : "Create team"}
-          </Button>
-        </CardFooter>
-      </form>
+      <CardContent>{formContent}</CardContent>
     </Card>
   );
 }

@@ -1,11 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ScheduleView } from "@/components/calendar/schedule-view";
+import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
-type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
-  teams: Database["public"]["Tables"]["teams"]["Row"];
-};
 type Event = Database["public"]["Tables"]["events"]["Row"];
 
 export default async function SchedulePage() {
@@ -16,23 +14,12 @@ export default async function SchedulePage() {
 
   if (!user) redirect("/login");
 
-  // Get current user's team membership
-  const { data: rawMembership } = await supabase
-    .from("team_members")
-    .select("*, teams(*)")
-    .eq("profile_id", user.id)
-    .limit(1)
-    .single();
+  const membership = await getActiveMembership(supabase, user.id);
+  if (!membership) redirect("/dashboard");
 
-  if (!rawMembership) {
-    redirect("/dashboard");
-  }
-
-  const membership = rawMembership as TeamMember;
   const team = membership.teams as Database["public"]["Tables"]["teams"]["Row"];
   const isAdmin = membership.role === "coach" || membership.role === "manager";
 
-  // Fetch all events for the team
   const { data: rawEvents } = await supabase
     .from("events")
     .select("*")

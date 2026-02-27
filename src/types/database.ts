@@ -342,6 +342,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_team_id: string | null
           avatar_url: string | null
           birthday: string | null
           created_at: string | null
@@ -352,6 +353,7 @@ export type Database = {
           last_name: string
         }
         Insert: {
+          active_team_id?: string | null
           avatar_url?: string | null
           birthday?: string | null
           created_at?: string | null
@@ -362,6 +364,7 @@ export type Database = {
           last_name?: string
         }
         Update: {
+          active_team_id?: string | null
           avatar_url?: string | null
           birthday?: string | null
           created_at?: string | null
@@ -371,7 +374,15 @@ export type Database = {
           id?: string
           last_name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_active_team_id_fkey"
+            columns: ["active_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       push_subscriptions: {
         Row: {
