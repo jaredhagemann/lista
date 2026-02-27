@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServerClient } from "@supabase/ssr";
 import { AcceptInviteClient } from "./accept-invite-client";
 import type { Database } from "@/types/database";
 
@@ -23,8 +24,15 @@ export default async function InvitePage({
     redirect(`/signup?invite=${id}`);
   }
 
-  // Fetch invitation details
-  const { data: rawInvitation, error } = await supabase
+  // Use service role to fetch invitation + team name — the invitee is not yet
+  // a team member so the teams RLS policy would block the join otherwise.
+  const supabaseAdmin = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { cookies: { getAll: () => [], setAll: () => {} } }
+  );
+
+  const { data: rawInvitation, error } = await supabaseAdmin
     .from("invitations")
     .select("*, teams(name)")
     .eq("id", id)
