@@ -29,7 +29,7 @@ Supabase Storage is already configured with RLS policies (`tests/rls/storage.tes
 
 ### Critical
 - ~~**Pre-commit hooks**~~ ✓ — husky + lint-staged enforcing ESLint and `tsc --noEmit` on every commit.
-- **Database migration strategy + Staging environment** — Workflow written (`.github/workflows/migrate.yml`), pending manual setup. See `docs/specs/migration-strategy.md` for the checklist. Remaining: create staging Supabase project, add 5 GitHub secrets, configure Vercel Preview env vars to point at staging.
+- ~~**Database migration strategy + Staging environment**~~ ✓ — `supabase db push` runs automatically on PRs (staging) and merges to main (production). Vercel preview deployments point at staging. See `docs/specs/migration-strategy.md`.
 
 ### High Priority
 - **Error monitoring** — No Sentry or equivalent. Silent failures in the cron job and notification fan-out could go unnoticed. Add error monitoring before user growth makes debugging harder.
