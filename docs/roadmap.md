@@ -33,7 +33,7 @@ Supabase Storage is already configured with RLS policies (`tests/rls/storage.tes
 
 ### High Priority
 - ~~**Error monitoring**~~ ✓ — Sentry added via `@sentry/nextjs`. Captures unhandled errors on client, server, and edge runtimes. Active on Production and Preview deployments.
-- **E2E tests** — No Playwright/Cypress coverage for critical flows (signup → join team → RSVP). At minimum, smoke tests on auth, event creation, and availability submission.
+- ~~**E2E tests**~~ ✓ — Playwright covers auth, event creation, availability RSVP, and invite acceptance. Runs against local Supabase stack via `pnpm test:e2e`.
 
 ### Medium Priority
 - **Rate limiting** — `/api/auth/signup`, `/api/invitations/send`, and notification routes have no rate limiting. Add edge middleware (Upstash Redis or Vercel's built-in) to protect these endpoints.
