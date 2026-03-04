@@ -32,7 +32,7 @@ Supabase Storage is already configured with RLS policies (`tests/rls/storage.tes
 - ~~**Database migration strategy + Staging environment**~~ ✓ — `supabase db push` runs automatically on PRs (staging) and merges to main (production). Vercel preview deployments point at staging. See `docs/specs/migration-strategy.md`.
 
 ### High Priority
-- **Error monitoring** — No Sentry or equivalent. Silent failures in the cron job and notification fan-out could go unnoticed. Add error monitoring before user growth makes debugging harder.
+- ~~**Error monitoring**~~ ✓ — Sentry added via `@sentry/nextjs`. Captures unhandled errors on client, server, and edge runtimes. Active on Production and Preview deployments.
 - **E2E tests** — No Playwright/Cypress coverage for critical flows (signup → join team → RSVP). At minimum, smoke tests on auth, event creation, and availability submission.
 
 ### Medium Priority
