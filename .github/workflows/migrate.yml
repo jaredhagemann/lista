@@ -1,0 +1,48 @@
+name: Migrate database
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # On PRs: push pending migrations to staging to validate they apply cleanly.
+  # Staging then matches the branch's schema, so Vercel preview deployments work.
+  migrate-staging:
+    name: Migrate staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Push migrations to staging
+        run: |
+          supabase db push \
+            --project-ref ${{ secrets.SUPABASE_STAGING_PROJECT_REF }} \
+            --password ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # On merge to main: push pending migrations to production.
+  # This runs in parallel with the Vercel deployment. Migrations typically
+  # complete in <30s; Vercel builds take 1-3 minutes, so migrations land first.
+  # Staging pre-validates every migration before it reaches this step.
+  migrate-production:
+    name: Migrate production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Push migrations to production
+        run: |
+          supabase db push \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --password ${{ secrets.SUPABASE_DB_PASSWORD }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

@@ -28,16 +28,15 @@ Supabase Storage is already configured with RLS policies (`tests/rls/storage.tes
 ## Process Improvements
 
 ### Critical
-- **Database migration strategy** — No defined process for applying `supabase/migrations/` to production. Need to add a `supabase db push` step to the deploy pipeline or document a manual runbook. A schema/app version mismatch in production is a serious risk.
+- ~~**Pre-commit hooks**~~ ✓ — husky + lint-staged enforcing ESLint and `tsc --noEmit` on every commit.
+- **Database migration strategy + Staging environment** — Workflow written (`.github/workflows/migrate.yml`), pending manual setup. See `docs/specs/migration-strategy.md` for the checklist. Remaining: create staging Supabase project, add 5 GitHub secrets, configure Vercel Preview env vars to point at staging.
 
 ### High Priority
 - **Error monitoring** — No Sentry or equivalent. Silent failures in the cron job and notification fan-out could go unnoticed. Add error monitoring before user growth makes debugging harder.
 - **E2E tests** — No Playwright/Cypress coverage for critical flows (signup → join team → RSVP). At minimum, smoke tests on auth, event creation, and availability submission.
-- **Staging environment** — Vercel preview deployments likely share the production Supabase instance. A dedicated staging Supabase project would allow safe migration and feature testing.
 
 ### Medium Priority
 - **Rate limiting** — `/api/auth/signup`, `/api/invitations/send`, and notification routes have no rate limiting. Add edge middleware (Upstash Redis or Vercel's built-in) to protect these endpoints.
-- **Pre-commit hooks** — ESLint is configured but not enforced before commits. Add husky + lint-staged so linting and TypeScript errors are caught locally, not just in CI.
 
 ---
 
