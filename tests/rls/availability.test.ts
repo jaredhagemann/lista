@@ -70,9 +70,10 @@ describe("availability RLS", () => {
 
     const eventId = await createEvent(teamId);
 
-    const { error } = await coach.client.from("availability").insert({
+    // player (non-admin) tries to insert availability on behalf of coach
+    const { error } = await player.client.from("availability").insert({
       event_id: eventId,
-      profile_id: player.user.id,
+      profile_id: coach.user.id,
       status: "unavailable",
     });
     expect(error).not.toBeNull();
@@ -106,24 +107,26 @@ describe("availability RLS", () => {
     await addTeamMember(teamId, player.user.id, "player");
 
     const eventId = await createEvent(teamId);
+    // Set up coach's availability
     await adminClient.from("availability").insert({
       event_id: eventId,
-      profile_id: player.user.id,
+      profile_id: coach.user.id,
       status: "available",
     });
 
-    await coach.client
+    // player (non-admin) tries to update coach's availability
+    await player.client
       .from("availability")
       .update({ status: "unavailable" })
       .eq("event_id", eventId)
-      .eq("profile_id", player.user.id);
+      .eq("profile_id", coach.user.id);
 
     // Verify unchanged
     const { data } = await adminClient
       .from("availability")
       .select()
       .eq("event_id", eventId)
-      .eq("profile_id", player.user.id);
+      .eq("profile_id", coach.user.id);
     expect(data![0].status).toBe("available");
   });
 

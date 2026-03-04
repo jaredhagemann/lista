@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:rls": "vitest run tests/rls"
+    "test:rls": "supabase db reset --db-url postgresql://postgres:postgres@127.0.0.1:54322/postgres && vitest run --config vitest.config.rls.mts tests/rls"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

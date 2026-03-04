@@ -1,9 +1,17 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env.test.local" });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+if (!SUPABASE_URL.includes("127.0.0.1") && !SUPABASE_URL.includes("localhost")) {
+  throw new Error(
+    "RLS tests must run against a local Supabase instance.\n" +
+      "Set NEXT_PUBLIC_SUPABASE_URL to http://127.0.0.1:54321 in .env.test.local.\n" +
+      "Run `supabase start` to start the local stack."
+  );
+}
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
