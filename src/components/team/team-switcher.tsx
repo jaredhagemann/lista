@@ -49,7 +49,7 @@ export function TeamSwitcher({
     if (teamId === activeMembership?.team_id) return;
     setSwitching(true);
     await setActiveTeam(teamId);
-    router.refresh();
+    router.push("/dashboard");
     setSwitching(false);
   }
 
