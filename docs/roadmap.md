@@ -36,7 +36,7 @@ Supabase Storage is already configured with RLS policies (`tests/rls/storage.tes
 - ~~**E2E tests**~~ ✓ — Playwright covers auth, event creation, availability RSVP, and invite acceptance. Runs against local Supabase stack via `pnpm test:e2e`.
 
 ### Medium Priority
-- **Rate limiting** — `/api/auth/signup`, `/api/invitations/send`, and notification routes have no rate limiting. Add edge middleware (Upstash Redis or Vercel's built-in) to protect these endpoints.
+- ~~**Rate limiting**~~ ✓ — Upstash Redis sliding window rate limits on `/api/auth/signup` (5/10 min per IP), `/api/invitations/send` (20/hr per user), and `/api/notifications/send` (30/hr per user).
 
 ---
 

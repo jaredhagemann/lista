@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
 import type { Database } from "@/types/database";
+import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 type InvitationRole = Database["public"]["Tables"]["invitations"]["Row"]["role"];
 
@@ -15,6 +16,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { success } = await invitationLimiter.limit(user.id);
+  if (!success) return rateLimitResponse();
 
   const body = await request.json();
   const { teamId, email, role, firstName, lastName } = body as {

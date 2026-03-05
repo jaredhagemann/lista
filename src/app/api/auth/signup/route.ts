@@ -4,8 +4,13 @@ import {
   sendEmail,
   buildConfirmationEmailHtml,
 } from "@/lib/notifications/email";
+import { signupLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
+  const { success } = await signupLimiter.limit(ip);
+  if (!success) return rateLimitResponse();
+
   const body = await request.json();
   const { email, password, firstName, lastName, inviteId } = body as {
     email: string;

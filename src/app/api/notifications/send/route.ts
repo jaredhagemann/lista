@@ -8,6 +8,7 @@ import {
 } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
 import type { Database } from "@/types/database";
+import { notificationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
   teams: { name: string };
@@ -30,6 +31,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { success } = await notificationLimiter.limit(user.id);
+  if (!success) return rateLimitResponse();
 
   const body = await request.json();
   const { eventId, action, changes } = body as {
