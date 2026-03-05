@@ -15,7 +15,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar, ClipboardList, Home, Settings, Users, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { TeamSwitcher } from "@/components/team/team-switcher";
+import { ProfileSwitcher } from "@/components/layout/profile-switcher";
 import type { Database } from "@/types/database";
+import type { ManagedProfileEntry } from "@/app/dashboard/layout";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -31,19 +33,26 @@ const navItems = [
 ];
 
 export function DashboardNav({
-  profile,
-  memberships,
+  ownProfile,
+  activeProfile,
+  managedProfiles,
+  allMemberships,
   activeMembership,
+  profilesOnActiveTeam,
 }: {
-  profile: Profile | null;
-  memberships: TeamMember[];
+  ownProfile: Profile | null;
+  activeProfile: Profile | null;
+  managedProfiles: ManagedProfileEntry[];
+  allMemberships: TeamMember[];
   activeMembership: TeamMember | null;
+  profilesOnActiveTeam: TeamMember[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const profile = ownProfile;
   const initials =
     [profile?.first_name, profile?.last_name]
       .filter(Boolean)
@@ -56,6 +65,10 @@ export function DashboardNav({
     router.push("/login");
     router.refresh();
   }
+
+  // Show ProfileSwitcher only when the active team has >1 of the user's profiles
+  const showProfileSwitcher =
+    profilesOnActiveTeam.length > 1 && activeMembership?.team_id;
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -91,28 +104,43 @@ export function DashboardNav({
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          {memberships.length > 0 && (
-            <div className="hidden md:flex">
-              <TeamSwitcher
-                memberships={memberships}
-                activeMembership={activeMembership}
+        <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
+            {showProfileSwitcher && (
+              <ProfileSwitcher
+                ownProfile={ownProfile}
+                activeProfile={activeProfile}
+                profilesOnActiveTeam={profilesOnActiveTeam}
+                activeTeamId={activeMembership!.team_id!}
               />
-            </div>
-          )}
+            )}
+            {allMemberships.length > 0 && (
+              <TeamSwitcher
+                allMemberships={allMemberships}
+                activeMembership={activeMembership}
+                hasManagedProfiles={managedProfiles.length > 0}
+              />
+            )}
+          </div>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
-                  {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt={initials} />}
+                  {profile?.avatar_url && (
+                    <AvatarImage src={profile.avatar_url} alt={initials} />
+                  )}
                   <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">{[profile?.first_name, profile?.last_name].filter(Boolean).join(" ")}</p>
+                <p className="text-sm font-medium">
+                  {[profile?.first_name, profile?.last_name]
+                    .filter(Boolean)
+                    .join(" ")}
+                </p>
                 <p className="text-xs text-muted-foreground">{profile?.email}</p>
               </div>
               <DropdownMenuSeparator />
@@ -167,6 +195,23 @@ export function DashboardNav({
               </Link>
             );
           })}
+          <div className="mt-2 flex flex-col gap-2 border-t pt-2">
+            {showProfileSwitcher && (
+              <ProfileSwitcher
+                ownProfile={ownProfile}
+                activeProfile={activeProfile}
+                profilesOnActiveTeam={profilesOnActiveTeam}
+                activeTeamId={activeMembership!.team_id!}
+              />
+            )}
+            {allMemberships.length > 0 && (
+              <TeamSwitcher
+                allMemberships={allMemberships}
+                activeMembership={activeMembership}
+                hasManagedProfiles={managedProfiles.length > 0}
+              />
+            )}
+          </div>
         </nav>
       )}
     </header>

@@ -16,7 +16,7 @@ type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
 };
 type MemberWithProfile = {
   profile_id: string;
-  profiles: { email: string } | null;
+  profiles: { email: string; auth_user_id: string | null } | null;
 };
 type NotificationPref = Database["public"]["Tables"]["notification_preferences"]["Row"];
 type PushSubscription = Database["public"]["Tables"]["push_subscriptions"]["Row"];
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   // Get all team members
   const { data: rawMembers } = await supabase
     .from("team_members")
-    .select("profile_id, profiles(email)")
+    .select("profile_id, profiles(email, auth_user_id)")
     .eq("team_id", event.team_id!);
 
   if (!rawMembers) {
@@ -68,6 +68,28 @@ export async function POST(request: Request) {
 
   const members = rawMembers as MemberWithProfile[];
   const profileIds = members.map((m) => m.profile_id);
+
+  // For managed profiles (auth_user_id IS NULL), resolve the email from their managers
+  const managedProfileIds = members
+    .filter((m) => m.profiles?.auth_user_id == null)
+    .map((m) => m.profile_id);
+
+  const managerEmailsByProfileId = new Map<string, string[]>();
+  if (managedProfileIds.length > 0) {
+    const { data: managerLinks } = await supabase
+      .from("profile_managers")
+      .select("managed_id, profiles!manager_id(email)")
+      .in("managed_id", managedProfileIds);
+
+    for (const link of managerLinks ?? []) {
+      const email = (link.profiles as unknown as { email: string } | null)?.email;
+      if (email) {
+        const existing = managerEmailsByProfileId.get(link.managed_id) ?? [];
+        existing.push(email);
+        managerEmailsByProfileId.set(link.managed_id, existing);
+      }
+    }
+  }
 
   // Get notification preferences
   const { data: rawPrefs } = await supabase
@@ -107,15 +129,21 @@ export async function POST(request: Request) {
       const pref = prefsMap.get(m.profile_id);
       return pref ? pref.email_enabled : true; // Default to enabled
     })
-    .map((m) => {
-      const email = m.profiles?.email;
-      if (email) {
-        return sendEmail({
+    .flatMap((m) => {
+      const isManaged = m.profiles?.auth_user_id == null;
+      const emails = isManaged
+        ? (managerEmailsByProfileId.get(m.profile_id) ?? [])
+        : m.profiles?.email
+        ? [m.profiles.email]
+        : [];
+
+      return emails.map((email) =>
+        sendEmail({
           to: email,
           subject: emailSubject,
           html: emailHtml,
-        }).catch((err) => console.error(`Email to ${email} failed:`, err));
-      }
+        }).catch((err) => console.error(`Email to ${email} failed:`, err))
+      );
     });
 
   // Send push notifications

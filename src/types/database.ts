@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -105,38 +125,6 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      locations: {
-        Row: {
-          address: string | null
-          created_at: string | null
-          id: string
-          name: string
-          team_id: string
-        }
-        Insert: {
-          address?: string | null
-          created_at?: string | null
-          id?: string
-          name: string
-          team_id: string
-        }
-        Update: {
-          address?: string | null
-          created_at?: string | null
-          id?: string
-          name?: string
-          team_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "locations_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
@@ -290,6 +278,38 @@ export type Database = {
           },
         ]
       }
+      locations: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          id: string
+          name: string
+          team_id: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          team_id: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "locations_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           created_at: string | null
@@ -340,9 +360,49 @@ export type Database = {
         }
         Relationships: []
       }
+      profile_managers: {
+        Row: {
+          created_at: string | null
+          id: string
+          managed_id: string
+          manager_id: string
+          relationship: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          managed_id: string
+          manager_id: string
+          relationship?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          managed_id?: string
+          manager_id?: string
+          relationship?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_managers_managed_id_fkey"
+            columns: ["managed_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_managers_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active_team_id: string | null
+          auth_user_id: string | null
           avatar_url: string | null
           birthday: string | null
           created_at: string | null
@@ -354,6 +414,7 @@ export type Database = {
         }
         Insert: {
           active_team_id?: string | null
+          auth_user_id?: string | null
           avatar_url?: string | null
           birthday?: string | null
           created_at?: string | null
@@ -365,6 +426,7 @@ export type Database = {
         }
         Update: {
           active_team_id?: string | null
+          auth_user_id?: string | null
           avatar_url?: string | null
           birthday?: string | null
           created_at?: string | null
@@ -535,6 +597,7 @@ export type Database = {
     }
     Functions: {
       is_admin_of_profile: { Args: { p_id: string }; Returns: boolean }
+      is_managed_by_me: { Args: { p_id: string }; Returns: boolean }
       is_team_admin: { Args: { t_id: string }; Returns: boolean }
       is_team_member: { Args: { t_id: string }; Returns: boolean }
     }
@@ -665,7 +728,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+

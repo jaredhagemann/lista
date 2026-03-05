@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { AvailabilityMatrix } from "@/components/availability/availability-matrix";
-import { getActiveMembership } from "@/lib/get-active-membership";
+import { getActiveMembership, getActiveProfileId } from "@/lib/get-active-membership";
 
 export default async function AvailabilityPage() {
   const supabase = await createClient();
@@ -11,6 +11,7 @@ export default async function AvailabilityPage() {
 
   if (!user) redirect("/login");
 
+  const activeProfileId = await getActiveProfileId(user.id);
   const membership = await getActiveMembership(supabase, user.id);
   if (!membership || !membership.team_id) redirect("/dashboard");
 
@@ -87,7 +88,7 @@ export default async function AvailabilityPage() {
         members={members}
         initialRows={availabilityRows}
         isAdmin={isAdmin}
-        currentUserId={user.id}
+        currentUserId={activeProfileId}
       />
     </div>
   );

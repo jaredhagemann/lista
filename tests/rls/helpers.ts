@@ -107,8 +107,46 @@ export async function addTeamMember(
   if (error) throw new Error(`Failed to add team member: ${error.message}`);
 }
 
+const createdManagedProfileIds: string[] = [];
+
+/**
+ * Create a managed profile (no auth account) via admin client.
+ * Returns the profile ID.
+ */
+export async function createManagedProfile(
+  managerId: string,
+  opts: { firstName?: string; lastName?: string; relationship?: string } = {}
+): Promise<string> {
+  const profileId = crypto.randomUUID();
+  const { error: profileError } = await adminClient.from("profiles").insert({
+    id: profileId,
+    first_name: opts.firstName ?? "Managed",
+    last_name: opts.lastName ?? "Player",
+    email: `managed-${profileId.slice(0, 8)}@lista.internal`,
+  });
+  if (profileError) throw new Error(`Failed to create managed profile: ${profileError.message}`);
+  createdManagedProfileIds.push(profileId);
+
+  const { error: linkError } = await adminClient.from("profile_managers").insert({
+    manager_id: managerId,
+    managed_id: profileId,
+    relationship: opts.relationship ?? null,
+  });
+  if (linkError) throw new Error(`Failed to link managed profile: ${linkError.message}`);
+
+  return profileId;
+}
+
 /** Clean up all test data in correct FK order */
 export async function cleanupTestData() {
+  // Delete managed profiles and their manager links
+  for (const profileId of createdManagedProfileIds) {
+    await adminClient.from("profile_managers").delete().eq("managed_id", profileId);
+    await adminClient.from("team_members").delete().eq("profile_id", profileId);
+    await adminClient.from("availability").delete().eq("profile_id", profileId);
+    await adminClient.from("profiles").delete().eq("id", profileId);
+  }
+
   // Delete in reverse dependency order
   for (const teamId of createdTeamIds) {
     await adminClient.from("availability").delete().in(
@@ -140,4 +178,5 @@ export async function cleanupTestData() {
   createdUserIds.length = 0;
   createdOrgIds.length = 0;
   createdTeamIds.length = 0;
+  createdManagedProfileIds.length = 0;
 }

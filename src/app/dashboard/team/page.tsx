@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { InviteMemberDialog } from "@/components/team/invite-member-dialog";
+import { AddPlayerDialog } from "@/components/team/add-player-dialog";
 import { TeamRoster } from "@/components/team/team-roster";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
@@ -41,7 +42,12 @@ export default async function TeamPage() {
           )}
           <h1 className="text-2xl font-bold">{team.name}</h1>
         </div>
-        {isAdmin && <InviteMemberDialog teamId={team.id} />}
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <AddPlayerDialog teamId={team.id} managerId={user.id} />
+            <InviteMemberDialog teamId={team.id} />
+          </div>
+        )}
       </div>
 
       {team.team_photo_url && (

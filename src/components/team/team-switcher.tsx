@@ -26,15 +26,24 @@ type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
 };
 
 export function TeamSwitcher({
-  memberships,
+  allMemberships,
   activeMembership,
+  hasManagedProfiles,
 }: {
-  memberships: TeamMember[];
+  /** All team_member rows across own + managed profiles. */
+  allMemberships: TeamMember[];
   activeMembership: TeamMember | null;
+  hasManagedProfiles: boolean;
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+
+  // Deduplicate by team_id — each team appears once in the dropdown even if
+  // both the parent and a managed profile are members.
+  const uniqueTeams = Array.from(
+    new Map(allMemberships.map((m) => [m.team_id, m])).values()
+  );
 
   async function handleSwitch(teamId: string) {
     if (teamId === activeMembership?.team_id) return;
@@ -75,33 +84,43 @@ export function TeamSwitcher({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          {memberships.map((m) => (
-            <DropdownMenuItem
-              key={m.team_id}
-              onClick={() => handleSwitch(m.team_id!)}
-              className="flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                {m.teams.logo_url && (
-                  <img
-                    src={m.teams.logo_url}
-                    alt={`${m.teams.name} logo`}
-                    className="h-4 w-4 rounded object-cover"
-                  />
-                )}
-                <div>
-                  <p className="text-sm font-medium">{m.teams.name}</p>
-                  <p className="text-xs capitalize text-muted-foreground">
-                    {m.role}
-                    {m.teams.season ? ` · ${m.teams.season}` : ""}
-                  </p>
+          {uniqueTeams.map((m) => {
+            // Count how many of the user's profiles are on this team
+            const profilesOnTeam = allMemberships.filter(
+              (mb) => mb.team_id === m.team_id
+            );
+            const multiProfile = profilesOnTeam.length > 1;
+
+            return (
+              <DropdownMenuItem
+                key={m.team_id}
+                onClick={() => handleSwitch(m.team_id!)}
+                className="flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  {m.teams.logo_url && (
+                    <img
+                      src={m.teams.logo_url}
+                      alt={`${m.teams.name} logo`}
+                      className="h-4 w-4 rounded object-cover"
+                    />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium">{m.teams.name}</p>
+                    <p className="text-xs capitalize text-muted-foreground">
+                      {multiProfile
+                        ? `${profilesOnTeam.length} profiles`
+                        : m.role}
+                      {m.teams.season ? ` · ${m.teams.season}` : ""}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              {m.team_id === activeMembership?.team_id && (
-                <Check className="h-4 w-4 text-primary" />
-              )}
-            </DropdownMenuItem>
-          ))}
+                {m.team_id === activeMembership?.team_id && (
+                  <Check className="h-4 w-4 text-primary" />
+                )}
+              </DropdownMenuItem>
+            );
+          })}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setCreateOpen(true)}>
             <PlusCircle className="mr-2 h-4 w-4" />
