@@ -25,21 +25,6 @@ Supabase Storage is already configured with RLS policies (`tests/rls/storage.tes
 
 ---
 
-## Process Improvements
-
-### Critical
-- ~~**Pre-commit hooks**~~ ✓ — husky + lint-staged enforcing ESLint and `tsc --noEmit` on every commit.
-- ~~**Database migration strategy + Staging environment**~~ ✓ — `supabase db push` runs automatically on PRs (staging) and merges to main (production). Vercel preview deployments point at staging. See `docs/specs/migration-strategy.md`.
-
-### High Priority
-- ~~**Error monitoring**~~ ✓ — Sentry added via `@sentry/nextjs`. Captures unhandled errors on client, server, and edge runtimes. Active on Production and Preview deployments.
-- ~~**E2E tests**~~ ✓ — Playwright covers auth, event creation, availability RSVP, and invite acceptance. Runs against local Supabase stack via `pnpm test:e2e`.
-
-### Medium Priority
-- ~~**Rate limiting**~~ ✓ — Upstash Redis sliding window rate limits on `/api/auth/signup` (5/10 min per IP), `/api/invitations/send` (20/hr per user), and `/api/notifications/send` (30/hr per user).
-
----
-
 ## Mobile App Strategy
 
 **Decision: Monorepo (Turborepo) with React Native / Expo**
