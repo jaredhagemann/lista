@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -182,13 +182,94 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
   const router = useRouter();
   const supabase = createClient();
 
-  const timezones = useMemo(() => {
-    try {
-      return Intl.supportedValuesOf("timeZone");
-    } catch {
-      return [];
-    }
-  }, []);
+  const timezones = [
+    // North America
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Phoenix",
+    "America/Los_Angeles",
+    "America/Anchorage",
+    "Pacific/Honolulu",
+    "America/Toronto",
+    "America/Vancouver",
+    "America/Winnipeg",
+    "America/Halifax",
+    "America/St_Johns",
+    "America/Mexico_City",
+    // Central & South America
+    "America/Bogota",
+    "America/Lima",
+    "America/Santiago",
+    "America/Buenos_Aires",
+    "America/Sao_Paulo",
+    "America/Caracas",
+    // Europe
+    "Europe/London",
+    "Europe/Dublin",
+    "Europe/Lisbon",
+    "Europe/Paris",
+    "Europe/Berlin",
+    "Europe/Rome",
+    "Europe/Madrid",
+    "Europe/Amsterdam",
+    "Europe/Brussels",
+    "Europe/Zurich",
+    "Europe/Stockholm",
+    "Europe/Oslo",
+    "Europe/Copenhagen",
+    "Europe/Helsinki",
+    "Europe/Warsaw",
+    "Europe/Prague",
+    "Europe/Vienna",
+    "Europe/Budapest",
+    "Europe/Bucharest",
+    "Europe/Athens",
+    "Europe/Istanbul",
+    "Europe/Moscow",
+    // Africa
+    "Africa/Cairo",
+    "Africa/Johannesburg",
+    "Africa/Lagos",
+    "Africa/Nairobi",
+    // Middle East
+    "Asia/Dubai",
+    "Asia/Riyadh",
+    "Asia/Kuwait",
+    "Asia/Tehran",
+    "Asia/Jerusalem",
+    "Asia/Beirut",
+    // Asia
+    "Asia/Karachi",
+    "Asia/Kolkata",
+    "Asia/Dhaka",
+    "Asia/Colombo",
+    "Asia/Kathmandu",
+    "Asia/Tashkent",
+    "Asia/Almaty",
+    "Asia/Bangkok",
+    "Asia/Ho_Chi_Minh",
+    "Asia/Jakarta",
+    "Asia/Kuala_Lumpur",
+    "Asia/Singapore",
+    "Asia/Manila",
+    "Asia/Shanghai",
+    "Asia/Hong_Kong",
+    "Asia/Taipei",
+    "Asia/Seoul",
+    "Asia/Tokyo",
+    // Oceania
+    "Australia/Perth",
+    "Australia/Darwin",
+    "Australia/Adelaide",
+    "Australia/Brisbane",
+    "Australia/Sydney",
+    "Australia/Melbourne",
+    "Pacific/Auckland",
+    "Pacific/Fiji",
+    // UTC
+    "UTC",
+  ];
 
   const commonCountryCodes = new Set(COMMON_COUNTRIES.map((c) => c.code));
   const otherCountries = ALL_COUNTRIES.filter(
