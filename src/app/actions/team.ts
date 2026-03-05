@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
-import { ACTIVE_PROFILE_COOKIE } from "./profile";
+import { ACTIVE_PROFILE_COOKIE } from "./constants";
 
 export async function setActiveTeam(teamId: string) {
   const supabase = await createServerClient();

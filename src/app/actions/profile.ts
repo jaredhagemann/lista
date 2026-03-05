@@ -5,9 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
-
-/** Cookie name for the active profile session. */
-export const ACTIVE_PROFILE_COOKIE = "active_profile_id";
+import { ACTIVE_PROFILE_COOKIE } from "./constants";
 
 /**
  * Switch to viewing as a different profile (own or managed).
