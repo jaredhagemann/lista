@@ -32,12 +32,16 @@ import {
 import { ArrowLeft, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ImageUpload } from "@/components/ui/image-upload";
-import { ContactsCard } from "@/components/settings/contacts-card";
+import { ManagersCard } from "@/components/team/managers-card";
 import type { Database } from "@/types/database";
 
 type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
-type ContactRow = Database["public"]["Tables"]["contacts"]["Row"];
+type ProfileManagerRow =
+  Database["public"]["Tables"]["profile_managers"]["Row"] & {
+    profiles: ProfileRow;
+  };
+type InvitationRow = Database["public"]["Tables"]["invitations"]["Row"];
 
 export type TeamMemberWithProfile = TeamMemberRow & {
   profiles: ProfileRow;
@@ -45,7 +49,8 @@ export type TeamMemberWithProfile = TeamMemberRow & {
 
 interface RosterProfileProps {
   member: TeamMemberWithProfile;
-  contacts: ContactRow[];
+  managers: ProfileManagerRow[];
+  pendingInvites: InvitationRow[];
   canEdit: boolean;
   isAdmin: boolean;
   teamId: string;
@@ -53,7 +58,8 @@ interface RosterProfileProps {
 
 export function RosterProfile({
   member,
-  contacts,
+  managers,
+  pendingInvites,
   canEdit,
   isAdmin,
   teamId,
@@ -84,7 +90,9 @@ export function RosterProfile({
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <Avatar className="h-10 w-10">
-            {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={fullName} />}
+            {profile.avatar_url && (
+              <AvatarImage src={profile.avatar_url} alt={fullName} />
+            )}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
           <div>
@@ -110,12 +118,18 @@ export function RosterProfile({
       {editing ? (
         <EditMode
           member={member}
-          contacts={contacts}
+          managers={managers}
+          pendingInvites={pendingInvites}
           isAdmin={isAdmin}
           teamId={teamId}
         />
       ) : (
-        <ReadOnlyMode member={member} contacts={contacts} />
+        <ReadOnlyMode
+          member={member}
+          managers={managers}
+          pendingInvites={pendingInvites}
+          teamId={teamId}
+        />
       )}
     </div>
   );
@@ -123,17 +137,16 @@ export function RosterProfile({
 
 function ReadOnlyMode({
   member,
-  contacts,
+  managers,
+  pendingInvites,
+  teamId,
 }: {
   member: TeamMemberWithProfile;
-  contacts: ContactRow[];
+  managers: ProfileManagerRow[];
+  pendingInvites: InvitationRow[];
+  teamId: string;
 }) {
   const profile = member.profiles;
-
-  function formatAddress(contact: ContactRow) {
-    const parts = [contact.street, contact.city, contact.state, contact.zip].filter(Boolean);
-    return parts.length > 0 ? parts.join(", ") : null;
-  }
 
   return (
     <>
@@ -141,9 +154,9 @@ function ReadOnlyMode({
         <CardHeader>
           <CardTitle>Profile</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           {profile.avatar_url && (
-            <div className="flex justify-center">
+            <div className="mb-4 flex justify-center">
               <img
                 src={profile.avatar_url}
                 alt={`${profile.first_name} ${profile.last_name}`}
@@ -160,10 +173,6 @@ function ReadOnlyMode({
               <dt className="text-muted-foreground">Last name</dt>
               <dd>{profile.last_name}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Email</dt>
-              <dd>{profile.email}</dd>
-            </div>
             {profile.birthday && (
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Birthday</dt>
@@ -176,6 +185,10 @@ function ReadOnlyMode({
                 <dd className="capitalize">{profile.gender}</dd>
               </div>
             )}
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Role</dt>
+              <dd className="capitalize">{member.role}</dd>
+            </div>
             {member.role === "player" && member.jersey_number != null && (
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Jersey number</dt>
@@ -186,60 +199,27 @@ function ReadOnlyMode({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Contact Information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {contacts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No contacts listed.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {contacts.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="space-y-1 rounded-md border p-3 text-sm"
-                >
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">
-                      {contact.relationship}
-                    </Badge>
-                    <span className="font-medium">
-                      {contact.first_name} {contact.last_name}
-                    </span>
-                  </div>
-                  {(contact.phone || contact.email) && (
-                    <p className="text-muted-foreground">
-                      {[contact.phone, contact.email]
-                        .filter(Boolean)
-                        .join(" \u00B7 ")}
-                    </p>
-                  )}
-                  {formatAddress(contact) && (
-                    <p className="text-muted-foreground">
-                      {formatAddress(contact)}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ManagersCard
+        profileId={member.profile_id!}
+        teamId={teamId}
+        managers={managers}
+        pendingInvites={pendingInvites}
+        canEdit={false}
+      />
     </>
   );
 }
 
 function EditMode({
   member,
-  contacts,
+  managers,
+  pendingInvites,
   isAdmin,
   teamId,
 }: {
   member: TeamMemberWithProfile;
-  contacts: ContactRow[];
+  managers: ProfileManagerRow[];
+  pendingInvites: InvitationRow[];
   isAdmin: boolean;
   teamId: string;
 }) {
@@ -384,13 +364,6 @@ function EditMode({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" value={profile.email ?? ""} disabled />
-              <p className="text-xs text-muted-foreground">
-                Email cannot be changed here.
-              </p>
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="birthday">Birthday</Label>
               <Input
                 id="birthday"
@@ -415,8 +388,14 @@ function EditMode({
         </form>
       </Card>
 
-      {/* Contacts card (full edit mode) */}
-      <ContactsCard profileId={member.profile_id!} contacts={contacts} />
+      {/* Managers card */}
+      <ManagersCard
+        profileId={member.profile_id!}
+        teamId={teamId}
+        managers={managers}
+        pendingInvites={pendingInvites}
+        canEdit={true}
+      />
 
       {/* Admin actions */}
       {isAdmin && (

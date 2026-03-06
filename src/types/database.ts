@@ -73,62 +73,6 @@ export type Database = {
           },
         ]
       }
-      contacts: {
-        Row: {
-          city: string | null
-          created_at: string | null
-          email: string | null
-          first_name: string
-          id: string
-          last_name: string
-          phone: string | null
-          profile_id: string
-          receives_email: boolean | null
-          relationship: string
-          state: string | null
-          street: string | null
-          zip: string | null
-        }
-        Insert: {
-          city?: string | null
-          created_at?: string | null
-          email?: string | null
-          first_name: string
-          id?: string
-          last_name?: string
-          phone?: string | null
-          profile_id: string
-          receives_email?: boolean | null
-          relationship: string
-          state?: string | null
-          street?: string | null
-          zip?: string | null
-        }
-        Update: {
-          city?: string | null
-          created_at?: string | null
-          email?: string | null
-          first_name?: string
-          id?: string
-          last_name?: string
-          phone?: string | null
-          profile_id?: string
-          receives_email?: boolean | null
-          relationship?: string
-          state?: string | null
-          street?: string | null
-          zip?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "contacts_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       events: {
         Row: {
           arrival_time: number | null
@@ -230,34 +174,46 @@ export type Database = {
       invitations: {
         Row: {
           accepted_at: string | null
+          birthday: string | null
           created_at: string | null
           email: string
           first_name: string | null
+          gender: string | null
           id: string
           invited_by: string | null
           last_name: string | null
+          managed_profile_id: string | null
+          relationship: string | null
           role: string
           team_id: string | null
         }
         Insert: {
           accepted_at?: string | null
+          birthday?: string | null
           created_at?: string | null
           email: string
           first_name?: string | null
+          gender?: string | null
           id?: string
           invited_by?: string | null
           last_name?: string | null
+          managed_profile_id?: string | null
+          relationship?: string | null
           role: string
           team_id?: string | null
         }
         Update: {
           accepted_at?: string | null
+          birthday?: string | null
           created_at?: string | null
           email?: string
           first_name?: string | null
+          gender?: string | null
           id?: string
           invited_by?: string | null
           last_name?: string | null
+          managed_profile_id?: string | null
+          relationship?: string | null
           role?: string
           team_id?: string | null
         }
@@ -265,6 +221,13 @@ export type Database = {
           {
             foreignKeyName: "invitations_invited_by_fkey"
             columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_managed_profile_id_fkey"
+            columns: ["managed_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -366,6 +329,7 @@ export type Database = {
           id: string
           managed_id: string
           manager_id: string
+          phone: string | null
           relationship: string | null
         }
         Insert: {
@@ -373,6 +337,7 @@ export type Database = {
           id?: string
           managed_id: string
           manager_id: string
+          phone?: string | null
           relationship?: string | null
         }
         Update: {
@@ -380,6 +345,7 @@ export type Database = {
           id?: string
           managed_id?: string
           manager_id?: string
+          phone?: string | null
           relationship?: string | null
         }
         Relationships: [

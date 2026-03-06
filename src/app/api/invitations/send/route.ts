@@ -21,12 +21,26 @@ export async function POST(request: Request) {
   if (!success) return rateLimitResponse();
 
   const body = await request.json();
-  const { teamId, email, role, firstName, lastName } = body as {
+  const {
+    teamId,
+    email,
+    role,
+    firstName,
+    lastName,
+    birthday,
+    gender,
+    managedProfileId,
+    relationship,
+  } = body as {
     teamId: string;
     email: string;
     role: InvitationRole;
     firstName?: string;
     lastName?: string;
+    birthday?: string;
+    gender?: string;
+    managedProfileId?: string;
+    relationship?: string;
   };
 
   if (!teamId || !email || !role) {
@@ -36,7 +50,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Verify caller is a team admin (coach or manager)
+  // Verify caller is a team admin OR a profile manager for the managed profile
   const { data: membership } = await supabase
     .from("team_members")
     .select("role")
@@ -44,8 +58,24 @@ export async function POST(request: Request) {
     .eq("profile_id", user.id)
     .single();
 
-  if (!membership || !["coach", "manager"].includes(membership.role)) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  const isTeamAdmin =
+    membership && ["coach", "manager"].includes(membership.role);
+
+  if (!isTeamAdmin) {
+    // Allow if they manage the specific profile being invited for
+    if (!managedProfileId) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+    const { data: managerLink } = await supabase
+      .from("profile_managers")
+      .select("id")
+      .eq("manager_id", user.id)
+      .eq("managed_id", managedProfileId)
+      .maybeSingle();
+
+    if (!managerLink) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
   }
 
   // Generate invitation ID client-side to avoid SELECT RLS issue
@@ -58,6 +88,10 @@ export async function POST(request: Request) {
     role,
     first_name: firstName || null,
     last_name: lastName || null,
+    birthday: birthday || null,
+    gender: gender || null,
+    managed_profile_id: managedProfileId || null,
+    relationship: relationship || null,
     invited_by: user.id,
   });
 

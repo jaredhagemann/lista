@@ -44,7 +44,8 @@ export default async function DashboardLayout({
   const { data: rawManagedLinks } = await supabase
     .from("profile_managers")
     .select("managed_id, relationship, profiles!managed_id(*)")
-    .eq("manager_id", user.id);
+    .eq("manager_id", user.id)
+    .neq("managed_id", user.id);
 
   const managedProfiles: ManagedProfileEntry[] = (rawManagedLinks ?? []).map(
     (link) => ({
@@ -78,7 +79,7 @@ export default async function DashboardLayout({
 
   const { data: rawAllMemberships } = await supabase
     .from("team_members")
-    .select("*, teams(*)")
+    .select("*, teams(*), profiles(*)")
     .in("profile_id", allProfileIds)
     .order("created_at");
 

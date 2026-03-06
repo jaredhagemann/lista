@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,63 +12,32 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Database } from "@/types/database";
+import { acceptManagerInvitation } from "@/app/actions/invite";
 
-type TeamMemberRole = Database["public"]["Tables"]["team_members"]["Row"]["role"];
-
-export function AcceptInviteClient({
+export function ManagerInviteClient({
   invitationId,
   teamName,
-  role,
-  teamId,
+  playerName,
+  relationship,
 }: {
   invitationId: string;
   teamName: string;
-  role: TeamMemberRole;
-  teamId: string;
+  playerName: string;
+  relationship: string | null;
 }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
-  const supabase = createClient();
 
   async function handleAccept() {
     setLoading(true);
     setError(null);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setError("You must be signed in to accept an invitation.");
+    const result = await acceptManagerInvitation(invitationId);
+    if (result.error) {
+      setError(result.error);
       setLoading(false);
       return;
     }
-
-    // Add user to team
-    const { error: memberError } = await supabase.from("team_members").insert({
-      team_id: teamId,
-      profile_id: user.id,
-      role,
-    });
-
-    if (memberError) {
-      if (memberError.code === "23505") {
-        // Already a member, just mark invite as accepted and redirect
-      } else {
-        setError(memberError.message);
-        setLoading(false);
-        return;
-      }
-    }
-
-    // Mark invitation as accepted
-    await supabase
-      .from("invitations")
-      .update({ accepted_at: new Date().toISOString() })
-      .eq("id", invitationId);
-
     router.push("/dashboard");
     router.refresh();
   }
@@ -82,7 +50,7 @@ export function AcceptInviteClient({
             You&apos;re invited!
           </CardTitle>
           <CardDescription>
-            You&apos;ve been invited to join a team on lista
+            You&apos;ve been invited to manage a player on lista
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-center">
@@ -92,10 +60,14 @@ export function AcceptInviteClient({
             </div>
           )}
           <div>
-            <p className="text-lg font-semibold">{teamName}</p>
-            <Badge variant="secondary" className="mt-1 capitalize">
-              {role}
-            </Badge>
+            <p className="text-sm text-muted-foreground">Managing</p>
+            <p className="text-lg font-semibold">{playerName}</p>
+            <p className="text-sm text-muted-foreground">on {teamName}</p>
+            {relationship && (
+              <Badge variant="secondary" className="mt-2 capitalize">
+                {relationship}
+              </Badge>
+            )}
           </div>
         </CardContent>
         <CardFooter>
@@ -104,7 +76,7 @@ export function AcceptInviteClient({
             className="w-full"
             disabled={loading}
           >
-            {loading ? "Joining..." : "Accept & join team"}
+            {loading ? "Accepting..." : "Accept invitation"}
           </Button>
         </CardFooter>
       </Card>

@@ -27,38 +27,13 @@ A user who manages profiles sees a **Profile Switcher** in the nav (similar to t
 
 ---
 
-## Data Model Changes
+## Data Model Changes ✅
 
-### 1. Decouple `profiles.id` from `auth.users`
+### 1. Decouple `profiles.id` from `auth.users` ✅
 
-**Current:**
-```sql
-create table profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  ...
-);
-```
+Added `auth_user_id uuid unique references auth.users(id) on delete cascade` to `profiles`. Existing rows backfilled with `auth_user_id = id`. FK constraint on `id` dropped. Signup trigger updated to set both `id = gen_random_uuid()` and `auth_user_id = new.id`.
 
-The `id` column is both the primary key and a hard FK to `auth.users`. This prevents creating profiles without auth accounts.
-
-**Proposed:**
-```sql
--- Add a separate column for the auth link (nullable for managed profiles)
-alter table profiles
-  add column auth_user_id uuid unique references auth.users(id) on delete cascade;
-
--- Backfill: for all existing profiles, auth_user_id = id
-update profiles set auth_user_id = id;
-
--- Drop the FK constraint on id (keep as primary key, now a free UUID)
-alter table profiles drop constraint profiles_id_fkey;
-```
-
-The signup trigger is updated to set `auth_user_id = new.id` (and generate a fresh `gen_random_uuid()` for `id`), keeping the cascade delete behavior via `auth_user_id`.
-
-> **Note:** This is the largest migration in the set. All RLS policies that currently use `id = auth.uid()` must be updated to use `auth_user_id = auth.uid()`. The helper functions `is_team_member` and `is_team_admin` are unchanged since they work off `team_members.profile_id`, not `auth.uid()` directly.
-
-### 2. New table: `profile_managers`
+### 2. New table: `profile_managers` ✅
 
 ```sql
 create table profile_managers (
@@ -74,23 +49,15 @@ create table profile_managers (
 RLS on `profile_managers`:
 - A user can select their own rows (`manager_id = auth.uid()` via `auth_user_id`)
 - A user can insert rows where they are the manager
-- Team admins can also view `profile_managers` for members of their team (needed to display relationships on the roster)
+- Team admins can also view `profile_managers` for members of their team
 
-### 3. New RLS helper function
+### 3. New RLS helper function ✅
 
-```sql
-create or replace function is_managed_by_me(p_id uuid)
-returns boolean as $$
-  select exists (
-    select 1 from profile_managers pm
-    join profiles mgr on mgr.id = pm.manager_id
-    where mgr.auth_user_id = auth.uid()
-    and pm.managed_id = p_id
-  )
-$$ language sql security definer;
-```
+`is_managed_by_me(p_id uuid)` — checks `profile_managers` for a row where `manager_id` matches the current user.
 
-### 4. Updated RLS policies
+`is_team_member(t_id uuid)` extended to also return true if any of the user's managed profiles are members of the team.
+
+### 4. Updated RLS policies ✅
 
 | Table | Policy | Change |
 |-------|---------|--------|
@@ -99,46 +66,98 @@ $$ language sql security definer;
 | `availability` | Insert own availability | Change to `profile_id = auth.uid() OR is_managed_by_me(profile_id)` |
 | `availability` | Update own availability | Same |
 | `notification_preferences` | All | Change to `profile_id = auth.uid() OR is_managed_by_me(profile_id)` |
+| `team_members` | Insert | Add `OR is_managed_by_me(profile_id)` |
 
-`team_members` INSERT policy already allows `profile_id = auth.uid()` — extend to also allow inserting a managed profile: `OR is_managed_by_me(profile_id)`.
+### 5. Active profile selection ✅
 
-### 5. Active profile selection
+The "viewing as" state is **session-based** (stored in a cookie `active_profile_id`, not in the database). The cookie is cleared on sign-out and defaults to the user's own profile on every new login. Readable in any Server Component via `cookies()`, writable only from Server Actions (`src/app/actions/profile.ts`).
 
-The "viewing as" state is **session-based** (stored in a cookie, not in the database). Rationale: a parent should always start a session viewing as themselves — being silently locked into a child's view across devices is a footgun. The cookie is cleared on sign-out and defaults to the user's own profile on every new login.
-
-The cookie `active_profile_id` follows the same read/write pattern as the active team approach: readable in any Server Component via `cookies()`, writable only from Server Actions.
-
-If `active_profile_id` is absent or equals the user's own profile ID, the app behaves exactly as today.
+If `active_profile_id` is absent or equals the user's own profile ID, the app behaves exactly as before.
 
 ---
 
-## Creating Managed Profiles
+## Adding Members to a Team
 
-### Path 1 — Team admin adds a player directly (no invite required)
+### Single "Add" entry point
 
-On the Team Roster page, admins get an **"Add player"** option alongside the existing "Invite member" button. This opens a form that collects:
-- First name, last name
-- Optional email (contact reference only, not used for login)
-- Role (defaults to player)
-- Optional: link to an existing account holder as manager (search by name/email)
+On the Team Roster page, admins see a single **"Add"** button. Clicking it opens a small picker with two options:
 
-The admin creates the profile and adds it to the team in one action. No email is sent unless an email address is provided, in which case a notification is optionally sent to the listed contact.
+- **Player** — navigates to the New Member page with role pre-set to `player`
+- **Manager** — navigates to the New Member page with role pre-set to `manager`
 
-### Path 2 — Parent adds a managed profile from their account
+The old "Add Player" (managed profile) and "Invite Member" (dialog) flows are removed. Invitation is now the **only** way to add anyone to a team.
 
-Under **Settings → Managed Players**, a logged-in user can:
-1. Create a new managed profile (name, optional email/birthday/etc.)
-2. See all profiles they currently manage
-3. Add an existing managed profile to a team they're a member of (generates an invite-style team_member insert)
-4. Remove themselves as manager of a profile
+### New Member page
 
-This path is useful for parents who want to set things up before their child's team admin has even sent them an invite.
+`/dashboard/team/new-member?role=player|manager`
 
----
+A full-page form (not a dialog) that mirrors the profile edit view. Fields:
+- First name
+- Last name
+- Email (**required** — the invitation is sent here)
+- Birthday
+- Gender
 
-## UI: Profile Switcher
+The **Invite** button at the bottom sends the invitation email via `/api/invitations/send`. On success, the page shows a confirmation with a copyable invite link (in case email delivery fails) and options to go back to the team or invite another member.
 
-A new **ProfileSwitcher** component lives in the nav header, positioned to the left of the existing Team Switcher. It mirrors the Team Switcher's dropdown pattern.
+All fields except email are optional — the coach fills in what they know, and the invitee can complete their profile after accepting.
+
+The invitation record stores all provided fields (first name, last name, email, role, birthday, gender) so they can be pre-populated when the invitee accepts.
+
+### New Member page — field requirements
+
+First name and last name are **required** fields on the New Member page. This ensures the identity confirmation step always has a name to display.
+
+### Invitation acceptance flow
+
+When an invitee clicks the **Accept Invitation** link in their email (`/invite/[invitationId]`):
+
+**Already-accepted invitations**
+
+If the invitation has already been accepted, the page shows a message stating it has already been accepted and advises the user to contact their coach if they are unable to log in. No further action is taken.
+
+**Step 1 — Authentication**
+
+The invite link lands on an invite-specific page at `/invite/[invitationId]`. The auth behavior depends on the current session:
+
+- **Not signed in, no account** — redirected to `/invite/[invitationId]/signup`, a dedicated signup page pre-filled with the invitation's first name, last name, and email. Because the invite link itself serves as email verification, no confirmation email is sent.
+- **Not signed in, has an account** — prompted to sign in with the invited email address.
+- **Signed in with a different email** — signed out automatically and prompted to sign in with the invited email, with a message explaining why.
+- **Signed in with the correct email** — proceeds directly to Step 2.
+
+**Step 2 — Identity confirmation (player invitations only)**
+
+For `manager` and `coach` role invitations, this step is skipped — the invitation is accepted directly and the user is added to the team, then redirected to their profile page.
+
+For `player` invitations, the user lands on a confirmation page that asks:
+
+> **Are you [first name] [last name]?**
+
+Two options are presented:
+
+- **"Yes, I am [first name] [last name]"** — the invitation maps directly to the invitee's own profile. No managed profile is created.
+- **"No, I am a parent/guardian"** — reveals additional fields:
+  - **Relationship** dropdown: Mom / Dad / Guardian
+  - **First name** and **Last name** fields for the parent's own profile (pre-filled if the user's profile already has a name)
+
+**Step 3 — Continue → profile page**
+
+Pressing **Continue** on either path:
+
+- **"Yes" path**: accepts the invitation, adds the user to the team with the invited role, applies the birthday and gender from the invitation to the user's own profile, then redirects to their profile page.
+- **"Parent/guardian" path**:
+  1. Creates a managed profile for the player using the name, birthday, and gender stored on the invitation record.
+  2. Links the current user as manager with the chosen relationship.
+  3. Adds the managed profile to the team with the invited role.
+  4. Updates the current user's own profile with the supplied first/last name.
+  5. Redirects to their profile page.
+
+In both cases the invitation is marked as accepted.
+
+
+## UI: Profile Switcher ✅
+
+A **ProfileSwitcher** component lives in the nav header. It is only shown when multiple profiles (own + managed) share the same active team.
 
 **When viewing as self (default):**
 ```
@@ -147,17 +166,13 @@ A new **ProfileSwitcher** component lives in the nav header, positioned to the l
 
 **When viewing as a managed profile:**
 ```
-[Avatar] Viewing as: Bryce ▾      ← amber/warning color to make it obvious
+[Avatar] Viewing as: Bryce ▾
 ```
 
 **Dropdown contents:**
-- Own name + role at the top, with a checkmark when active
-- Each managed profile listed with their name and relationship label
-- "Manage players" link at the bottom → Settings → Managed Players
+- Each profile on the active team listed with a checkmark on the active one
 
-**Visibility:** The ProfileSwitcher is only rendered if the user has at least one managed profile. Users with no managed profiles see no change to the nav.
-
-### What changes when "viewing as" a managed profile
+### What changes when "viewing as" a managed profile ✅
 
 | Feature | Behavior |
 |---------|----------|
@@ -169,15 +184,9 @@ A new **ProfileSwitcher** component lives in the nav header, positioned to the l
 
 ---
 
-## Notifications for Managed Profiles
+## Notifications for Managed Profiles ✅
 
-The notification send path (`/api/notifications/send` and `/api/cron/reminders`) currently looks up `profile.email` for each team member. With managed profiles:
-
-- If a `team_members.profile_id` belongs to a profile with `auth_user_id IS NULL` (a managed profile), look up the manager's email via `profile_managers` and send there instead.
-- If a profile has multiple managers, send to the first manager found (or all — TBD, likely all).
-- `notification_preferences` for the managed profile controls whether the email is sent at all (the parent can disable notifications for a child's profile independently of their own).
-
-This means a parent with twins on the same team receives **two separate emails** per event (one per child), both delivered to their inbox. This is intentional — each email is about a specific child and their availability/context.
+If a `team_members.profile_id` belongs to a profile with `auth_user_id IS NULL`, the notification fan-out (`/api/notifications/send` and `/api/cron/reminders`) looks up all managers via `profile_managers` and sends to their emails instead. If a profile has multiple managers, all receive the notification. `notification_preferences` for the managed profile controls whether notifications are sent at all.
 
 ---
 
