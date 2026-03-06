@@ -57,7 +57,7 @@ export function ProfileSwitcher({
     if (profileId === activeProfile?.id) return;
     setSwitching(true);
     await setActiveProfile(profileId, activeTeamId);
-    router.refresh();
+    router.push("/dashboard");
     setSwitching(false);
   }
 

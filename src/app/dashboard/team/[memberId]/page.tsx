@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect, notFound } from "next/navigation";
 import { RosterProfile } from "@/components/team/roster-profile";
+import { getActiveProfileId } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
 type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
@@ -29,6 +30,8 @@ export default async function MemberProfilePage({
 
   if (!user) redirect("/login");
 
+  const activeProfileId = await getActiveProfileId(user.id);
+
   // Fetch the target team member with profile
   const { data: rawMember } = await supabase
     .from("team_members")
@@ -40,12 +43,12 @@ export default async function MemberProfilePage({
 
   const member = rawMember as TeamMemberWithProfile;
 
-  // Fetch the current user's membership on the same team
+  // Fetch the active profile's membership on the same team to determine privileges
   const { data: rawCurrentMembership } = await supabase
     .from("team_members")
     .select("*")
     .eq("team_id", member.team_id!)
-    .eq("profile_id", user.id)
+    .eq("profile_id", activeProfileId)
     .single();
 
   if (!rawCurrentMembership) redirect("/dashboard");
@@ -54,7 +57,8 @@ export default async function MemberProfilePage({
   const isAdmin =
     currentMembership.role === "coach" ||
     currentMembership.role === "manager";
-  const isOwnProfile = member.profile_id === user.id;
+  // "Own profile" means the viewed profile belongs to the active profile
+  const isOwnProfile = member.profile_id === activeProfileId;
 
   // Use service role to fetch profile_managers and pending invites —
   // avoids RLS edge cases and ensures admins always see the full picture.
