@@ -128,6 +128,7 @@ export function RosterProfile({
           member={member}
           managers={managers}
           pendingInvites={pendingInvites}
+          canAdd={canEdit}
           teamId={teamId}
         />
       )}
@@ -139,11 +140,13 @@ function ReadOnlyMode({
   member,
   managers,
   pendingInvites,
+  canAdd,
   teamId,
 }: {
   member: TeamMemberWithProfile;
   managers: ProfileManagerRow[];
   pendingInvites: InvitationRow[];
+  canAdd: boolean;
   teamId: string;
 }) {
   const profile = member.profiles;
@@ -205,6 +208,7 @@ function ReadOnlyMode({
         managers={managers}
         pendingInvites={pendingInvites}
         canEdit={false}
+        canAdd={canAdd}
       />
     </>
   );

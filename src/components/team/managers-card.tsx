@@ -50,13 +50,16 @@ export function ManagersCard({
   managers: initialManagers,
   pendingInvites: initialPendingInvites,
   canEdit,
+  canAdd,
 }: {
   profileId: string;
   teamId: string;
   managers: ProfileManagerRow[];
   pendingInvites: InvitationRow[];
   canEdit: boolean;
+  canAdd?: boolean;
 }) {
+  const showAddButton = canEdit || canAdd;
   const router = useRouter();
   const [managers, setManagers] = useState(initialManagers);
   const [pendingInvites, setPendingInvites] = useState(initialPendingInvites);
@@ -218,7 +221,7 @@ export function ManagersCard({
                 People who manage or are in contact with this member.
               </CardDescription>
             </div>
-            {canEdit && (
+            {showAddButton && (
               <Button size="sm" onClick={() => setAddOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add
