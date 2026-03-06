@@ -6,6 +6,8 @@ import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 import type { TeamMemberWithProfile } from "@/components/team/team-roster";
 
+type InvitationRow = Database["public"]["Tables"]["invitations"]["Row"];
+
 export default async function TeamPage() {
   const supabase = await createClient();
   const {
@@ -20,13 +22,26 @@ export default async function TeamPage() {
   const team = membership.teams as Database["public"]["Tables"]["teams"]["Row"];
   const isAdmin = membership.role === "coach" || membership.role === "manager";
 
-  const { data: rawMembers } = await supabase
-    .from("team_members")
-    .select("*, profiles(*)")
-    .eq("team_id", team.id)
-    .order("role");
+  const [{ data: rawMembers }, { data: rawPendingInvites }] =
+    await Promise.all([
+      supabase
+        .from("team_members")
+        .select("*, profiles(*)")
+        .eq("team_id", team.id)
+        .order("role"),
+      isAdmin
+        ? supabase
+            .from("invitations")
+            .select("*")
+            .eq("team_id", team.id)
+            .is("accepted_at", null)
+            .is("managed_profile_id", null)
+            .order("created_at")
+        : Promise.resolve({ data: [] }),
+    ]);
 
   const members = (rawMembers ?? []) as TeamMemberWithProfile[];
+  const pendingInvites = (rawPendingInvites ?? []) as InvitationRow[];
 
   return (
     <div className="space-y-6">
@@ -52,7 +67,7 @@ export default async function TeamPage() {
         />
       )}
 
-      <TeamRoster members={members} isAdmin={isAdmin} teamId={team.id} />
+      <TeamRoster members={members} pendingInvites={pendingInvites} isAdmin={isAdmin} teamId={team.id} />
     </div>
   );
 }

@@ -61,7 +61,7 @@ export function IdentityConfirmation({
         setLoading(false);
         return;
       }
-      router.push("/dashboard/settings/profile");
+      router.push(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
     } else if (identity === "guardian") {
       if (!relationship) {
         setError("Please select your relationship.");
@@ -78,7 +78,7 @@ export function IdentityConfirmation({
         setLoading(false);
         return;
       }
-      router.push("/dashboard/settings/profile");
+      router.push(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
     }
   }
 

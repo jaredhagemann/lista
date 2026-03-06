@@ -36,7 +36,7 @@ export function DirectAcceptClient({
       setLoading(false);
       return;
     }
-    router.push("/dashboard/settings/profile");
+    router.push(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
   }
 
   return (

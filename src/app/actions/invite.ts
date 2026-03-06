@@ -49,6 +49,13 @@ export async function acceptInvitationAsSelf(invitationId: string) {
     return { error: memberError.message };
   }
 
+  const { data: memberRow } = await admin
+    .from("team_members")
+    .select("id")
+    .eq("team_id", invitation.team_id!)
+    .eq("profile_id", user.id)
+    .single();
+
   // Apply birthday/gender from invitation to user's profile
   const profileUpdate: Record<string, string | null> = {};
   if (invitation.birthday) profileUpdate.birthday = invitation.birthday;
@@ -70,7 +77,7 @@ export async function acceptInvitationAsSelf(invitationId: string) {
     .eq("id", invitationId);
 
   revalidatePath("/dashboard", "layout");
-  return { success: true };
+  return { success: true, memberId: memberRow?.id ?? null };
 }
 
 /**
@@ -137,6 +144,13 @@ export async function acceptInvitationAsGuardian(
   });
   if (memberError) return { error: memberError.message };
 
+  const { data: memberRow } = await admin
+    .from("team_members")
+    .select("id")
+    .eq("team_id", invitation.team_id!)
+    .eq("profile_id", profileId)
+    .single();
+
   // Update current user's own profile name if provided
   const userProfileUpdate: Record<string, string> = {};
   if (firstName) userProfileUpdate.first_name = firstName;
@@ -158,7 +172,7 @@ export async function acceptInvitationAsGuardian(
     .eq("id", invitationId);
 
   revalidatePath("/dashboard", "layout");
-  return { success: true };
+  return { success: true, memberId: memberRow?.id ?? null };
 }
 
 /**
