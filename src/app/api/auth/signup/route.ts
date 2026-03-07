@@ -75,8 +75,8 @@ export async function POST(request: Request) {
   try {
     await sendEmail({
       to: email,
-      subject: "Confirm your lista account",
-      html: buildConfirmationEmailHtml({ confirmUrl }),
+      subject: "Confirm your Lista account",
+      html: buildConfirmationEmailHtml({ confirmUrl, firstName }),
     });
   } catch (err) {
     console.error("Failed to send confirmation email:", err);

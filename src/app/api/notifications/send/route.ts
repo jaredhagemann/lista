@@ -106,6 +106,12 @@ export async function POST(request: Request) {
     ? `Schedule updated: ${event.title}`
     : `${action === "created" ? "New" : action === "cancelled" ? "Cancelled" : action === "reminder" ? "Reminder" : "Updated"}: ${event.title}`;
 
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.NEXT_PUBLIC_VERCEL_URL
+      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+      : "http://localhost:3000");
+
   const emailHtml = isSeriesUpdate
     ? buildSeriesUpdateEmailHtml({
         eventTitle: event.title,
@@ -121,6 +127,7 @@ export async function POST(request: Request) {
         teamName,
         action: action as "created" | "updated" | "cancelled" | "reminder",
         arrivalTime: event.arrival_time,
+        eventUrl: `${appUrl}/dashboard/schedule/${eventId}`,
       });
 
   // Send emails

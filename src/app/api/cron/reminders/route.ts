@@ -93,6 +93,12 @@ export async function GET(request: Request) {
 
     const prefsMap = new Map(prefs?.map((p) => [p.profile_id, p]));
 
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      (process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : "http://localhost:3000");
+
     const emailHtml = buildEventEmailHtml({
       eventTitle: event.title,
       eventType: event.event_type,
@@ -102,6 +108,7 @@ export async function GET(request: Request) {
       teamName,
       action: "reminder",
       arrivalTime: event.arrival_time,
+      eventUrl: `${appUrl}/dashboard/schedule/${event.id}`,
     });
 
     // Send emails to members who have email enabled

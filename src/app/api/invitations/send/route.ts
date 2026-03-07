@@ -99,14 +99,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  // Fetch team name for the email
-  const { data: team } = await supabase
-    .from("teams")
-    .select("name")
-    .eq("id", teamId)
-    .single();
+  // Fetch team name and inviter profile for the email
+  const [{ data: team }, { data: inviterProfile }] = await Promise.all([
+    supabase.from("teams").select("name").eq("id", teamId).single(),
+    supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .single(),
+  ]);
 
   const teamName = team?.name ?? "your team";
+  const inviterName =
+    [inviterProfile?.first_name, inviterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ") || "Your coach";
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.NEXT_PUBLIC_VERCEL_URL
@@ -118,8 +125,8 @@ export async function POST(request: Request) {
   try {
     await sendEmail({
       to: email,
-      subject: `You've been invited to join ${teamName} on lista`,
-      html: buildInviteEmailHtml({ teamName, role, inviteUrl }),
+      subject: `You've been invited to join ${teamName} on Lista`,
+      html: buildInviteEmailHtml({ teamName, inviterName, role, inviteUrl }),
     });
     emailSent = true;
   } catch (err) {
