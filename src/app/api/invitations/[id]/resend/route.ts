@@ -31,7 +31,7 @@ export async function POST(
 
   const { data: invitation } = await admin
     .from("invitations")
-    .select("*, teams(name)")
+    .select("*, teams(name), profiles!invitations_invited_by_fkey(first_name, last_name)")
     .eq("id", id)
     .single();
 
@@ -60,6 +60,13 @@ export async function POST(
 
   const teamName =
     (invitation.teams as { name: string } | null)?.name ?? "your team";
+  const inviterProfile = invitation.profiles as
+    | { first_name: string | null; last_name: string | null }
+    | null;
+  const inviterName =
+    [inviterProfile?.first_name, inviterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ") || "Your coach";
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.NEXT_PUBLIC_VERCEL_URL
@@ -71,12 +78,8 @@ export async function POST(
   try {
     await sendEmail({
       to: invitation.email,
-      subject: `You've been invited to join ${teamName} on lista`,
-      html: buildInviteEmailHtml({
-        teamName,
-        role: invitation.role,
-        inviteUrl,
-      }),
+      subject: `You've been invited to join ${teamName} on Lista`,
+      html: buildInviteEmailHtml({ teamName, inviterName, role: invitation.role, inviteUrl }),
     });
     emailSent = true;
   } catch (err) {
