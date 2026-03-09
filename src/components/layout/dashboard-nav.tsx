@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, ClipboardList, Home, Settings, Users, LogOut, Menu, X } from "lucide-react";
+import { Calendar, ClipboardList, Home, MessageSquare, Settings, Users, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 import { ProfileSwitcher } from "@/components/layout/profile-switcher";
@@ -29,6 +29,7 @@ const navItems = [
   { href: "/dashboard/schedule", label: "Schedule", icon: Calendar },
   { href: "/dashboard/availability", label: "Availability", icon: ClipboardList },
   { href: "/dashboard/team", label: "Team", icon: Users },
+  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
@@ -39,6 +40,7 @@ export function DashboardNav({
   allMemberships,
   activeMembership,
   profilesOnActiveTeam,
+  chatUnreadCount = 0,
 }: {
   ownProfile: Profile | null;
   activeProfile: Profile | null;
@@ -46,6 +48,7 @@ export function DashboardNav({
   allMemberships: TeamMember[];
   activeMembership: TeamMember | null;
   profilesOnActiveTeam: TeamMember[];
+  chatUnreadCount?: number;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -86,11 +89,12 @@ export function DashboardNav({
                 item.href === "/dashboard"
                   ? pathname === "/dashboard"
                   : pathname.startsWith(item.href);
+              const badge = item.href === "/dashboard/chat" && chatUnreadCount > 0 ? chatUnreadCount : null;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`relative flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
                       ? "bg-accent text-accent-foreground"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -98,6 +102,11 @@ export function DashboardNav({
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}
+                  {badge && (
+                    <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -179,6 +188,7 @@ export function DashboardNav({
               item.href === "/dashboard"
                 ? pathname === "/dashboard"
                 : pathname.startsWith(item.href);
+            const badge = item.href === "/dashboard/chat" && chatUnreadCount > 0 ? chatUnreadCount : null;
             return (
               <Link
                 key={item.href}
@@ -192,6 +202,11 @@ export function DashboardNav({
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
+                {badge && (
+                  <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                    {badge > 99 ? "99+" : badge}
+                  </span>
+                )}
               </Link>
             );
           })}

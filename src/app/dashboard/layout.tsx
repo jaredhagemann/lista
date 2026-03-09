@@ -103,6 +103,38 @@ export default async function DashboardLayout({
     ? allMemberships.filter((m) => m.team_id === activeTeamId)
     : [];
 
+  // Compute total unread chat count for the nav badge
+  // Count messages newer than last_read_at in channels/DMs the user participates in
+  let chatUnreadCount = 0;
+  if (activeTeamId) {
+    // Team channel unread: messages after channel_members.last_read_at (or all if no row)
+    const { data: teamChannel } = await supabase
+      .from("channels")
+      .select("id")
+      .eq("team_id", activeTeamId)
+      .eq("type", "team")
+      .maybeSingle();
+
+    if (teamChannel) {
+      const { data: readRow } = await supabase
+        .from("channel_members")
+        .select("last_read_at")
+        .eq("channel_id", teamChannel.id)
+        .eq("profile_id", user.id)
+        .maybeSingle();
+
+      const { count } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("channel_id", teamChannel.id)
+        .is("deleted_at", null)
+        .neq("sender_id", user.id)
+        .gt("created_at", readRow?.last_read_at ?? "1970-01-01");
+
+      chatUnreadCount += count ?? 0;
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardNav
@@ -112,6 +144,7 @@ export default async function DashboardLayout({
         allMemberships={allMemberships}
         activeMembership={activeMembership}
         profilesOnActiveTeam={profilesOnActiveTeam}
+        chatUnreadCount={chatUnreadCount}
       />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {children}

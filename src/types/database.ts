@@ -34,6 +34,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      channel_members: {
+        Row: {
+          channel_id: string
+          id: string
+          joined_at: string | null
+          last_read_at: string | null
+          profile_id: string
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          joined_at?: string | null
+          last_read_at?: string | null
+          profile_id: string
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          joined_at?: string | null
+          last_read_at?: string | null
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_members_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channels: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          name: string
+          team_id: string
+          type: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          name: string
+          team_id: string
+          type: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          name?: string
+          team_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channels_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channels_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       availability: {
         Row: {
           created_at: string | null
@@ -69,6 +150,58 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dm_channels: {
+        Row: {
+          created_at: string | null
+          id: string
+          last_read_a: string | null
+          last_read_b: string | null
+          profile_a: string
+          profile_b: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          last_read_a?: string | null
+          last_read_b?: string | null
+          profile_a: string
+          profile_b: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          last_read_a?: string | null
+          last_read_b?: string | null
+          profile_a?: string
+          profile_b?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dm_channels_profile_a_fkey"
+            columns: ["profile_a"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dm_channels_profile_b_fkey"
+            columns: ["profile_b"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dm_channels_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
@@ -273,8 +406,62 @@ export type Database = {
           },
         ]
       }
+      messages: {
+        Row: {
+          body: string
+          channel_id: string | null
+          created_at: string | null
+          deleted_at: string | null
+          dm_channel_id: string | null
+          id: string
+          sender_id: string
+        }
+        Insert: {
+          body: string
+          channel_id?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          dm_channel_id?: string | null
+          id?: string
+          sender_id: string
+        }
+        Update: {
+          body?: string
+          channel_id?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          dm_channel_id?: string | null
+          id?: string
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_dm_channel_id_fkey"
+            columns: ["dm_channel_id"]
+            isOneToOne: false
+            referencedRelation: "dm_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
+          chat_digest_enabled: boolean
+          chat_push_enabled: boolean
           created_at: string | null
           email_enabled: boolean | null
           id: string
@@ -282,6 +469,8 @@ export type Database = {
           push_enabled: boolean | null
         }
         Insert: {
+          chat_digest_enabled?: boolean
+          chat_push_enabled?: boolean
           created_at?: string | null
           email_enabled?: boolean | null
           id?: string
@@ -289,6 +478,8 @@ export type Database = {
           push_enabled?: boolean | null
         }
         Update: {
+          chat_digest_enabled?: boolean
+          chat_push_enabled?: boolean
           created_at?: string | null
           email_enabled?: boolean | null
           id?: string
@@ -563,6 +754,7 @@ export type Database = {
     }
     Functions: {
       is_admin_of_profile: { Args: { p_id: string }; Returns: boolean }
+      is_channel_member: { Args: { c_id: string }; Returns: boolean }
       is_managed_by_me: { Args: { p_id: string }; Returns: boolean }
       is_team_admin: { Args: { t_id: string }; Returns: boolean }
       is_team_member: { Args: { t_id: string }; Returns: boolean }

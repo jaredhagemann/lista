@@ -149,6 +149,23 @@ export async function cleanupTestData() {
 
   // Delete in reverse dependency order
   for (const teamId of createdTeamIds) {
+    // Chat tables: messages → channel_members / dm_channels → channels
+    const { data: teamChannels } = await adminClient
+      .from("channels")
+      .select("id")
+      .eq("team_id", teamId);
+    const channelIds = teamChannels?.map((c) => c.id) ?? [];
+    if (channelIds.length > 0) {
+      await adminClient.from("messages").delete().in("channel_id", channelIds);
+      await adminClient.from("channel_members").delete().in("channel_id", channelIds);
+    }
+    await adminClient.from("messages").delete().eq(
+      "dm_channel_id",
+      (await adminClient.from("dm_channels").select("id").eq("team_id", teamId)).data?.map((d) => d.id)[0] ?? ""
+    );
+    await adminClient.from("dm_channels").delete().eq("team_id", teamId);
+    await adminClient.from("channels").delete().eq("team_id", teamId);
+
     await adminClient.from("availability").delete().in(
       "event_id",
       (await adminClient.from("events").select("id").eq("team_id", teamId)).data?.map(

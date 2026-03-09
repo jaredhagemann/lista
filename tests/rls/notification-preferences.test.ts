@@ -74,6 +74,46 @@ describe("notification_preferences RLS", () => {
     expect(data![0].push_enabled).toBe(false);
   });
 
+  it("new notification preferences default chat columns to true", async () => {
+    const { client, user } = await createTestUser();
+
+    await client.from("notification_preferences").insert({
+      profile_id: user.id,
+    });
+
+    const { data, error } = await client
+      .from("notification_preferences")
+      .select()
+      .eq("profile_id", user.id)
+      .single();
+
+    expect(error).toBeNull();
+    expect(data!.chat_push_enabled).toBe(true);
+    expect(data!.chat_digest_enabled).toBe(true);
+  });
+
+  it("user can UPDATE chat notification preferences", async () => {
+    const { client, user } = await createTestUser();
+
+    await adminClient.from("notification_preferences").insert({
+      profile_id: user.id,
+    });
+
+    const { error } = await client
+      .from("notification_preferences")
+      .update({ chat_push_enabled: false, chat_digest_enabled: false })
+      .eq("profile_id", user.id);
+    expect(error).toBeNull();
+
+    const { data } = await client
+      .from("notification_preferences")
+      .select()
+      .eq("profile_id", user.id)
+      .single();
+    expect(data!.chat_push_enabled).toBe(false);
+    expect(data!.chat_digest_enabled).toBe(false);
+  });
+
   it("user cannot UPDATE others' notification preferences", async () => {
     const user1 = await createTestUser();
     const user2 = await createTestUser();

@@ -8,11 +8,11 @@ A living document for tracking feature ideas, process improvements, and architec
 
 Roughly prioritized — revisit ordering as the product evolves.
 
-### 1. Managed Profiles
-Parents managing player profiles on their behalf. Already spec'd in `docs/specs/managed-profiles.md`. Critical for youth sports adoption — unlocks the parent/player demographic and solves a real pain point in the existing role structure.
+### ~~1. Managed Profiles~~ ✅
+Parents managing player profiles on their behalf. Spec in `docs/specs/managed-profiles.md`. Shipped — includes invite flow redesign, new member flow, profile manager contacts, and self-manager backfill.
 
 ### 2. Team Chat / Messaging
-Biggest engagement gap in the current app. Members have no reason to open the app between events. A simple per-team channel (pinned in the sidebar) would drive daily active usage. Supabase Realtime makes this achievable without a separate backend service.
+Biggest engagement gap in the current app. Members have no reason to open the app between events. A simple per-team channel (pinned in the sidebar) would drive daily active usage. Supabase Realtime makes this achievable without a separate backend service. **Must be designed for cross-platform from the start** — web, iOS, and Android share the same schema, RLS policies, and Realtime subscriptions. Spec in `docs/specs/team-chat.md` (pending open question review).
 
 ### 3. Stats & Season Records
 The schema already has `game_result`, `score_for`, `score_against` on events — the data exists but there's no UI for it. A season record view (W-L, goals for/against) and per-player stats dashboard would add significant value for coaches, mostly as a read layer on existing data.
