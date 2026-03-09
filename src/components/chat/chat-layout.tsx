@@ -43,7 +43,7 @@ export function ChatLayout({
 
   const [selected, setSelected] = useState<SelectedChannel | null>(defaultChannel);
   const [allGroupChannels] = useState(groupChannels);
-  const [allDmChannels] = useState(dmChannels);
+  const [allDmChannels, setAllDmChannels] = useState(dmChannels);
   const [messages, setMessages] = useState<MessageWithProfile[]>(initialMessages);
   const [showList, setShowList] = useState(true); // mobile: show list or thread
 
@@ -66,9 +66,9 @@ export function ChatLayout({
     setMessages([]); // clear while loading; MessageThread will fetch via subscription
   }
 
-  function handleDmCreated(dmChannelId: string) {
-    // The new DM will be visible when the user selects it; add a placeholder
-    setSelected({ type: "dm", id: dmChannelId });
+  function handleDmCreated(dm: DmChannelWithProfile) {
+    setAllDmChannels((prev) => prev.some((d) => d.id === dm.id) ? prev : [...prev, dm]);
+    setSelected({ type: "dm", id: dm.id });
     setShowList(false);
   }
 

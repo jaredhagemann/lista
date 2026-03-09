@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
+import type { DmChannelWithProfile } from "./channel-list";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMemberWithProfile = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -31,7 +32,7 @@ export function NewDmDialog({
   teamMembers: TeamMemberWithProfile[];
   teamId: string;
   currentUserId: string;
-  onDmCreated: (dmChannelId: string) => void;
+  onDmCreated: (dm: DmChannelWithProfile) => void;
 }) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function NewDmDialog({
     // Fetch the (possibly existing) DM channel
     const { data: dm } = await supabase
       .from("dm_channels")
-      .select("id")
+      .select("*")
       .eq("team_id", teamId)
       .eq("profile_a", profileA)
       .eq("profile_b", profileB)
@@ -79,7 +80,9 @@ export function NewDmDialog({
 
     setLoading(null);
     if (dm) {
-      onDmCreated(dm.id);
+      const otherProfile = teamMembers.find((m) => m.profile_id === profileId)?.profiles;
+      if (!otherProfile) { setLoading(null); return; }
+      onDmCreated({ ...dm, otherProfile, unreadCount: 0 });
       onOpenChange(false);
       setSearch("");
     }

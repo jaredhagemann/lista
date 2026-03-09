@@ -47,15 +47,15 @@ export function ChannelList({
   currentUserId: string;
   selected: SelectedChannel | null;
   onSelect: (ch: SelectedChannel) => void;
-  onDmCreated: (dmChannelId: string) => void;
+  onDmCreated: (dm: DmChannelWithProfile) => void;
   onGroupCreated: (channelId: string) => void;
 }) {
   const [newDmOpen, setNewDmOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
 
-  function handleDmCreated(dmChannelId: string) {
-    onDmCreated(dmChannelId);
-    onSelect({ type: "dm", id: dmChannelId });
+  function handleDmCreated(dm: DmChannelWithProfile) {
+    onDmCreated(dm);
+    onSelect({ type: "dm", id: dm.id });
   }
 
   function handleGroupCreated(channelId: string) {
