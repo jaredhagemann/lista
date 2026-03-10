@@ -1,5 +1,30 @@
 # Team Chat / Messaging
 
+## Implementation Status
+
+**Web implementation shipped** (branch `feature/team-chat`, 2026-03-10).
+
+| Area | Status | Notes |
+|---|---|---|
+| Database schema & RLS | ✅ Done | Migration `20260307000000_team_chat.sql` |
+| RLS group-channel SELECT fix | ✅ Done | Migration `20260309000001_fix_channels_select_rls.sql` |
+| Realtime publication for messages | ✅ Done | Migration `20260309000000_messages_realtime.sql` |
+| TypeScript types | ✅ Done | `src/types/database.ts` updated |
+| RLS tests | ✅ Done | `tests/rls/channels.test.ts`, `tests/rls/messages.test.ts` |
+| Chat UI (all components) | ✅ Done | `src/components/chat/` |
+| Chat page | ✅ Done | `src/app/dashboard/chat/page.tsx` |
+| Nav item + unread badge | ✅ Done | Computed server-side in dashboard layout |
+| Real-time message delivery | ✅ Done | Active channel updates via Realtime subscription |
+| Real-time unread badge updates | ✅ Done | Non-active channel badge increments via Realtime |
+| Mobile single-panel layout | ✅ Done | Back-button navigation on small screens |
+| Web push notifications | ✅ Done | `src/app/api/chat/notify/route.ts` (VAPID) |
+| `notification_preferences` columns | ✅ Done | `chat_push_enabled`, `chat_digest_enabled` added |
+| Daily digest email (unread summary) | ❌ Not yet | Columns exist; cron route not implemented |
+| Mobile push (APNs / FCM) | ❌ Not yet | Requires `device_tokens` table; web-only for now |
+| Notification preference settings UI | ❌ Not yet | `chat_push_enabled` / `chat_digest_enabled` not exposed in settings |
+
+---
+
 ## Overview
 
 A real-time messaging system built on Supabase Realtime. The primary surface is a per-team channel visible to all team members. Users can also message each other directly (1:1 DMs) and create named sub-groups (e.g. "Coaches", "Goalies"). Chat is the main driver of daily active usage between events.
@@ -21,13 +46,13 @@ Implications:
 ## Scope
 
 ### In scope
-- Team channel: one auto-created channel per team, visible to all members
-- Direct messages: 1:1 conversations between any two team members
-- Group threads: user-created sub-groups with a name and a chosen set of members
-- Real-time delivery via Supabase Realtime
-- Unread indicators (badge counts on nav and per-channel)
-- Basic message actions: send, delete own message, admin can delete any message
-- Managed profiles: messages sent on behalf of a managed profile go to the managing account's inbox
+- ✅ Team channel: one auto-created channel per team, visible to all members
+- ✅ Direct messages: 1:1 conversations between any two team members
+- ✅ Group threads: user-created sub-groups with a name and a chosen set of members
+- ✅ Real-time delivery via Supabase Realtime
+- ✅ Unread indicators (badge counts on nav and per-channel)
+- ✅ Basic message actions: send, delete own message, admin can delete any message
+- ✅ Managed profiles: messages sent on behalf of a managed profile go to the managing account's inbox
 
 ### Out of scope (for v1)
 - Reactions / emoji responses
@@ -156,19 +181,21 @@ Implications:
 ## Notifications
 
 ### Push notifications
-- Sent per message to channel members (decided: Q6).
-- Uses APNs (iOS) and FCM (Android) for mobile; existing web-push (VAPID) for web.
-- Requires a `device_tokens` table for mobile device registration (separate from `push_subscriptions`).
-- Controlled by a new `chat_push_enabled` column on `notification_preferences` (separate from `push_enabled` which is for events).
+- ✅ Sent per message to channel members (decided: Q6).
+- ✅ Web-push (VAPID) implemented via `src/app/api/chat/notify/route.ts`.
+- ❌ APNs (iOS) and FCM (Android) for mobile not yet implemented — requires a `device_tokens` table for mobile device registration (separate from `push_subscriptions`).
+- ✅ Controlled by a new `chat_push_enabled` column on `notification_preferences` (separate from `push_enabled` which is for events).
 
 ### Daily digest email
+- ❌ Not yet implemented.
 - If a user has any unread chat messages at digest time, send a summary email listing the channels with unread counts.
 - Runs via the existing cron infrastructure (`/api/cron/` pattern), daily — timing TBD (likely same 12:00 UTC slot or a separate job).
-- Controlled by a new `chat_digest_enabled` column on `notification_preferences`.
+- ✅ `chat_digest_enabled` column added to `notification_preferences`.
 - No per-message email is sent.
 
 ### `notification_preferences` schema additions
 ```sql
+-- ✅ Shipped in migration 20260307000000_team_chat.sql
 alter table notification_preferences
   add column chat_push_enabled boolean not null default true,
   add column chat_digest_enabled boolean not null default true;

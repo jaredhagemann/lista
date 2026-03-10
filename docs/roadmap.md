@@ -11,8 +11,8 @@ Roughly prioritized — revisit ordering as the product evolves.
 ### ~~1. Managed Profiles~~ ✅
 Parents managing player profiles on their behalf. Spec in `docs/specs/managed-profiles.md`. Shipped — includes invite flow redesign, new member flow, profile manager contacts, and self-manager backfill.
 
-### 2. Team Chat / Messaging
-Biggest engagement gap in the current app. Members have no reason to open the app between events. A simple per-team channel (pinned in the sidebar) would drive daily active usage. Supabase Realtime makes this achievable without a separate backend service. **Must be designed for cross-platform from the start** — web, iOS, and Android share the same schema, RLS policies, and Realtime subscriptions. Spec in `docs/specs/team-chat.md` (pending open question review).
+### ~~2. Team Chat / Messaging~~ ✅
+Core messaging feature shipped on the web app. Includes team channel (auto-created per team), 1:1 DMs, named group channels, real-time delivery, unread badges, soft delete, and push notifications via the existing VAPID system. Spec in `docs/specs/team-chat.md`. Deferred to later: daily digest email for unread messages, mobile push (APNs/FCM), and notification preference controls in the settings UI.
 
 ### 3. Stats & Season Records
 The schema already has `game_result`, `score_for`, `score_against` on events — the data exists but there's no UI for it. A season record view (W-L, goals for/against) and per-player stats dashboard would add significant value for coaches, mostly as a read layer on existing data.
