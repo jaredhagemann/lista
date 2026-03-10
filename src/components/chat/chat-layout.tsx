@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChannelList, type SelectedChannel, type DmChannelWithProfile } from "./channel-list";
 import { MessageThread } from "./message-thread";
 import { type MessageWithProfile } from "./message-item";
+import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
@@ -42,10 +43,58 @@ export function ChatLayout({
     : null;
 
   const [selected, setSelected] = useState<SelectedChannel | null>(defaultChannel);
-  const [allGroupChannels] = useState(groupChannels);
+  const [allGroupChannels, setAllGroupChannels] = useState(groupChannels);
   const [allDmChannels, setAllDmChannels] = useState(dmChannels);
+  const [teamChannelUnreadCount, setTeamChannelUnreadCount] = useState(teamChannelUnread);
   const [messages, setMessages] = useState<MessageWithProfile[]>(initialMessages);
   const [showList, setShowList] = useState(true); // mobile: show list or thread
+
+  const selectedRef = useRef(selected);
+  const supabase = createClient();
+
+  // Keep ref in sync so realtime callback always sees the latest selected channel
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  // Increment unread badges for messages arriving in non-active channels
+  useEffect(() => {
+    const sub = supabase
+      .channel("chat-layout-unread")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const msg = payload.new as {
+            sender_id: string;
+            channel_id: string | null;
+            dm_channel_id: string | null;
+          };
+          if (msg.sender_id === currentUserId) return;
+          const current = selectedRef.current;
+          if (current && (current.id === msg.channel_id || current.id === msg.dm_channel_id)) return;
+          if (msg.channel_id) {
+            if (msg.channel_id === teamChannel?.id) {
+              setTeamChannelUnreadCount((n) => n + 1);
+            } else {
+              setAllGroupChannels((prev) =>
+                prev.map((c) =>
+                  c.id === msg.channel_id ? { ...c, unreadCount: c.unreadCount + 1 } : c
+                )
+              );
+            }
+          } else if (msg.dm_channel_id) {
+            setAllDmChannels((prev) =>
+              prev.map((d) =>
+                d.id === msg.dm_channel_id ? { ...d, unreadCount: d.unreadCount + 1 } : d
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(sub); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Find the active channel/dm objects
   const activeChannel =
@@ -60,10 +109,22 @@ export function ChatLayout({
       ? allDmChannels.find((d) => d.id === selected.id) ?? null
       : null;
 
-  async function handleSelect(ch: SelectedChannel) {
+  function handleSelect(ch: SelectedChannel) {
     setSelected(ch);
     setShowList(false); // mobile: switch to thread view
     setMessages([]); // clear while loading; MessageThread will fetch via subscription
+    // Immediately zero out the badge for the channel being opened
+    if (ch.type === "team") {
+      setTeamChannelUnreadCount(0);
+    } else if (ch.type === "group") {
+      setAllGroupChannels((prev) =>
+        prev.map((c) => (c.id === ch.id ? { ...c, unreadCount: 0 } : c))
+      );
+    } else {
+      setAllDmChannels((prev) =>
+        prev.map((d) => (d.id === ch.id ? { ...d, unreadCount: 0 } : d))
+      );
+    }
   }
 
   function handleDmCreated(dm: DmChannelWithProfile) {
@@ -87,7 +148,7 @@ export function ChatLayout({
       >
         <ChannelList
           teamChannel={teamChannel}
-          teamChannelUnread={teamChannelUnread}
+          teamChannelUnread={teamChannelUnreadCount}
           groupChannels={allGroupChannels}
           dmChannels={allDmChannels}
           teamMembers={teamMembers}
