@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus } from "lucide-react";
 import { NewDmDialog } from "./new-dm-dialog";
-import { NewGroupDialog } from "./new-group-dialog";
+import { NewGroupDialog, type GroupChannelWithUnread } from "./new-group-dialog";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/types/database";
 
@@ -48,7 +48,7 @@ export function ChannelList({
   selected: SelectedChannel | null;
   onSelect: (ch: SelectedChannel) => void;
   onDmCreated: (dm: DmChannelWithProfile) => void;
-  onGroupCreated: (channelId: string) => void;
+  onGroupCreated: (channel: GroupChannelWithUnread) => void;
 }) {
   const [newDmOpen, setNewDmOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
@@ -58,9 +58,9 @@ export function ChannelList({
     onSelect({ type: "dm", id: dm.id });
   }
 
-  function handleGroupCreated(channelId: string) {
-    onGroupCreated(channelId);
-    onSelect({ type: "group", id: channelId });
+  function handleGroupCreated(channel: GroupChannelWithUnread) {
+    onGroupCreated(channel);
+    onSelect({ type: "group", id: channel.id });
   }
 
   return (
