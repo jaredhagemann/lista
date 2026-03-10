@@ -94,7 +94,7 @@ describe("team_members RLS", () => {
     const { teamId } = await createTestTeam(coach.user.id);
     await addTeamMember(teamId, player.user.id, "player");
 
-    const { error } = await player.client
+    await player.client
       .from("team_members")
       .update({ role: "coach" })
       .eq("team_id", teamId)

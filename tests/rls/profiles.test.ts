@@ -69,7 +69,7 @@ describe("profiles RLS", () => {
     const { teamId } = await createTestTeam(user1.user.id);
     await addTeamMember(teamId, user2.user.id, "player");
 
-    const { error } = await user1.client
+    await user1.client
       .from("profiles")
       .update({ first_name: "Hacked" })
       .eq("id", user2.user.id);

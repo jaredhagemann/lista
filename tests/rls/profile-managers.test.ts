@@ -106,7 +106,7 @@ describe("managed profiles: profiles RLS", () => {
     const stranger = await createTestUser();
     const managedId = await createManagedProfile(parent.user.id);
 
-    const { error } = await stranger.client
+    await stranger.client
       .from("profiles")
       .update({ first_name: "Hacked" })
       .eq("id", managedId);

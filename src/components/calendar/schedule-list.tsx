@@ -153,7 +153,7 @@ export function ScheduleList({
   }, [supabase, teamId, typeFilter, showAll, page, pageSize]);
 
   useEffect(() => {
-    fetchEvents();
+    void fetchEvents(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [fetchEvents]);
 
   // Reset to page 1 when filters change

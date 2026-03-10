@@ -140,7 +140,6 @@ export default async function DashboardLayout({
       <DashboardNav
         ownProfile={ownProfile}
         activeProfile={activeProfile}
-        managedProfiles={managedProfiles}
         allMemberships={allMemberships}
         activeMembership={activeMembership}
         profilesOnActiveTeam={profilesOnActiveTeam}

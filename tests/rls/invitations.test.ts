@@ -136,7 +136,7 @@ describe("invitations RLS", () => {
       role: "player",
     });
 
-    const { error } = await player.client
+    await player.client
       .from("invitations")
       .update({ role: "manager" })
       .eq("id", invId);
