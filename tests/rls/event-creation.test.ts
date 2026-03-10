@@ -3,7 +3,6 @@ import {
   createTestUser,
   createTestTeam,
   cleanupTestData,
-  adminClient,
 } from "./helpers";
 import { buildRRule, expandRecurrence } from "@/lib/utils/rrule";
 

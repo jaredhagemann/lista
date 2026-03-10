@@ -28,12 +28,10 @@ type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
 export function TeamSwitcher({
   allMemberships,
   activeMembership,
-  hasManagedProfiles,
 }: {
   /** All team_member rows across own + managed profiles. */
   allMemberships: TeamMember[];
   activeMembership: TeamMember | null;
-  hasManagedProfiles: boolean;
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);

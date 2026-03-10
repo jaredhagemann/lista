@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChannelList, type SelectedChannel, type DmChannelWithProfile } from "./channel-list";
+import { type GroupChannelWithUnread } from "./new-group-dialog";
 import { MessageThread } from "./message-thread";
 import { type MessageWithProfile } from "./message-item";
 import { createClient } from "@/lib/supabase/client";
@@ -133,8 +134,11 @@ export function ChatLayout({
     setShowList(false);
   }
 
-  function handleGroupCreated(channelId: string) {
-    setSelected({ type: "group", id: channelId });
+  function handleGroupCreated(channel: GroupChannelWithUnread) {
+    setAllGroupChannels((prev) =>
+      prev.some((c) => c.id === channel.id) ? prev : [...prev, channel]
+    );
+    setSelected({ type: "group", id: channel.id });
     setShowList(false);
   }
 

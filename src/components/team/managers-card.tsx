@@ -62,7 +62,7 @@ export function ManagersCard({
   const showAddButton = canEdit || canAdd;
   const router = useRouter();
   const [managers, setManagers] = useState(initialManagers);
-  const [pendingInvites, setPendingInvites] = useState(initialPendingInvites);
+  const [pendingInvites] = useState(initialPendingInvites);
 
   // Add dialog
   const [addOpen, setAddOpen] = useState(false);

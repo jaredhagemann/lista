@@ -17,7 +17,6 @@ import { useState } from "react";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 import { ProfileSwitcher } from "@/components/layout/profile-switcher";
 import type { Database } from "@/types/database";
-import type { ManagedProfileEntry } from "@/app/dashboard/layout";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -36,7 +35,6 @@ const navItems = [
 export function DashboardNav({
   ownProfile,
   activeProfile,
-  managedProfiles,
   allMemberships,
   activeMembership,
   profilesOnActiveTeam,
@@ -44,7 +42,6 @@ export function DashboardNav({
 }: {
   ownProfile: Profile | null;
   activeProfile: Profile | null;
-  managedProfiles: ManagedProfileEntry[];
   allMemberships: TeamMember[];
   activeMembership: TeamMember | null;
   profilesOnActiveTeam: TeamMember[];
@@ -127,7 +124,6 @@ export function DashboardNav({
               <TeamSwitcher
                 allMemberships={allMemberships}
                 activeMembership={activeMembership}
-                hasManagedProfiles={managedProfiles.length > 0}
               />
             )}
           </div>
@@ -223,7 +219,6 @@ export function DashboardNav({
               <TeamSwitcher
                 allMemberships={allMemberships}
                 activeMembership={activeMembership}
-                hasManagedProfiles={managedProfiles.length > 0}
               />
             )}
           </div>

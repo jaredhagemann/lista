@@ -67,7 +67,7 @@ describe("teams RLS", () => {
     const { teamId } = await createTestTeam(coach.user.id);
     await addTeamMember(teamId, player.user.id, "player");
 
-    const { error } = await player.client
+    await player.client
       .from("teams")
       .update({ name: "Hacked" })
       .eq("id", teamId);
@@ -98,7 +98,7 @@ describe("teams RLS", () => {
     const { teamId } = await createTestTeam(coach.user.id);
     await addTeamMember(teamId, player.user.id, "player");
 
-    const { error } = await player.client
+    await player.client
       .from("teams")
       .update({ season: "Hacked Season" })
       .eq("id", teamId);
@@ -150,7 +150,7 @@ describe("teams RLS", () => {
     const { teamId } = await createTestTeam(coach.user.id);
     await addTeamMember(teamId, player.user.id, "player");
 
-    const { error } = await player.client
+    await player.client
       .from("teams")
       .update({ sport: "soccer" })
       .eq("id", teamId);
@@ -165,6 +165,7 @@ describe("teams RLS", () => {
 
     const { error } = await client
       .from("teams")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .update({ sport: "quidditch" as any })
       .eq("id", teamId);
     expect(error).not.toBeNull();
@@ -177,6 +178,7 @@ describe("teams RLS", () => {
 
     const { error } = await client
       .from("teams")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .update({ age_group: "99u" as any })
       .eq("id", teamId);
     expect(error).not.toBeNull();
@@ -189,6 +191,7 @@ describe("teams RLS", () => {
 
     const { error } = await client
       .from("teams")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .update({ gender: "nonbinary" as any })
       .eq("id", teamId);
     expect(error).not.toBeNull();

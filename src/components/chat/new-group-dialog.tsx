@@ -15,10 +15,13 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
 
+type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMemberWithProfile = Database["public"]["Tables"]["team_members"]["Row"] & {
   profiles: Profile | null;
 };
+
+export type GroupChannelWithUnread = Channel & { unreadCount: number };
 
 export function NewGroupDialog({
   open,
@@ -33,7 +36,7 @@ export function NewGroupDialog({
   teamMembers: TeamMemberWithProfile[];
   teamId: string;
   currentUserId: string;
-  onGroupCreated: (channelId: string) => void;
+  onGroupCreated: (channel: GroupChannelWithUnread) => void;
 }) {
   const [groupName, setGroupName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -105,7 +108,15 @@ export function NewGroupDialog({
     setGroupName("");
     setSelected(new Set());
     setMemberSearch("");
-    onGroupCreated(channelId);
+    onGroupCreated({
+      id: channelId,
+      team_id: teamId,
+      name: groupName.trim(),
+      type: "group",
+      created_by: currentUserId,
+      created_at: new Date().toISOString(),
+      unreadCount: 0,
+    });
     onOpenChange(false);
   }
 

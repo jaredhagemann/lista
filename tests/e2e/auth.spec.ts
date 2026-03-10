@@ -22,7 +22,7 @@ test.describe("Authentication", () => {
     await expect(page.getByText(/invalid login credentials/i)).toBeVisible();
   });
 
-  test("authenticated users visiting /login are redirected to /dashboard", async ({ page, context }) => {
+  test("authenticated users visiting /login are redirected to /dashboard", async ({ page }) => {
     // Log in first
     await page.goto("/login");
     await page.getByLabel("Email").fill("e2e-coach@lista.test");

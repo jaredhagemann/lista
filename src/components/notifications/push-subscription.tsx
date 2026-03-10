@@ -12,18 +12,18 @@ export function PushSubscriptionButton() {
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
 
-  useEffect(() => {
-    if ("serviceWorker" in navigator && "PushManager" in window) {
-      setIsSupported(true);
-      checkSubscription();
-    }
-  }, []);
-
   async function checkSubscription() {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
     setIsSubscribed(!!subscription);
   }
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      setIsSupported(true); // eslint-disable-line react-hooks/set-state-in-effect
+      void checkSubscription();
+    }
+  }, []);
 
   async function subscribe() {
     setLoading(true);
