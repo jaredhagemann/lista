@@ -32,6 +32,17 @@ export function MessageThread({
   const channelId = channel?.id;
   const dmChannelId = dmChannel?.id;
 
+  // Fetch messages on mount (handles channel switches where initialMessages is empty)
+  useEffect(() => {
+    if (initialMessages.length > 0) return; // already have messages from SSR
+    const query = channelId
+      ? supabase.from("messages").select("*, profiles!sender_id(*)").eq("channel_id", channelId)
+      : supabase.from("messages").select("*, profiles!sender_id(*)").eq("dm_channel_id", dmChannelId!);
+    query.order("created_at", { ascending: true }).limit(50).then(({ data }) => {
+      if (data) setMessages(data as MessageWithProfile[]);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Mark channel as read on open
   useEffect(() => {
     if (!channelId) return;
