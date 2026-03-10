@@ -156,7 +156,7 @@ export function MessageItem({
             </DropdownMenu>
           )}
         </div>
-        <span className="text-[10px] text-muted-foreground px-1">
+        <span className="text-[10px] text-muted-foreground px-1" suppressHydrationWarning>
           {formatTime(message.created_at!)}
         </span>
       </div>
