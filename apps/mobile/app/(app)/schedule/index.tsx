@@ -279,7 +279,18 @@ export default function ScheduleScreen() {
                     </View>
                   ) : rsvpStatus ? (
                     <RsvpBadge status={rsvpStatus} />
-                  ) : null}
+                  ) : (
+                    <View
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: "#d1d5db",
+                        borderStyle: "dashed",
+                      }}
+                    />
+                  )}
                 </View>
               </View>
             </TouchableOpacity>
