@@ -83,7 +83,7 @@ export default function HomeScreen() {
     if (membershipLoading) return;
     setLoading(true);
     fetchData();
-  }, [membership?.teamId, membershipLoading]);
+  }, [membership?.teamId, membership?.profileId, membershipLoading]);
 
   function onRefresh() {
     setRefreshing(true);

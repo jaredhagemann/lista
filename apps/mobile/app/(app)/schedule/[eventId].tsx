@@ -140,9 +140,9 @@ export default function EventDetailScreen() {
   }
 
   useEffect(() => {
-    if (membership === undefined) return;
+    if (!membership) return;
     fetchData();
-  }, [membership, eventId]);
+  }, [membership?.profileId, membership?.teamId, eventId]);
 
   function onRefresh() {
     setRefreshing(true);

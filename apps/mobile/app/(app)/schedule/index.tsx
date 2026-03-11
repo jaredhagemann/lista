@@ -162,7 +162,7 @@ export default function ScheduleScreen() {
   useEffect(() => {
     if (membershipLoading) return;
     fetchEvents();
-  }, [membership?.teamId, membershipLoading]);
+  }, [membership?.teamId, membership?.profileId, membershipLoading]);
 
   function onRefresh() {
     setRefreshing(true);
