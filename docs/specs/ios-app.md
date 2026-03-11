@@ -305,11 +305,23 @@ Turborepo monorepo in place. Next.js app moved to `apps/web/` (`@lista/web`). Ex
 
 **Vercel note:** Root Directory set to `apps/web`, Build Command overridden to `next build` (not turbo), "Include files outside root directory" enabled so pnpm hoisted `node_modules` are accessible.
 
-### Phase 1 — Auth + Navigation shell
-Login, signup, forgot/reset password screens. Bottom tab navigator with placeholder screens. Supabase session persists across app restarts.
+### ~~Phase 1 — Auth + Navigation shell~~ ✅ (2026-03-11)
+Login, signup, forgot/reset password screens. Bottom tab navigator (Home, Schedule, Team, Chat, Settings) with placeholder screens. Settings has working Sign Out. Supabase session stored in `expo-secure-store` and persists across app restarts. NativeWind v4 styling configured.
+
+**Notes:**
+- Signup calls the web app's `/api/auth/signup` endpoint to reuse the custom Resend confirmation email flow.
+- `react-native-css-interop` must be listed as an explicit dependency (NativeWind v4 peer).
+- Root `package.json` requires `packageManager` field for Turborepo 2.8+.
 
 ### Phase 2 — Dashboard + Schedule
 Dashboard home (upcoming events), schedule list, event detail, RSVP buttons. Read-only first, then add create/edit event flow.
+
+**Implemented (2026-03-11):**
+- `hooks/useActiveMembership.ts` — resolves active team membership from SecureStore `active_profile_id` + Supabase, mirrors web `getActiveMembership` logic
+- `app/(app)/index.tsx` — Dashboard: team name/season header, upcoming events list (up to 5), member count card, pull-to-refresh
+- `app/(app)/schedule/_layout.tsx` — Stack navigator for schedule tab (handles back navigation to list from event detail)
+- `app/(app)/schedule/index.tsx` — Full event list grouped by date with SectionList, event type badges, cancelled strikethrough, pull-to-refresh
+- `app/(app)/schedule/[eventId].tsx` — Event detail: time/location/notes, RSVP buttons (available/maybe/unavailable with optimistic updates matching web logic), responses list grouped by status
 
 ### Phase 3 — Availability + Team
 Availability matrix screen. Team roster, member detail. Add member flow.
