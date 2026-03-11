@@ -1,6 +1,7 @@
 {
   "name": "lista-monorepo",
   "private": true,
+  "packageManager": "pnpm@10.29.2",
   "scripts": {
     "dev": "turbo run dev --filter=@lista/web",
     "build": "turbo run build --filter=@lista/web",
