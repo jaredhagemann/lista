@@ -35,11 +35,11 @@ function formatEventTime(iso: string) {
 function eventTypeBadgeClass(type: string) {
   switch (type) {
     case "game":
-      return { bg: "#dbeafe", text: "#1d4ed8" };
-    case "practice":
       return { bg: "#dcfce7", text: "#15803d" };
+    case "practice":
+      return { bg: "#dbeafe", text: "#1d4ed8" };
     default:
-      return { bg: "#f3f4f6", text: "#6b7280" };
+      return { bg: "#f3e8ff", text: "#7e22ce" };
   }
 }
 

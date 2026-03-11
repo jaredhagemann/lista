@@ -74,7 +74,7 @@ const TYPE_BADGE: Record<string, { label: string; className: string }> = {
   },
   game: {
     label: "Game",
-    className: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-0",
+    className: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border-0",
   },
   other: {
     label: "Other",

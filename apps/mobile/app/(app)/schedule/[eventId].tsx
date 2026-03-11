@@ -227,7 +227,7 @@ export default function EventDetailScreen() {
             <View
               style={{
                 backgroundColor:
-                  event.event_type === "game" ? "#dbeafe" : event.event_type === "practice" ? "#dcfce7" : "#f3f4f6",
+                  event.event_type === "game" ? "#dcfce7" : event.event_type === "practice" ? "#dbeafe" : "#f3e8ff",
                 paddingHorizontal: 8,
                 paddingVertical: 2,
                 borderRadius: 99,
@@ -235,7 +235,7 @@ export default function EventDetailScreen() {
             >
               <Text
                 style={{
-                  color: event.event_type === "game" ? "#1d4ed8" : event.event_type === "practice" ? "#15803d" : "#6b7280",
+                  color: event.event_type === "game" ? "#15803d" : event.event_type === "practice" ? "#1d4ed8" : "#7e22ce",
                   fontSize: 12,
                   fontWeight: "600",
                   textTransform: "capitalize",
