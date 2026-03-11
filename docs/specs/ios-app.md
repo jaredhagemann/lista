@@ -38,7 +38,7 @@ Parity with the current web app. Every screen the web app has, the mobile app ha
 | Dashboard home (upcoming events + team overview) | ✅ | ✅ |
 | Schedule (list view, event detail) | ✅ | ✅ (list only — no calendar grid on mobile) |
 | Event create/edit (with recurrence) | ✅ | ✅ |
-| Availability RSVP matrix | ✅ | ✅ |
+| Availability RSVP matrix | ✅ | Deferred — RSVP is handled inline on the event detail screen; standalone matrix view not needed on mobile |
 | Team roster | ✅ | ✅ |
 | Member profile detail | ✅ | ✅ |
 | Team chat (team channel, DMs, groups) | ✅ | ✅ |
@@ -190,9 +190,7 @@ apps/mobile/app/
     ├── index.tsx                ← Dashboard home
     ├── schedule/
     │   ├── index.tsx            ← Schedule list/calendar
-    │   └── [eventId].tsx        ← Event detail + RSVP
-    ├── availability/
-    │   └── index.tsx            ← Availability matrix
+    │   └── [eventId].tsx        ← Event detail + RSVP (availability inline)
     ├── team/
     │   ├── index.tsx            ← Team roster
     │   ├── [memberId].tsx       ← Member profile detail
@@ -313,18 +311,28 @@ Login, signup, forgot/reset password screens. Bottom tab navigator (Home, Schedu
 - `react-native-css-interop` must be listed as an explicit dependency (NativeWind v4 peer).
 - Root `package.json` requires `packageManager` field for Turborepo 2.8+.
 
-### Phase 2 — Dashboard + Schedule
-Dashboard home (upcoming events), schedule list, event detail, RSVP buttons. Read-only first, then add create/edit event flow.
+### ~~Phase 2 — Dashboard + Schedule~~ ✅ (2026-03-11)
+Dashboard home (upcoming events), schedule list, event detail, RSVP inline on event detail.
 
-**Implemented (2026-03-11):**
-- `hooks/useActiveMembership.ts` — resolves active team membership from SecureStore `active_profile_id` + Supabase, mirrors web `getActiveMembership` logic
+**Implemented:**
+- `hooks/useActiveMembership.ts` — resolves active team membership from SecureStore `active_profile_id` + Supabase (superseded by AppContext but kept for reference)
 - `app/(app)/index.tsx` — Dashboard: team name/season header, upcoming events list (up to 5), member count card, pull-to-refresh
-- `app/(app)/schedule/_layout.tsx` — Stack navigator for schedule tab (handles back navigation to list from event detail)
-- `app/(app)/schedule/index.tsx` — Full event list grouped by date with SectionList, event type badges, cancelled strikethrough, pull-to-refresh
-- `app/(app)/schedule/[eventId].tsx` — Event detail: time/location/notes, RSVP buttons (available/maybe/unavailable with optimistic updates matching web logic), responses list grouped by status
+- `app/(app)/schedule/_layout.tsx` — Stack navigator for schedule tab
+- `app/(app)/schedule/index.tsx` — Full event list grouped by date, type badges, RSVP status indicator per row, pull-to-refresh
+- `app/(app)/schedule/[eventId].tsx` — Event detail: time/location/notes, RSVP buttons with optimistic updates, responses list grouped by status
 
-### Phase 3 — Availability + Team
-Availability matrix screen. Team roster, member detail. Add member flow.
+**Also completed between Phase 2 and 3 — Team & Profile Switcher:**
+- `contexts/AppContext.tsx` — single data fetch on load; `switchTeam()` / `switchProfile()` update Supabase + SecureStore and re-render all consumers
+- `components/TeamProfileStrip.tsx` — persistent strip above all tab screens; amber "Viewing as" label when on a managed profile
+- `components/SwitcherSheet.tsx` — slide-up modal with deduplicated team list and conditional "View as" profile section
+
+### ~~Phase 3 — Team~~ ✅ (2026-03-11)
+Team roster, member detail. (Availability matrix removed — RSVP inline on event detail. Add member / invite flow deferred to Phase 5.)
+
+**Implemented:**
+- `app/(app)/team/_layout.tsx` — Stack navigator for team tab
+- `app/(app)/team/index.tsx` — Roster grouped into Players (sorted by jersey number) and Staff (coaches → managers → parents); pending invites shown with dashed border + clock badge (admin only); tappable rows navigate to member detail
+- `app/(app)/team/[memberId].tsx` — Read-only member detail: avatar, name, role badge, profile fields (email gated to admin/own profile, birthday, gender, jersey number), managers list
 
 ### Phase 4 — Chat
 Channel list, message thread, real-time delivery. New DM and group creation. Push notifications via APNs.
