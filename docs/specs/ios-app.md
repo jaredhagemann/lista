@@ -300,8 +300,10 @@ All pre-implementation questions resolved. See Decision Log above. No blockers r
 
 ## Implementation Phases
 
-### Phase 0 — Setup & Monorepo (no new features)
-Restructure repo, create shared packages, scaffold mobile app, confirm iOS Simulator runs. No user-facing functionality yet. Verify web app is unaffected.
+### ~~Phase 0 — Setup & Monorepo~~ ✅ (2026-03-11)
+Turborepo monorepo in place. Next.js app moved to `apps/web/` (`@lista/web`). Expo SDK 55 scaffold at `apps/mobile/` (`@lista/mobile`). Stub shared packages created (`@lista/types`, `@lista/utils`, `@lista/supabase`). 127/127 RLS tests pass. Web app builds clean and Vercel deployment confirmed working.
+
+**Vercel note:** Root Directory set to `apps/web`, Build Command overridden to `next build` (not turbo), "Include files outside root directory" enabled so pnpm hoisted `node_modules` are accessible.
 
 ### Phase 1 — Auth + Navigation shell
 Login, signup, forgot/reset password screens. Bottom tab navigator with placeholder screens. Supabase session persists across app restarts.
