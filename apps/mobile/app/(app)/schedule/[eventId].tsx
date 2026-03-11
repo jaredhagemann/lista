@@ -11,8 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
-import { useSession } from "../../_layout";
-import { useActiveMembership } from "../../../hooks/useActiveMembership";
+import { useAppContext } from "../../../contexts/AppContext";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 
@@ -100,9 +99,8 @@ function RsvpButton({
 
 export default function EventDetailScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
-  const session = useSession();
   const navigation = useNavigation();
-  const membership = useActiveMembership(session?.user.id);
+  const { membership } = useAppContext();
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [myStatus, setMyStatus] = useState<AvailabilityStatus | null>(null);
@@ -180,7 +178,7 @@ export default function EventDetailScreen() {
     setRsvpLoading(false);
   }
 
-  if (loading || membership === undefined) {
+  if (loading || !membership) {
     return (
       <SafeAreaView
         className="flex-1 bg-white justify-center items-center"

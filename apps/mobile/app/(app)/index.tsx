@@ -11,8 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../lib/supabase";
-import { useSession } from "../_layout";
-import { useActiveMembership } from "../../hooks/useActiveMembership";
+import { useAppContext } from "../../contexts/AppContext";
 
 type Event = {
   id: string;
@@ -44,9 +43,8 @@ function eventTypeBadgeClass(type: string) {
 }
 
 export default function HomeScreen() {
-  const session = useSession();
   const router = useRouter();
-  const membership = useActiveMembership(session?.user.id);
+  const { membership, loading: membershipLoading, refresh } = useAppContext();
 
   const [events, setEvents] = useState<Event[]>([]);
   const [memberCount, setMemberCount] = useState<number | null>(null);
@@ -54,7 +52,11 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   async function fetchData() {
-    if (!membership?.teamId) return;
+    if (!membership?.teamId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const [eventsResult, countResult] = await Promise.all([
       supabase
@@ -78,18 +80,30 @@ export default function HomeScreen() {
   }
 
   useEffect(() => {
-    if (membership === undefined) return;
+    if (membershipLoading) return;
+    setLoading(true);
     fetchData();
-  }, [membership]);
+  }, [membership?.teamId, membershipLoading]);
 
   function onRefresh() {
     setRefreshing(true);
-    fetchData();
+    refresh().then(() => fetchData());
   }
 
-  if (membership === null) {
+  if (membershipLoading || loading) {
     return (
-      <SafeAreaView className="flex-1 bg-white">
+      <SafeAreaView
+        className="flex-1 bg-white justify-center items-center"
+        edges={["bottom"]}
+      >
+        <ActivityIndicator size="large" color="#0f172a" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!membership) {
+    return (
+      <SafeAreaView className="flex-1 bg-white" edges={["bottom"]}>
         <View className="flex-1 justify-center items-center px-6">
           <Ionicons name="people-outline" size={48} color="#9ca3af" />
           <Text className="text-xl font-bold text-gray-900 mt-4 mb-2 text-center">
@@ -103,18 +117,10 @@ export default function HomeScreen() {
     );
   }
 
-  if (membership === undefined || loading) {
-    return (
-      <SafeAreaView className="flex-1 bg-white justify-center items-center">
-        <ActivityIndicator size="large" color="#0f172a" />
-      </SafeAreaView>
-    );
-  }
-
   const isAdmin = membership.role === "coach" || membership.role === "manager";
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
+    <SafeAreaView className="flex-1 bg-gray-50" edges={["bottom"]}>
       <ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

@@ -11,8 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
-import { useSession } from "../../_layout";
-import { useActiveMembership } from "../../../hooks/useActiveMembership";
+import { useAppContext } from "../../../contexts/AppContext";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 
@@ -102,10 +101,9 @@ function groupByDate(events: Event[]): Section[] {
 }
 
 export default function ScheduleScreen() {
-  const session = useSession();
   const router = useRouter();
   const navigation = useNavigation();
-  const membership = useActiveMembership(session?.user.id);
+  const { membership, loading: membershipLoading } = useAppContext();
 
   const [sections, setSections] = useState<Section[]>([]);
   const [myAvailability, setMyAvailability] = useState<
@@ -162,16 +160,16 @@ export default function ScheduleScreen() {
   }
 
   useEffect(() => {
-    if (membership === undefined) return;
+    if (membershipLoading) return;
     fetchEvents();
-  }, [membership]);
+  }, [membership?.teamId, membershipLoading]);
 
   function onRefresh() {
     setRefreshing(true);
     fetchEvents();
   }
 
-  if (membership === undefined || loading) {
+  if (membershipLoading || loading) {
     return (
       <SafeAreaView
         className="flex-1 bg-white justify-center items-center"
