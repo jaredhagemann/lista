@@ -14,6 +14,8 @@ import { supabase } from "../../../lib/supabase";
 import { useSession } from "../../_layout";
 import { useActiveMembership } from "../../../hooks/useActiveMembership";
 
+type AvailabilityStatus = "available" | "maybe" | "unavailable";
+
 type Event = {
   id: string;
   title: string;
@@ -55,6 +57,37 @@ function eventTypeBadge(type: string) {
   }
 }
 
+const RSVP_STYLE: Record<
+  AvailabilityStatus,
+  { bg: string; border: string; text: string; label: string }
+> = {
+  available:   { bg: "#dcfce7", border: "#16a34a", text: "#15803d", label: "✓" },
+  maybe:       { bg: "#fef3c7", border: "#d97706", text: "#b45309", label: "?" },
+  unavailable: { bg: "#fee2e2", border: "#dc2626", text: "#b91c1c", label: "✗" },
+};
+
+function RsvpBadge({ status }: { status: AvailabilityStatus }) {
+  const s = RSVP_STYLE[status];
+  return (
+    <View
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: s.border,
+        backgroundColor: s.bg,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ color: s.text, fontSize: 12, fontWeight: "700", lineHeight: 16 }}>
+        {s.label}
+      </Text>
+    </View>
+  );
+}
+
 function groupByDate(events: Event[]): Section[] {
   const map = new Map<string, Event[]>();
   for (const event of events) {
@@ -75,6 +108,9 @@ export default function ScheduleScreen() {
   const membership = useActiveMembership(session?.user.id);
 
   const [sections, setSections] = useState<Section[]>([]);
+  const [myAvailability, setMyAvailability] = useState<
+    Map<string, AvailabilityStatus>
+  >(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -86,10 +122,7 @@ export default function ScheduleScreen() {
       title: "Schedule",
       headerRight: isAdmin
         ? () => (
-            <TouchableOpacity
-              onPress={() => {}}
-              style={{ marginRight: 4 }}
-            >
+            <TouchableOpacity onPress={() => {}} style={{ marginRight: 4 }}>
               <Ionicons name="add" size={26} color="#0f172a" />
             </TouchableOpacity>
           )
@@ -98,15 +131,32 @@ export default function ScheduleScreen() {
   }, [isAdmin]);
 
   async function fetchEvents() {
-    if (!membership?.teamId) return;
+    if (!membership?.teamId || !membership?.profileId) return;
 
-    const { data } = await supabase
-      .from("events")
-      .select("id, title, event_type, start_time, end_time, is_cancelled, locations(name)")
-      .eq("team_id", membership.teamId)
-      .order("start_time", { ascending: true });
+    const [eventsResult, availResult] = await Promise.all([
+      supabase
+        .from("events")
+        .select(
+          "id, title, event_type, start_time, end_time, is_cancelled, locations(name)"
+        )
+        .eq("team_id", membership.teamId)
+        .order("start_time", { ascending: true }),
+      supabase
+        .from("availability")
+        .select("event_id, status")
+        .eq("profile_id", membership.profileId),
+    ]);
 
-    setSections(groupByDate((data ?? []) as unknown as Event[]));
+    setSections(groupByDate((eventsResult.data ?? []) as unknown as Event[]));
+
+    const statusMap = new Map<string, AvailabilityStatus>();
+    for (const row of availResult.data ?? []) {
+      if (row.event_id) {
+        statusMap.set(row.event_id, row.status as AvailabilityStatus);
+      }
+    }
+    setMyAvailability(statusMap);
+
     setLoading(false);
     setRefreshing(false);
   }
@@ -165,6 +215,7 @@ export default function ScheduleScreen() {
         )}
         renderItem={({ item }) => {
           const badge = eventTypeBadge(item.event_type);
+          const rsvpStatus = myAvailability.get(item.id) ?? null;
           return (
             <TouchableOpacity
               onPress={() => router.push(`/(app)/schedule/${item.id}` as any)}
@@ -194,7 +245,9 @@ export default function ScheduleScreen() {
                     </View>
                   ) : null}
                 </View>
-                <View style={{ alignItems: "flex-end", gap: 4 }}>
+
+                {/* Right column: type pill + RSVP indicator */}
+                <View style={{ alignItems: "flex-end", gap: 6 }}>
                   <View
                     style={{
                       backgroundColor: badge.bg,
@@ -210,6 +263,7 @@ export default function ScheduleScreen() {
                       {item.event_type}
                     </Text>
                   </View>
+
                   {item.is_cancelled ? (
                     <View
                       style={{
@@ -223,6 +277,8 @@ export default function ScheduleScreen() {
                         Cancelled
                       </Text>
                     </View>
+                  ) : rsvpStatus ? (
+                    <RsvpBadge status={rsvpStatus} />
                   ) : null}
                 </View>
               </View>
