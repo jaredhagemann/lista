@@ -11,13 +11,13 @@ type Event = Database["public"]["Tables"]["events"]["Row"];
 
 const eventTypeColors: Record<string, { bg: string; text: string }> = {
   practice: { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-700 dark:text-blue-300" },
-  game: { bg: "bg-red-100 dark:bg-red-900/40", text: "text-red-700 dark:text-red-300" },
+  game: { bg: "bg-green-100 dark:bg-green-900/40", text: "text-green-700 dark:text-green-300" },
   other: { bg: "bg-purple-100 dark:bg-purple-900/40", text: "text-purple-700 dark:text-purple-300" },
 };
 
 const eventDotColors: Record<string, string> = {
   practice: "bg-blue-600",
-  game: "bg-red-600",
+  game: "bg-green-600",
   other: "bg-purple-600",
 };
 

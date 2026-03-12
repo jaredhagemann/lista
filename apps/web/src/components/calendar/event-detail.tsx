@@ -875,7 +875,7 @@ export function EventDetail({
 
   const eventTypeColor: Record<string, string> = {
     practice: "bg-blue-100 text-blue-800",
-    game: "bg-red-100 text-red-800",
+    game: "bg-green-100 text-green-800",
     other: "bg-purple-100 text-purple-800",
   };
 

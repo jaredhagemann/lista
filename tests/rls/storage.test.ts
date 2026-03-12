@@ -3,6 +3,7 @@ import {
   createTestUser,
   createTestTeam,
   addTeamMember,
+  createManagedProfile,
   cleanupTestData,
 } from "./helpers";
 
@@ -24,6 +25,21 @@ describe("storage RLS", () => {
 
       // Cleanup
       await client.storage.from("avatars").remove([path]);
+    });
+
+    it("manager can upload to avatars/{managed_profile_id}/", async () => {
+      const parent = await createTestUser();
+      const childId = await createManagedProfile(parent.user.id);
+      const path = `${childId}/test-${crypto.randomUUID()}.txt`;
+      const file = new Blob(["test"], { type: "text/plain" });
+
+      const { error } = await parent.client.storage
+        .from("avatars")
+        .upload(path, file, { upsert: true });
+      expect(error).toBeNull();
+
+      // Cleanup
+      await parent.client.storage.from("avatars").remove([path]);
     });
 
     it("user cannot upload to avatars/{other_user_id}/", async () => {
