@@ -14,6 +14,7 @@ type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMemberWithProfile = Database["public"]["Tables"]["team_members"]["Row"] & {
   profiles: Profile | null;
+  managers: { profileId: string; firstName: string; lastName: string; relationship: string | null }[];
 };
 
 export function ChatLayout({

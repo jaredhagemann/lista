@@ -41,9 +41,18 @@ type DmChannel = {
   otherProfile: { id: string; first_name: string; last_name: string };
 };
 
+type MemberManager = {
+  profileId: string;
+  firstName: string;
+  lastName: string;
+  relationship: string | null;
+};
+
 type TeamMember = {
   profile_id: string;
+  auth_user_id: string | null;
   profiles: { id: string; first_name: string; last_name: string };
+  managers: MemberManager[]; // empty = has own account; populated = managed profile
 };
 
 type UnreadMap = Record<string, number>;
@@ -89,6 +98,7 @@ function NewDmSheet({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const filtered = members
     .filter((m) => m.profile_id !== ownId)
@@ -99,7 +109,7 @@ function NewDmSheet({
       return name.includes(query.toLowerCase());
     });
 
-  async function handleSelect(profileId: string) {
+  async function startDm(profileId: string) {
     setLoading(profileId);
     const [profileA, profileB] = [ownId, profileId].sort();
     await supabase
@@ -116,12 +126,22 @@ function NewDmSheet({
       .eq("profile_b", profileB)
       .single();
 
-    const member = members.find((m) => m.profile_id === profileId);
-    if (data && member) {
+    if (data) {
       onClose();
+      setExpandedId(null);
       router.push(`/(app)/chat/dm/${data.id}` as any);
     }
     setLoading(null);
+  }
+
+  function handleRowPress(m: TeamMember) {
+    if (m.managers.length === 0) {
+      startDm(m.profile_id);
+    } else if (m.managers.length === 1) {
+      startDm(m.managers[0].profileId);
+    } else {
+      setExpandedId((prev) => (prev === m.profile_id ? null : m.profile_id));
+    }
   }
 
   return (
@@ -140,24 +160,75 @@ function NewDmSheet({
             autoFocus
           />
           <ScrollView bounces={false}>
-            {filtered.map((m) => (
-              <TouchableOpacity
-                key={m.profile_id}
-                style={styles.memberRow}
-                onPress={() => handleSelect(m.profile_id)}
-                disabled={loading === m.profile_id}
-              >
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberAvatarText}>
-                    {initials(m.profiles.first_name, m.profiles.last_name)}
-                  </Text>
+            {filtered.map((m) => {
+              const isExpanded = expandedId === m.profile_id;
+              const multiManager = m.managers.length > 1;
+              return (
+                <View key={m.profile_id}>
+                  <TouchableOpacity
+                    style={styles.memberRow}
+                    onPress={() => handleRowPress(m)}
+                    disabled={loading !== null}
+                  >
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberAvatarText}>
+                        {initials(m.profiles.first_name, m.profiles.last_name)}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.memberName}>
+                        {m.profiles.first_name} {m.profiles.last_name}
+                      </Text>
+                      {m.managers.length === 1 && (
+                        <Text style={styles.managerHint}>
+                          via {m.managers[0].firstName} {m.managers[0].lastName}
+                        </Text>
+                      )}
+                    </View>
+                    {multiManager && (
+                      <Ionicons
+                        name={isExpanded ? "chevron-up" : "chevron-down"}
+                        size={16}
+                        color="#9ca3af"
+                      />
+                    )}
+                    {loading !== null && loading !== m.profile_id ? null :
+                      loading === m.profile_id ? <ActivityIndicator size="small" color="#0f172a" /> : null}
+                  </TouchableOpacity>
+
+                  {isExpanded && (
+                    <View style={styles.subList}>
+                      <Text style={styles.subListLabel}>
+                        Contact {m.profiles.first_name} via:
+                      </Text>
+                      {m.managers.map((mgr) => (
+                        <TouchableOpacity
+                          key={mgr.profileId}
+                          style={styles.subRow}
+                          onPress={() => startDm(mgr.profileId)}
+                          disabled={loading === mgr.profileId}
+                        >
+                          <View style={styles.subAvatar}>
+                            <Text style={styles.memberAvatarText}>
+                              {initials(mgr.firstName, mgr.lastName)}
+                            </Text>
+                          </View>
+                          <Text style={[styles.memberName, { flex: 1 }]}>
+                            {mgr.firstName} {mgr.lastName}
+                          </Text>
+                          {mgr.relationship && (
+                            <Text style={styles.managerHint}>{mgr.relationship}</Text>
+                          )}
+                          {loading === mgr.profileId && (
+                            <ActivityIndicator size="small" color="#0f172a" />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
-                <Text style={styles.memberName}>
-                  {m.profiles.first_name} {m.profiles.last_name}
-                </Text>
-                {loading === m.profile_id && <ActivityIndicator size="small" color="#0f172a" />}
-              </TouchableOpacity>
-            ))}
+              );
+            })}
           </ScrollView>
         </View>
       </View>
@@ -187,7 +258,13 @@ function NewGroupSheet({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const others = members.filter((m) => m.profile_id !== ownId);
+
+  function resolvedIds(m: TeamMember): string[] {
+    if (m.managers.length === 0) return [m.profile_id];
+    return m.managers.map((mgr) => mgr.profileId);
+  }
 
   function toggleMember(id: string) {
     setSelected((prev) => {
@@ -195,6 +272,15 @@ function NewGroupSheet({
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  function handleGroupRowPress(m: TeamMember) {
+    if (m.managers.length <= 1) {
+      const id = m.managers.length === 1 ? m.managers[0].profileId : m.profile_id;
+      toggleMember(id);
+    } else {
+      setExpandedId((prev) => (prev === m.profile_id ? null : m.profile_id));
+    }
   }
 
   async function handleCreate() {
@@ -243,27 +329,81 @@ function NewGroupSheet({
           <Text style={styles.sheetSub}>Add members</Text>
           <ScrollView bounces={false} style={{ maxHeight: 300 }}>
             {others.map((m) => {
-              const sel = selected.has(m.profile_id);
+              const ids = resolvedIds(m);
+              const anySelected = ids.some((id) => selected.has(id));
+              const isExpanded = expandedId === m.profile_id;
+              const multiManager = m.managers.length > 1;
               return (
-                <TouchableOpacity
-                  key={m.profile_id}
-                  style={styles.memberRow}
-                  onPress={() => toggleMember(m.profile_id)}
-                >
-                  <View style={styles.memberAvatar}>
-                    <Text style={styles.memberAvatarText}>
-                      {initials(m.profiles.first_name, m.profiles.last_name)}
-                    </Text>
-                  </View>
-                  <Text style={[styles.memberName, { flex: 1 }]}>
-                    {m.profiles.first_name} {m.profiles.last_name}
-                  </Text>
-                  <Ionicons
-                    name={sel ? "checkmark-circle" : "ellipse-outline"}
-                    size={22}
-                    color={sel ? "#0f172a" : "#d1d5db"}
-                  />
-                </TouchableOpacity>
+                <View key={m.profile_id}>
+                  <TouchableOpacity
+                    style={styles.memberRow}
+                    onPress={() => handleGroupRowPress(m)}
+                  >
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberAvatarText}>
+                        {initials(m.profiles.first_name, m.profiles.last_name)}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.memberName}>
+                        {m.profiles.first_name} {m.profiles.last_name}
+                      </Text>
+                      {m.managers.length === 1 && (
+                        <Text style={styles.managerHint}>
+                          via {m.managers[0].firstName} {m.managers[0].lastName}
+                        </Text>
+                      )}
+                    </View>
+                    {multiManager ? (
+                      <Ionicons
+                        name={isExpanded ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color="#9ca3af"
+                      />
+                    ) : (
+                      <Ionicons
+                        name={anySelected ? "checkmark-circle" : "ellipse-outline"}
+                        size={22}
+                        color={anySelected ? "#0f172a" : "#d1d5db"}
+                      />
+                    )}
+                  </TouchableOpacity>
+
+                  {isExpanded && (
+                    <View style={styles.subList}>
+                      <Text style={styles.subListLabel}>
+                        Add contacts for {m.profiles.first_name}:
+                      </Text>
+                      {m.managers.map((mgr) => {
+                        const isSel = selected.has(mgr.profileId);
+                        return (
+                          <TouchableOpacity
+                            key={mgr.profileId}
+                            style={styles.subRow}
+                            onPress={() => toggleMember(mgr.profileId)}
+                          >
+                            <View style={styles.subAvatar}>
+                              <Text style={styles.memberAvatarText}>
+                                {initials(mgr.firstName, mgr.lastName)}
+                              </Text>
+                            </View>
+                            <Text style={[styles.memberName, { flex: 1 }]}>
+                              {mgr.firstName} {mgr.lastName}
+                            </Text>
+                            {mgr.relationship && (
+                              <Text style={styles.managerHint}>{mgr.relationship}</Text>
+                            )}
+                            <Ionicons
+                              name={isSel ? "checkmark-circle" : "ellipse-outline"}
+                              size={20}
+                              color={isSel ? "#0f172a" : "#d1d5db"}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
               );
             })}
           </ScrollView>
@@ -347,7 +487,7 @@ export default function ChatScreen() {
         .or(`profile_a.eq.${ownId},profile_b.eq.${ownId}`),
       supabase
         .from("team_members")
-        .select("profile_id, profiles(id, first_name, last_name)")
+        .select("profile_id, profiles(id, first_name, last_name, auth_user_id)")
         .eq("team_id", membership.teamId),
     ]);
 
@@ -385,7 +525,40 @@ export default function ChatScreen() {
       .filter(Boolean) as DmChannel[];
     setDms(resolvedDms);
 
-    const mems = (membersResult.data ?? []) as unknown as TeamMember[];
+    const rawMems = (membersResult.data ?? []) as unknown as Array<{
+      profile_id: string;
+      profiles: { id: string; first_name: string; last_name: string; auth_user_id: string | null };
+    }>;
+
+    // Enrich managed profiles with their manager accounts
+    const managedIds = rawMems
+      .filter((m) => !m.profiles?.auth_user_id)
+      .map((m) => m.profile_id)
+      .filter(Boolean);
+
+    const managerMap: Record<string, MemberManager[]> = {};
+    if (managedIds.length > 0) {
+      const { data: pmRows } = await supabase
+        .from("profile_managers")
+        .select("managed_id, manager_id, relationship, profiles!profile_managers_manager_id_fkey(id, first_name, last_name)")
+        .in("managed_id", managedIds);
+      for (const row of (pmRows ?? []) as any[]) {
+        const mgr: MemberManager = {
+          profileId: row.manager_id,
+          firstName: row.profiles.first_name,
+          lastName: row.profiles.last_name,
+          relationship: row.relationship,
+        };
+        managerMap[row.managed_id] = [...(managerMap[row.managed_id] ?? []), mgr];
+      }
+    }
+
+    const mems: TeamMember[] = rawMems.map((m) => ({
+      profile_id: m.profile_id,
+      auth_user_id: m.profiles?.auth_user_id ?? null,
+      profiles: m.profiles,
+      managers: m.profiles?.auth_user_id ? [] : (managerMap[m.profile_id] ?? []),
+    }));
     setMembers(mems);
 
     // Compute unread counts
@@ -739,4 +912,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   createButtonText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  managerHint: { fontSize: 11, color: "#9ca3af", textTransform: "capitalize" },
+  subList: {
+    marginLeft: 52,
+    marginBottom: 4,
+    borderLeftWidth: 2,
+    borderLeftColor: "#f3f4f6",
+    paddingLeft: 12,
+  },
+  subListLabel: { fontSize: 11, color: "#9ca3af", paddingVertical: 4 },
+  subRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    gap: 10,
+  },
+  subAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

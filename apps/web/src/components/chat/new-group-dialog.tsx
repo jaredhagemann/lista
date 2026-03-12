@@ -10,15 +10,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Check } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type MemberManager = {
+  profileId: string;
+  firstName: string;
+  lastName: string;
+  relationship: string | null;
+};
 type TeamMemberWithProfile = Database["public"]["Tables"]["team_members"]["Row"] & {
   profiles: Profile | null;
+  managers: MemberManager[];
 };
 
 export type GroupChannelWithUnread = Channel & { unreadCount: number };
@@ -39,7 +46,9 @@ export function NewGroupDialog({
   onGroupCreated: (channel: GroupChannelWithUnread) => void;
 }) {
   const [groupName, setGroupName] = useState("");
+  // selected stores the actual account profile IDs (resolved managers, not managed profile IDs)
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [memberSearch, setMemberSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const supabase = createClient();
@@ -58,16 +67,32 @@ export function NewGroupDialog({
       })
     : others;
 
-  function toggleMember(profileId: string) {
+  function resolvedIds(m: TeamMemberWithProfile): string[] {
+    if (m.managers.length === 0) return [m.profile_id!];
+    return m.managers.map((mgr) => mgr.profileId);
+  }
+
+  function isAnySelected(m: TeamMemberWithProfile): boolean {
+    return resolvedIds(m).some((id) => selected.has(id));
+  }
+
+  function toggleManager(profileId: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(profileId)) {
-        next.delete(profileId);
-      } else {
-        next.add(profileId);
-      }
+      next.has(profileId) ? next.delete(profileId) : next.add(profileId);
       return next;
     });
+  }
+
+  function handleRowClick(m: TeamMemberWithProfile) {
+    if (m.managers.length <= 1) {
+      // Direct member or single manager — toggle
+      const id = m.managers.length === 1 ? m.managers[0].profileId : m.profile_id!;
+      toggleManager(id);
+    } else {
+      // Multiple managers — expand sub-picker
+      setExpandedId((prev) => (prev === m.profile_id ? null : m.profile_id!));
+    }
   }
 
   async function create() {
@@ -92,7 +117,6 @@ export function NewGroupDialog({
       return;
     }
 
-    // Add creator + selected members
     const memberIds = [currentUserId, ...Array.from(selected)];
     const { error: membersError } = await supabase.from("channel_members").insert(
       memberIds.map((id) => ({ channel_id: channelId, profile_id: id }))
@@ -108,6 +132,7 @@ export function NewGroupDialog({
     setGroupName("");
     setSelected(new Set());
     setMemberSearch("");
+    setExpandedId(null);
     onGroupCreated({
       id: channelId,
       team_id: teamId,
@@ -121,7 +146,7 @@ export function NewGroupDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setExpandedId(null); setMemberSearch(""); setGroupName(""); setSelected(new Set()); } }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>New Group</DialogTitle>
@@ -149,20 +174,63 @@ export function NewGroupDialog({
               .map((n) => n[0])
               .join("")
               .toUpperCase();
-            const isSelected = selected.has(m.profile_id!);
+            const anySelected = isAnySelected(m);
+            const isExpanded = expandedId === m.profile_id;
+            const multiManager = m.managers.length > 1;
+
             return (
-              <button
-                key={m.profile_id}
-                onClick={() => toggleMember(m.profile_id!)}
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
-              >
-                <Avatar className="h-8 w-8 shrink-0">
-                  {p.avatar_url && <AvatarImage src={p.avatar_url} alt={name} />}
-                  <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                </Avatar>
-                <span className="flex-1 font-medium">{name}</span>
-                {isSelected && <Check className="h-4 w-4 text-primary" />}
-              </button>
+              <div key={m.profile_id}>
+                <button
+                  onClick={() => handleRowClick(m)}
+                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+                >
+                  <Avatar className="h-8 w-8 shrink-0">
+                    {p.avatar_url && <AvatarImage src={p.avatar_url} alt={name} />}
+                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{name}</span>
+                    {m.managers.length === 1 && (
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        via {m.managers[0].firstName}
+                      </span>
+                    )}
+                  </div>
+                  {multiManager ? (
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                  ) : anySelected ? (
+                    <Check className="h-4 w-4 text-primary" />
+                  ) : null}
+                </button>
+
+                {/* Sub-picker for multiple managers */}
+                {isExpanded && (
+                  <div className="ml-11 mt-1 mb-1 space-y-0.5 border-l-2 border-muted pl-3">
+                    <p className="text-xs text-muted-foreground py-1">Add contacts for {p.first_name}:</p>
+                    {m.managers.map((mgr) => {
+                      const mgrName = [mgr.firstName, mgr.lastName].filter(Boolean).join(" ");
+                      const mgrInitials = ((mgr.firstName?.[0] ?? "") + (mgr.lastName?.[0] ?? "")).toUpperCase();
+                      const isSel = selected.has(mgr.profileId);
+                      return (
+                        <button
+                          key={mgr.profileId}
+                          onClick={(e) => { e.stopPropagation(); return toggleManager(mgr.profileId); }}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent transition-colors"
+                        >
+                          <Avatar className="h-6 w-6 shrink-0">
+                            <AvatarFallback className="text-xs">{mgrInitials}</AvatarFallback>
+                          </Avatar>
+                          <span className="flex-1 font-medium">{mgrName}</span>
+                          {mgr.relationship && (
+                            <span className="text-xs text-muted-foreground capitalize mr-1">{mgr.relationship}</span>
+                          )}
+                          {isSel && <Check className="h-3.5 w-3.5 text-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

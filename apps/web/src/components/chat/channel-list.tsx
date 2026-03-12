@@ -14,6 +14,7 @@ type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type DmChannel = Database["public"]["Tables"]["dm_channels"]["Row"];
 type TeamMemberWithProfile = Database["public"]["Tables"]["team_members"]["Row"] & {
   profiles: Profile | null;
+  managers: { profileId: string; firstName: string; lastName: string; relationship: string | null }[];
 };
 
 export type SelectedChannel =
