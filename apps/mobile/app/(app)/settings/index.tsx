@@ -111,6 +111,16 @@ export default function SettingsHubScreen() {
           />
         </View>
 
+        {/* Feedback */}
+        <View style={[styles.card, { marginTop: 8 }]}>
+          <NavRow
+            icon="chatbubble-ellipses-outline"
+            label="Send Feedback"
+            sublabel="Report a bug or request a feature"
+            onPress={() => router.push("/(app)/settings/feedback" as any)}
+          />
+        </View>
+
         {/* Sign out */}
         <View style={[styles.card, { marginTop: 8 }]}>
           <NavRow
