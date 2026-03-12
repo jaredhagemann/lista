@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useFocusEffect } from "expo-router";
 import {
   View,
   Text,
@@ -183,10 +184,12 @@ export default function ScheduleScreen() {
     setRefreshing(false);
   }, [membership?.teamId, membership?.profileId]);
 
-  useEffect(() => {
-    if (membershipLoading) return;
-    fetchEvents();
-  }, [fetchEvents, membershipLoading]);
+  useFocusEffect(
+    useCallback(() => {
+      if (membershipLoading) return;
+      fetchEvents();
+    }, [fetchEvents, membershipLoading])
+  );
 
   // Auto-scroll to first upcoming event after the list renders
   useEffect(() => {

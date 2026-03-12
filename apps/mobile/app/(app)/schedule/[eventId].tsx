@@ -33,6 +33,11 @@ type AvailabilityRow = {
   profiles: { first_name: string; last_name: string } | null;
 };
 
+type TeamMemberRow = {
+  profile_id: string;
+  profiles: { first_name: string; last_name: string } | null;
+};
+
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
     weekday: "long",
@@ -105,6 +110,7 @@ export default function EventDetailScreen() {
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [myStatus, setMyStatus] = useState<AvailabilityStatus | null>(null);
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -112,7 +118,7 @@ export default function EventDetailScreen() {
   async function fetchData() {
     if (!eventId || !membership?.profileId) return;
 
-    const [eventResult, availResult] = await Promise.all([
+    const [eventResult, availResult, membersResult] = await Promise.all([
       supabase
         .from("events")
         .select(
@@ -124,6 +130,10 @@ export default function EventDetailScreen() {
         .from("availability")
         .select("profile_id, status, profiles(first_name, last_name)")
         .eq("event_id", eventId),
+      supabase
+        .from("team_members")
+        .select("profile_id, profiles(first_name, last_name)")
+        .eq("team_id", membership.teamId),
     ]);
 
     if (eventResult.data) {
@@ -133,6 +143,7 @@ export default function EventDetailScreen() {
 
     const rows = (availResult.data ?? []) as unknown as AvailabilityRow[];
     setAvailability(rows);
+    setTeamMembers((membersResult.data ?? []) as unknown as TeamMemberRow[]);
     const mine = rows.find((r) => r.profile_id === membership.profileId);
     setMyStatus(mine?.status ?? null);
     setLoading(false);
@@ -203,12 +214,12 @@ export default function EventDetailScreen() {
   const available = availability.filter((r) => r.status === "available");
   const maybe = availability.filter((r) => r.status === "maybe");
   const unavailable = availability.filter((r) => r.status === "unavailable");
+  const respondedIds = new Set(availability.map((r) => r.profile_id));
+  const noResponse = teamMembers.filter((m) => !respondedIds.has(m.profile_id));
 
-  function memberName(r: AvailabilityRow) {
+  function memberName(r: { profiles: { first_name: string; last_name: string } | null }) {
     if (!r.profiles) return "Unknown";
-    return [r.profiles.first_name, r.profiles.last_name]
-      .filter(Boolean)
-      .join(" ");
+    return [r.profiles.first_name, r.profiles.last_name].filter(Boolean).join(" ");
   }
 
   return (
@@ -352,51 +363,62 @@ export default function EventDetailScreen() {
           </View>
         ) : null}
 
-        {/* Availability summary */}
-        {availability.length > 0 ? (
-          <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
-            <Text className="font-semibold text-gray-900 mb-3">Responses</Text>
+        {/* Availability summary — always shown */}
+        <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
+          <Text className="font-semibold text-gray-900 mb-3">Responses</Text>
 
-            {available.length > 0 ? (
-              <View className="mb-3">
-                <Text className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">
-                  Available ({available.length})
+          {available.length > 0 ? (
+            <View className="mb-3">
+              <Text className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">
+                Available ({available.length})
+              </Text>
+              {available.map((r) => (
+                <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
+                  {memberName(r)}
                 </Text>
-                {available.map((r) => (
-                  <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
-                    {memberName(r)}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
+              ))}
+            </View>
+          ) : null}
 
-            {maybe.length > 0 ? (
-              <View className="mb-3">
-                <Text className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">
-                  Maybe ({maybe.length})
+          {maybe.length > 0 ? (
+            <View className="mb-3">
+              <Text className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">
+                Maybe ({maybe.length})
+              </Text>
+              {maybe.map((r) => (
+                <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
+                  {memberName(r)}
                 </Text>
-                {maybe.map((r) => (
-                  <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
-                    {memberName(r)}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
+              ))}
+            </View>
+          ) : null}
 
-            {unavailable.length > 0 ? (
-              <View>
-                <Text className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">
-                  Unavailable ({unavailable.length})
+          {unavailable.length > 0 ? (
+            <View className="mb-3">
+              <Text className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">
+                Unavailable ({unavailable.length})
+              </Text>
+              {unavailable.map((r) => (
+                <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
+                  {memberName(r)}
                 </Text>
-                {unavailable.map((r) => (
-                  <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
-                    {memberName(r)}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
-          </View>
-        ) : null}
+              ))}
+            </View>
+          ) : null}
+
+          {noResponse.length > 0 ? (
+            <View>
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                No Response ({noResponse.length})
+              </Text>
+              {noResponse.map((m) => (
+                <Text key={m.profile_id} className="text-sm text-gray-400 py-0.5">
+                  {memberName(m)}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
