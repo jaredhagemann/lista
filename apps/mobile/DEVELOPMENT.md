@@ -52,21 +52,31 @@ Last updated: 2026-03-11
 
 ### What's not built yet (Phase 6)
 
-#### Track A — Code only (no Apple Developer Account needed)
-- [ ] AASA file at `lista.team/.well-known/apple-app-site-association` (web)
-- [ ] Associated Domains entitlement in `app.json` (`applinks:lista.team`)
-- [ ] Invite accept screen (`app/(auth)/invite/[id].tsx`)
-- [ ] Deep link routing via `expo-linking`
-- [ ] Push notifications: `expo-notifications` setup, token registration, store `expo_push_token` in `push_subscriptions`, fan-out updates to `/api/notifications/send` and `/api/chat/notify`
-- [ ] `eas.json` build profiles
+#### Track A — Code only ✅ (2026-03-12)
+- [x] AASA file at `lista.team/.well-known/apple-app-site-association` (web route handler)
+- [x] Associated Domains entitlement in `app.json` (`applinks:lista.team`)
+- [x] Invite accept screen (`app/invite/[id].tsx` — outside auth/app groups, handles both signed-in and unauthenticated states)
+- [x] Push notifications: `expo-notifications` setup, token registration, `expo_push_token` column in `push_subscriptions` (migration `20260312000001_expo_push_token.sql`), fan-out in `/api/notifications/send`, `/api/chat/notify`, and `/api/cron/reminders`
+- [x] `eas.json` build profiles (development, preview, production)
+
+**Push notification notes:**
+- Token registered on every app launch after sign-in (old tokens cleaned up automatically)
+- Runs silently on Simulator (no token available — gracefully skipped)
+- Requires physical device + APNs key to deliver (Track B)
+
+**Invite deep link notes:**
+- `app/invite/[id].tsx` is outside `(auth)`/`(app)` groups — accessible to both signed-in and unauthenticated users
+- If not signed in: stores `pending_invite_id` in SecureStore → navigates to login → after sign-in, root layout detects pending invite and routes back
+- Web API: `GET /api/invite/[id]` (public) + `POST /api/invite/[id]/accept` (Bearer token)
 
 #### Track B — Requires Apple Developer Account ($99/yr)
 - [ ] Bundle ID registration (`com.acg.lista`) in Apple Developer Portal
 - [ ] Associated Domains capability enabled on App ID
-- [ ] APNs Auth Key (`.p8`) — generate in Developer Portal, upload via `eas credentials`
+- [ ] APNs Auth Key (`.p8`) — generate in Developer Portal → Keys; upload via `eas credentials`
+- [ ] Replace `APPLE_TEAM_ID` placeholder in AASA file and `eas.json` with real 10-char Team ID
 - [ ] App Store Connect app record
-- [ ] EAS Build (signed `.ipa`)
-- [ ] TestFlight distribution
+- [ ] EAS Build (signed `.ipa`) — `eas build --platform ios --profile production`
+- [ ] TestFlight distribution — `eas submit --platform ios`
 
 #### Also deferred from earlier phases
 - [ ] Avatar upload in profile edit (requires `expo-image-picker`)

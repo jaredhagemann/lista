@@ -356,8 +356,10 @@ Profile edit, notification preferences, managed players list/create. Profile swi
 - `app/(app)/settings/managed-players.tsx` — Lists managed profiles from AppContext; inline add form POSTs to `/api/managed-profiles`
 - `apps/web/src/app/api/managed-profiles/route.ts` — Authenticated API route (Bearer token); uses service role to create managed profiles (same logic as web's `createManagedProfile` server action)
 
-### Phase 6 — Invite deep links + Polish
-Universal Links for invite emails opening the app. App icon, splash screen, App Store metadata, TestFlight build.
+### ~~Phase 6 — Track A~~ ✅ (2026-03-12)
+Universal Links (AASA file at `/.well-known/apple-app-site-association`), Associated Domains in `app.json`, invite deep link screen (`app/invite/[id].tsx`), Expo push notifications (`expo-notifications`, `expo_push_token` column, fan-out in all notification routes), `eas.json` build profiles.
+
+**Remaining (Track B — requires Apple Developer Account):** Bundle ID registration, APNs key upload, App Store Connect record, EAS Build, TestFlight. Replace `APPLE_TEAM_ID` placeholder in AASA + `eas.json` when account is approved.
 
 ---
 
