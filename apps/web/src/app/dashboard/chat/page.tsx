@@ -139,7 +139,30 @@ export default async function ChatPage() {
     .select("*, profiles(*)")
     .eq("team_id", teamId)
     .order("created_at");
-  const teamMembers = (rawMembers ?? []) as TeamMemberWithProfile[];
+  const rawTeamMembers = (rawMembers ?? []) as TeamMemberWithProfile[];
+
+  // Enrich managed profiles (auth_user_id IS NULL) with their manager accounts
+  const managedIds = rawTeamMembers
+    .filter((m) => m.profiles && !m.profiles.auth_user_id)
+    .map((m) => m.profile_id!)
+    .filter(Boolean);
+
+  const managerMap: Record<string, { profileId: string; firstName: string; lastName: string; relationship: string | null }[]> = {};
+  if (managedIds.length > 0) {
+    const { data: pmRows } = await supabase
+      .from("profile_managers")
+      .select("managed_id, manager_id, relationship, profiles!profile_managers_manager_id_fkey(id, first_name, last_name)")
+      .in("managed_id", managedIds);
+    for (const row of (pmRows ?? []) as { managed_id: string; manager_id: string; relationship: string | null; profiles: { first_name: string; last_name: string } }[]) {
+      const mgr = { profileId: row.manager_id, firstName: row.profiles.first_name, lastName: row.profiles.last_name, relationship: row.relationship };
+      managerMap[row.managed_id] = [...(managerMap[row.managed_id] ?? []), mgr];
+    }
+  }
+
+  const teamMembers = rawTeamMembers.map((m) => ({
+    ...m,
+    managers: m.profiles?.auth_user_id ? [] : (managerMap[m.profile_id!] ?? []),
+  }));
 
   // ── Fetch initial messages for team channel (last 50) ───────────────────
   let initialMessages: MessageWithProfile[] = [];

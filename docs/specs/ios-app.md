@@ -334,11 +334,27 @@ Team roster, member detail. (Availability matrix removed — RSVP inline on even
 - `app/(app)/team/index.tsx` — Roster grouped into Players (sorted by jersey number) and Staff (coaches → managers → parents); pending invites shown with dashed border + clock badge (admin only); tappable rows navigate to member detail
 - `app/(app)/team/[memberId].tsx` — Read-only member detail: avatar, name, role badge, profile fields (email gated to admin/own profile, birthday, gender, jersey number), managers list
 
-### Phase 4 — Chat
-Channel list, message thread, real-time delivery. New DM and group creation. Push notifications via APNs.
+### ~~Phase 4 — Chat~~ ✅ (2026-03-11)
+Channel list, message threads, real-time delivery. New DM and group creation. Push notifications deferred to Phase 6.
 
-### Phase 5 — Settings + Managed Profiles
-Profile edit (with avatar upload), team settings, notification preferences, managed players list/create, profile switcher.
+**Implemented:**
+- `app/(app)/chat/_layout.tsx` — Stack navigator
+- `app/(app)/chat/index.tsx` — Channel list: Team Chat, Direct Messages, Groups sections; unread badges computed on load and incremented via Realtime INSERT subscription; New DM sheet (search + select teammate, canonical UUID ordering); New Group sheet (name + multi-select members)
+- `app/(app)/chat/[channelId].tsx` — Team/group message thread: inverted FlatList, optimistic send, Realtime INSERT/UPDATE subscriptions, soft-delete via long-press, mark-read on open
+- `app/(app)/chat/dm/[dmId].tsx` — DM thread: same pattern, updates last_read_a/b based on position
+- `components/chat/MessageItem.tsx` — Message bubble: own (dark) vs other (light), sender grouping, deleted placeholder, long-press delete
+- `components/chat/MessageInput.tsx` — Auto-growing input with send button
+
+### ~~Phase 5 — Settings + Managed Profiles~~ ✅ (2026-03-11)
+Profile edit, notification preferences, managed players list/create. Profile switcher already completed between Phase 2–3. Avatar upload and team settings deferred to Phase 6.
+
+**Implemented:**
+- `app/(app)/settings/_layout.tsx` — Stack navigator
+- `app/(app)/settings/index.tsx` — Hub: profile card (avatar, name, role), nav rows to sub-screens, Sign Out
+- `app/(app)/settings/profile.tsx` — Edit first name, last name, birthday, gender (pill selector)
+- `app/(app)/settings/notifications.tsx` — Email + push + chat push + chat digest toggles; upserts `notification_preferences`
+- `app/(app)/settings/managed-players.tsx` — Lists managed profiles from AppContext; inline add form POSTs to `/api/managed-profiles`
+- `apps/web/src/app/api/managed-profiles/route.ts` — Authenticated API route (Bearer token); uses service role to create managed profiles (same logic as web's `createManagedProfile` server action)
 
 ### Phase 6 — Invite deep links + Polish
 Universal Links for invite emails opening the app. App icon, splash screen, App Store metadata, TestFlight build.
