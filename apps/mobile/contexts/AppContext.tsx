@@ -19,6 +19,8 @@ export type Profile = {
   email: string | null;
   avatar_url: string | null;
   active_team_id: string | null;
+  birthday: string | null;
+  gender: string | null;
 };
 
 export type Team = {
@@ -104,7 +106,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // 2. Fetch own profile
     const { data: ownData } = await supabase
       .from("profiles")
-      .select("id, first_name, last_name, email, avatar_url, active_team_id")
+      .select("id, first_name, last_name, email, avatar_url, active_team_id, birthday, gender")
       .eq("id", userId)
       .single();
 

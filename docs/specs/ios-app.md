@@ -345,8 +345,16 @@ Channel list, message threads, real-time delivery. New DM and group creation. Pu
 - `components/chat/MessageItem.tsx` — Message bubble: own (dark) vs other (light), sender grouping, deleted placeholder, long-press delete
 - `components/chat/MessageInput.tsx` — Auto-growing input with send button
 
-### Phase 5 — Settings + Managed Profiles
-Profile edit (with avatar upload), team settings, notification preferences, managed players list/create, profile switcher.
+### ~~Phase 5 — Settings + Managed Profiles~~ ✅ (2026-03-11)
+Profile edit, notification preferences, managed players list/create. Profile switcher already completed between Phase 2–3. Avatar upload and team settings deferred to Phase 6.
+
+**Implemented:**
+- `app/(app)/settings/_layout.tsx` — Stack navigator
+- `app/(app)/settings/index.tsx` — Hub: profile card (avatar, name, role), nav rows to sub-screens, Sign Out
+- `app/(app)/settings/profile.tsx` — Edit first name, last name, birthday, gender (pill selector)
+- `app/(app)/settings/notifications.tsx` — Email + push + chat push + chat digest toggles; upserts `notification_preferences`
+- `app/(app)/settings/managed-players.tsx` — Lists managed profiles from AppContext; inline add form POSTs to `/api/managed-profiles`
+- `apps/web/src/app/api/managed-profiles/route.ts` — Authenticated API route (Bearer token); uses service role to create managed profiles (same logic as web's `createManagedProfile` server action)
 
 ### Phase 6 — Invite deep links + Polish
 Universal Links for invite emails opening the app. App icon, splash screen, App Store metadata, TestFlight build.
