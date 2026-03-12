@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { supabase } from "../../../../lib/supabase";
+import * as Crypto from "expo-crypto";
 import { useSession } from "../../../_layout";
 import { MessageItem, type Message } from "../../../../components/chat/MessageItem";
 import { MessageInput } from "../../../../components/chat/MessageInput";
@@ -126,7 +127,7 @@ export default function DmScreen() {
   }, [dmId, ownId]);
 
   async function handleSend(text: string) {
-    const id = crypto.randomUUID();
+    const id = Crypto.randomUUID();
     const now = new Date().toISOString();
     const optimistic: Message = {
       id,

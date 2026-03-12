@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { supabase } from "../../../lib/supabase";
+import * as Crypto from "expo-crypto";
 import { useAppContext } from "../../../contexts/AppContext";
 import { useSession } from "../../_layout";
 import { MessageItem, type Message } from "../../../components/chat/MessageItem";
@@ -118,7 +119,7 @@ export default function ChannelScreen() {
   }, [channelId]);
 
   async function handleSend(text: string) {
-    const id = crypto.randomUUID();
+    const id = Crypto.randomUUID();
     const now = new Date().toISOString();
     const optimistic: Message = {
       id,

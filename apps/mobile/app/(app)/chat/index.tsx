@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
+import * as Crypto from "expo-crypto";
 import { useAppContext } from "../../../contexts/AppContext";
 import { useSession } from "../../_layout";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -286,7 +287,7 @@ function NewGroupSheet({
   async function handleCreate() {
     if (!name.trim()) return Alert.alert("Name required", "Enter a group name.");
     setLoading(true);
-    const channelId = crypto.randomUUID();
+    const channelId = Crypto.randomUUID();
     const { error: chanErr } = await supabase.from("channels").insert({
       id: channelId,
       team_id: teamId,
