@@ -4,15 +4,12 @@ import { NextResponse } from "next/server";
 // Tells iOS that lista.team/invite/* and lista.team/auth/* should open the
 // Lista app instead of Safari.
 //
-// TODO: Replace APPLE_TEAM_ID with the 10-character Team ID from
-//       developer.apple.com → Membership once the Apple Developer account
-//       is approved.
 const AASA = {
   applinks: {
     apps: [],
     details: [
       {
-        appID: "APPLE_TEAM_ID.com.acg.lista",
+        appID: "5CY96K8QSL.com.acg.lista",
         paths: ["/invite/*", "/auth/*"],
       },
     ],
