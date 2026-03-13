@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.acg.lista",
+      "bundleIdentifier": "app.lista.team",
       "associatedDomains": ["applinks:lista.team"]
     },
     "android": {

@@ -9,7 +9,7 @@ const AASA = {
     apps: [],
     details: [
       {
-        appID: "5CY96K8QSL.com.acg.lista",
+        appID: "5CY96K8QSL.app.lista.team",
         paths: ["/invite/*", "/auth/*"],
       },
     ],

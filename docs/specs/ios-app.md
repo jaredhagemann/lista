@@ -16,7 +16,7 @@
 | Apple Developer Account | Deferred — enroll when ready for device testing or App Store | Development proceeds with Expo Go + iOS Simulator (free); enrollment unlocks APNs, TestFlight, App Store |
 | Enrollment type | Individual (can upgrade to Organization later) | Individual enrolls in 24-48h; Organization requires D-U-N-S number (~1-2 weeks) but shows company name in App Store |
 | Initial platform | iOS first | Android follow-on after iOS ships |
-| Bundle identifier | `com.acg.lista` | `com.acg` = Ashton Consulting Group namespace for all future apps; permanent after first App Store submission |
+| Bundle identifier | `app.lista.team` | Reverse of the production domain `lista.team`; permanent after first App Store submission |
 | App display name | "Lista" | Name shown under app icon on device |
 | Production domain | `lista.team` | Used for Universal Links (AASA file) |
 | Universal Links scope | `/invite/*` and `/auth/*` | Auth emails (password reset, email confirm) open in-app on mobile |
