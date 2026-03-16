@@ -17,7 +17,7 @@
 | Enrollment type | Individual (can upgrade to Organization later) | Individual enrolls in 24-48h; Organization requires D-U-N-S number (~1-2 weeks) but shows company name in App Store |
 | Initial platform | iOS first | Android follow-on after iOS ships |
 | Bundle identifier | `app.lista.team` | Reverse of the production domain `lista.team`; permanent after first App Store submission |
-| App display name | "Lista" | Name shown under app icon on device |
+| App display name | "Lista Team" | Name shown under app icon on device ("Lista" was taken on the App Store) |
 | Production domain | `lista.team` | Used for Universal Links (AASA file) |
 | Universal Links scope | `/invite/*` and `/auth/*` | Auth emails (password reset, email confirm) open in-app on mobile |
 | Schedule view | List only (no calendar grid) | Calendar grid not practical on vertical mobile screen |
