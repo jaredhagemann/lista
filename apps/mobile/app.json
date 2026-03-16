@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "lista",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -18,7 +18,10 @@
       "bundleIdentifier": "app.lista.team",
       "associatedDomains": [
         "applinks:lista.team"
-      ]
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
