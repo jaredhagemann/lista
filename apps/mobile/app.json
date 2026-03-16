@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.lista.team",
-      "associatedDomains": ["applinks:lista.team"]
+      "associatedDomains": [
+        "applinks:lista.team"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -44,6 +46,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "21235285-d9af-4e28-a404-ce0a2f301c2d"
+      }
     }
   }
 }
