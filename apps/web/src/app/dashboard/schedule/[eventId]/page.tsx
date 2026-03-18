@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { EventDetail } from "@/components/calendar/event-detail";
+import { getActiveMembership, getActiveProfileId } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -29,6 +30,14 @@ export default async function EventDetailPage({
 
   if (!user) redirect("/login");
 
+  // Resolve active profile (may be a managed player) and the active membership.
+  // getActiveMembership handles both direct team_members rows AND parent-only
+  // managers whose access comes via profile_managers.
+  const [activeProfileId, activeMembership] = await Promise.all([
+    getActiveProfileId(user.id),
+    getActiveMembership(supabase, user.id),
+  ]);
+
   const { data: rawEvent, error } = await supabase
     .from("events")
     .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address)")
@@ -41,20 +50,13 @@ export default async function EventDetailPage({
 
   const event = rawEvent as Event;
 
-  // Check if user is a member of this team and get team uniforms
-  const { data: rawMembership } = await supabase
-    .from("team_members")
-    .select("role, teams(home_uniform, away_uniform)")
-    .eq("team_id", event.team_id!)
-    .eq("profile_id", user.id)
-    .single();
-
-  if (!rawMembership) {
+  // Verify the active membership is for the same team as this event.
+  if (!activeMembership || activeMembership.team_id !== event.team_id) {
     redirect("/dashboard");
   }
 
-  const membership = rawMembership as MembershipWithTeam;
-  const isAdmin = membership.role === "coach" || membership.role === "manager";
+  const membership = activeMembership.teams as unknown as MembershipWithTeam;
+  const isAdmin = activeMembership.role === "coach" || activeMembership.role === "manager";
   const creatorProfile = event.profiles as { first_name: string; last_name: string } | null;
   const creatorName = creatorProfile
     ? [creatorProfile.first_name, creatorProfile.last_name].filter(Boolean).join(" ")
@@ -99,7 +101,7 @@ export default async function EventDetailPage({
       initialEdit={edit === "true"}
       homeUniform={membership.teams?.home_uniform ?? null}
       awayUniform={membership.teams?.away_uniform ?? null}
-      currentUserId={user.id}
+      currentUserId={activeProfileId}
       availabilityRows={availabilityData}
       members={membersData}
     />

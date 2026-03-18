@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect, notFound } from "next/navigation";
 import { RosterProfile } from "@/components/team/roster-profile";
-import { getActiveProfileId } from "@/lib/get-active-membership";
+import { getActiveProfileId, getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
 type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
@@ -43,20 +43,30 @@ export default async function MemberProfilePage({
 
   const member = rawMember as TeamMemberWithProfile;
 
-  // Fetch the active profile's membership on the same team to determine privileges
+  // Determine the viewer's role on this team. For direct members, query
+  // team_members. For parent-only managers (no team_members row of their own),
+  // fall back to getActiveMembership which handles profile_managers access.
   const { data: rawCurrentMembership } = await supabase
     .from("team_members")
-    .select("*")
+    .select("role")
     .eq("team_id", member.team_id!)
     .eq("profile_id", activeProfileId)
-    .single();
+    .maybeSingle();
 
-  if (!rawCurrentMembership) redirect("/dashboard");
+  let isAdmin = false;
+  if (rawCurrentMembership) {
+    isAdmin =
+      rawCurrentMembership.role === "coach" ||
+      rawCurrentMembership.role === "manager";
+  } else {
+    // No direct membership — check access via profile_managers
+    const activeMembership = await getActiveMembership(supabase, user.id);
+    if (!activeMembership || activeMembership.team_id !== member.team_id) {
+      redirect("/dashboard");
+    }
+    // isAdmin stays false: profile managers have no admin role on the team
+  }
 
-  const currentMembership = rawCurrentMembership as TeamMemberRow;
-  const isAdmin =
-    currentMembership.role === "coach" ||
-    currentMembership.role === "manager";
   // "Own profile" means the viewed profile belongs to the active profile
   const isOwnProfile = member.profile_id === activeProfileId;
 
