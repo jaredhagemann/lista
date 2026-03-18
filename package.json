@@ -20,5 +20,10 @@
   },
   "lint-staged": {
     "apps/web/**/*.{ts,tsx}": "pnpm --filter @lista/web exec eslint --fix"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "^19.2.0"
+    }
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendPushNotification } from "@/lib/notifications/push";
+import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
 import type { Database } from "@/types/database";
 import { notificationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -133,16 +134,23 @@ export async function POST(request: Request) {
   const bodyPreview =
     message.body.length > 100 ? message.body.slice(0, 97) + "…" : message.body;
 
-  const pushPromises = pushSubs.map((sub) =>
-    sendPushNotification(
-      { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-      {
-        title: channelId ? `${senderName} in ${channelLabel}` : senderName,
-        body: bodyPreview,
-        url: "/dashboard/chat",
-      }
-    ).catch((err) => console.error("Chat push notification failed:", err))
-  );
+  const chatPushPayload = {
+    title: channelId ? `${senderName} in ${channelLabel}` : senderName,
+    body: bodyPreview,
+    url: "/dashboard/chat",
+  };
+
+  const pushPromises = pushSubs.map((sub) => {
+    if (sub.expo_push_token) {
+      return sendExpoPushNotification(sub.expo_push_token, chatPushPayload).catch(
+        (err) => console.error("Expo chat push notification failed:", err)
+      );
+    }
+    return sendPushNotification(
+      { endpoint: sub.endpoint!, p256dh: sub.p256dh!, auth: sub.auth! },
+      chatPushPayload
+    ).catch((err) => console.error("Chat push notification failed:", err));
+  });
 
   await Promise.allSettled(pushPromises);
 

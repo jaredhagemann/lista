@@ -1,17 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useFocusEffect } from "expo-router";
 import {
   View,
   Text,
-  SectionList,
+  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { useAppContext } from "../../../contexts/AppContext";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 
@@ -25,15 +29,16 @@ type Event = {
   locations: { name: string } | null;
 };
 
-type Section = {
-  title: string;
-  data: Event[];
-};
+type ListItem =
+  | { type: "event"; event: Event }
+  | { type: "today-divider" };
 
-function formatDateHeader(iso: string) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
+    weekday: "short",
+    month: "short",
     day: "numeric",
   });
 }
@@ -47,12 +52,9 @@ function formatTime(iso: string) {
 
 function eventTypeBadge(type: string) {
   switch (type) {
-    case "game":
-      return { bg: "#dcfce7", text: "#15803d" };
-    case "practice":
-      return { bg: "#dbeafe", text: "#1d4ed8" };
-    default:
-      return { bg: "#f3e8ff", text: "#7e22ce" };
+    case "game":     return { bg: "#dcfce7", text: "#15803d" };
+    case "practice": return { bg: "#dbeafe", text: "#1d4ed8" };
+    default:         return { bg: "#f3e8ff", text: "#7e22ce" };
   }
 }
 
@@ -68,18 +70,7 @@ const RSVP_STYLE: Record<
 function RsvpBadge({ status }: { status: AvailabilityStatus }) {
   const s = RSVP_STYLE[status];
   return (
-    <View
-      style={{
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        borderWidth: 1.5,
-        borderColor: s.border,
-        backgroundColor: s.bg,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
+    <View style={[styles.rsvpCircle, { borderColor: s.border, backgroundColor: s.bg }]}>
       <Text style={{ color: s.text, fontSize: 12, fontWeight: "700", lineHeight: 16 }}>
         {s.label}
       </Text>
@@ -87,33 +78,68 @@ function RsvpBadge({ status }: { status: AvailabilityStatus }) {
   );
 }
 
-function groupByDate(events: Event[]): Section[] {
-  const map = new Map<string, Event[]>();
-  for (const event of events) {
-    const key = event.start_time.slice(0, 10);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(event);
-  }
-  return Array.from(map.entries()).map(([dateKey, data]) => ({
-    title: formatDateHeader(dateKey + "T12:00:00"),
-    data,
-  }));
+/** Midnight local time for a given ISO date string or Date */
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
+
+function buildItems(events: Event[]): { items: ListItem[]; firstUpcomingIndex: number } {
+  const today = startOfDay(new Date());
+  const items: ListItem[] = [];
+  let dividerInserted = false;
+  let firstUpcomingIndex = -1;
+
+  for (const event of events) {
+    const eventDay = startOfDay(new Date(event.start_time));
+
+    // Insert "Today" divider before the first event on or after today
+    if (!dividerInserted && eventDay >= today) {
+      items.push({ type: "today-divider" });
+      dividerInserted = true;
+    }
+
+    // Track the first non-cancelled upcoming event for auto-scroll
+    if (
+      firstUpcomingIndex === -1 &&
+      !event.is_cancelled &&
+      new Date(event.start_time) >= new Date()
+    ) {
+      firstUpcomingIndex = items.length;
+    }
+
+    items.push({ type: "event", event });
+  }
+
+  // All events are in the past — divider goes at the end
+  if (!dividerInserted) {
+    items.push({ type: "today-divider" });
+  }
+
+  // If the divider itself is the scroll target (no upcoming events found yet),
+  // scroll to it so the user sees "Today" at the top
+  if (firstUpcomingIndex === -1) {
+    const dividerIdx = items.findIndex((i) => i.type === "today-divider");
+    firstUpcomingIndex = dividerIdx;
+  }
+
+  return { items, firstUpcomingIndex };
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function ScheduleScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { membership, loading: membershipLoading } = useAppContext();
+  const listRef = useRef<FlatList<ListItem>>(null);
 
-  const [sections, setSections] = useState<Section[]>([]);
-  const [myAvailability, setMyAvailability] = useState<
-    Map<string, AvailabilityStatus>
-  >(new Map());
+  const [items, setItems] = useState<ListItem[]>([]);
+  const [firstUpcomingIndex, setFirstUpcomingIndex] = useState(-1);
+  const [myAvailability, setMyAvailability] = useState<Map<string, AvailabilityStatus>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const isAdmin =
-    membership?.role === "coach" || membership?.role === "manager";
+  const isAdmin = membership?.role === "coach" || membership?.role === "manager";
 
   useEffect(() => {
     navigation.setOptions({
@@ -128,15 +154,13 @@ export default function ScheduleScreen() {
     });
   }, [isAdmin]);
 
-  async function fetchEvents() {
+  const fetchEvents = useCallback(async () => {
     if (!membership?.teamId || !membership?.profileId) return;
 
     const [eventsResult, availResult] = await Promise.all([
       supabase
         .from("events")
-        .select(
-          "id, title, event_type, start_time, end_time, is_cancelled, locations(name)"
-        )
+        .select("id, title, event_type, start_time, end_time, is_cancelled, locations(name)")
         .eq("team_id", membership.teamId)
         .order("start_time", { ascending: true }),
       supabase
@@ -145,24 +169,40 @@ export default function ScheduleScreen() {
         .eq("profile_id", membership.profileId),
     ]);
 
-    setSections(groupByDate((eventsResult.data ?? []) as unknown as Event[]));
+    const events = (eventsResult.data ?? []) as unknown as Event[];
+    const { items: newItems, firstUpcomingIndex: idx } = buildItems(events);
+    setItems(newItems);
+    setFirstUpcomingIndex(idx);
 
     const statusMap = new Map<string, AvailabilityStatus>();
     for (const row of availResult.data ?? []) {
-      if (row.event_id) {
-        statusMap.set(row.event_id, row.status as AvailabilityStatus);
-      }
+      if (row.event_id) statusMap.set(row.event_id, row.status as AvailabilityStatus);
     }
     setMyAvailability(statusMap);
 
     setLoading(false);
     setRefreshing(false);
-  }
+  }, [membership?.teamId, membership?.profileId]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (membershipLoading) return;
+      fetchEvents();
+    }, [fetchEvents, membershipLoading])
+  );
+
+  // Auto-scroll to first upcoming event after the list renders
   useEffect(() => {
-    if (membershipLoading) return;
-    fetchEvents();
-  }, [membership?.teamId, membership?.profileId, membershipLoading]);
+    if (firstUpcomingIndex <= 0 || items.length === 0) return;
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({
+        index: firstUpcomingIndex,
+        animated: false,
+        viewPosition: 0,
+      });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [firstUpcomingIndex, items.length]);
 
   function onRefresh() {
     setRefreshing(true);
@@ -171,123 +211,99 @@ export default function ScheduleScreen() {
 
   if (membershipLoading || loading) {
     return (
-      <SafeAreaView
-        className="flex-1 bg-white justify-center items-center"
-        edges={["bottom"]}
-      >
+      <SafeAreaView style={styles.center} edges={["bottom"]}>
         <ActivityIndicator size="large" color="#0f172a" />
       </SafeAreaView>
     );
   }
 
-  if (sections.length === 0) {
+  if (items.length === 0) {
     return (
-      <SafeAreaView
-        className="flex-1 bg-white justify-center items-center px-6"
-        edges={["bottom"]}
-      >
+      <SafeAreaView style={styles.center} edges={["bottom"]}>
         <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
-        <Text className="text-gray-400 text-base mt-3 text-center">
-          No events scheduled yet.
-        </Text>
+        <Text style={styles.emptyText}>No events scheduled yet.</Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["bottom"]}>
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <FlatList
+        ref={listRef}
+        data={items}
+        keyExtractor={(item, index) =>
+          item.type === "today-divider" ? "today-divider" : item.event.id
         }
-        contentContainerStyle={{ paddingVertical: 8 }}
-        stickySectionHeadersEnabled={true}
-        renderSectionHeader={({ section }) => (
-          <View className="bg-gray-50 px-4 py-2 border-b border-gray-100">
-            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {section.title}
-            </Text>
-          </View>
-        )}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={styles.listContent}
+        onScrollToIndexFailed={(info) => {
+          // Fallback if index isn't rendered yet — scroll to approximate offset
+          listRef.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: false,
+          });
+        }}
         renderItem={({ item }) => {
-          const badge = eventTypeBadge(item.event_type);
-          const rsvpStatus = myAvailability.get(item.id) ?? null;
+          if (item.type === "today-divider") {
+            return (
+              <View style={styles.todayDivider}>
+                <View style={styles.todayLine} />
+                <Text style={styles.todayLabel}>Today</Text>
+                <View style={styles.todayLine} />
+              </View>
+            );
+          }
+
+          const { event } = item;
+          const badge = eventTypeBadge(event.event_type);
+          const rsvpStatus = myAvailability.get(event.id) ?? null;
+
           return (
             <TouchableOpacity
-              onPress={() => router.push(`/(app)/schedule/${item.id}` as any)}
-              className="bg-white mx-3 my-1.5 rounded-xl border border-gray-100 px-4 py-3"
+              onPress={() => router.push(`/(app)/schedule/${event.id}` as any)}
+              style={styles.card}
             >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1 mr-2">
+              {/* Date header inside card */}
+              <Text style={styles.cardDate}>{formatDate(event.start_time)}</Text>
+
+              <View style={styles.cardBody}>
+                <View style={{ flex: 1, marginRight: 8 }}>
                   <Text
-                    className={`font-semibold text-base ${item.is_cancelled ? "line-through text-gray-400" : "text-gray-900"}`}
+                    style={[
+                      styles.cardTitle,
+                      event.is_cancelled && styles.cardTitleCancelled,
+                    ]}
                     numberOfLines={1}
                   >
-                    {item.title}
+                    {event.title}
                   </Text>
-                  <Text className="text-sm text-gray-500 mt-0.5">
-                    {formatTime(item.start_time)} – {formatTime(item.end_time)}
+                  <Text style={styles.cardTime}>
+                    {formatTime(event.start_time)} – {formatTime(event.end_time)}
                   </Text>
-                  {item.locations?.name ? (
-                    <View className="flex-row items-center mt-0.5">
-                      <Ionicons
-                        name="location-outline"
-                        size={12}
-                        color="#9ca3af"
-                      />
-                      <Text className="text-sm text-gray-400 ml-0.5">
-                        {item.locations.name}
-                      </Text>
+                  {event.locations?.name ? (
+                    <View style={styles.locationRow}>
+                      <Ionicons name="location-outline" size={12} color="#9ca3af" />
+                      <Text style={styles.locationText}>{event.locations.name}</Text>
                     </View>
                   ) : null}
                 </View>
 
-                {/* Right column: type pill + RSVP indicator */}
-                <View style={{ alignItems: "flex-end", gap: 6 }}>
-                  <View
-                    style={{
-                      backgroundColor: badge.bg,
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
-                      borderRadius: 99,
-                    }}
-                  >
-                    <Text
-                      style={{ color: badge.text, fontSize: 11 }}
-                      className="font-medium capitalize"
-                    >
-                      {item.event_type}
+                {/* Right column: type pill + RSVP */}
+                <View style={styles.rightCol}>
+                  <View style={[styles.typePill, { backgroundColor: badge.bg }]}>
+                    <Text style={[styles.typePillText, { color: badge.text }]}>
+                      {event.event_type}
                     </Text>
                   </View>
 
-                  {item.is_cancelled ? (
-                    <View
-                      style={{
-                        backgroundColor: "#fee2e2",
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderRadius: 99,
-                      }}
-                    >
-                      <Text style={{ color: "#dc2626", fontSize: 11 }}>
-                        Cancelled
-                      </Text>
+                  {event.is_cancelled ? (
+                    <View style={styles.cancelledPill}>
+                      <Text style={styles.cancelledPillText}>Cancelled</Text>
                     </View>
                   ) : rsvpStatus ? (
                     <RsvpBadge status={rsvpStatus} />
                   ) : (
-                    <View
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 12,
-                        borderWidth: 1.5,
-                        borderColor: "#d1d5db",
-                        borderStyle: "dashed",
-                      }}
-                    />
+                    <View style={styles.rsvpEmpty} />
                   )}
                 </View>
               </View>
@@ -298,3 +314,112 @@ export default function ScheduleScreen() {
     </SafeAreaView>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#f9fafb" },
+  center: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyText: { color: "#9ca3af", fontSize: 15 },
+  listContent: { paddingVertical: 8 },
+
+  // Today divider
+  todayDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginVertical: 8,
+    gap: 8,
+  },
+  todayLine: { flex: 1, height: 1, backgroundColor: "#0f172a" },
+  todayLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0f172a",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+
+  // Event card
+  card: {
+    backgroundColor: "#ffffff",
+    marginHorizontal: 12,
+    marginVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#f3f4f6",
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  cardDate: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  cardBody: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  cardTitleCancelled: {
+    textDecorationLine: "line-through",
+    color: "#9ca3af",
+  },
+  cardTime: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 3,
+    gap: 2,
+  },
+  locationText: { fontSize: 12, color: "#9ca3af" },
+
+  rightCol: { alignItems: "flex-end", gap: 6 },
+  typePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 99,
+  },
+  typePillText: { fontSize: 11, fontWeight: "600", textTransform: "capitalize" },
+  cancelledPill: {
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 99,
+  },
+  cancelledPillText: { color: "#dc2626", fontSize: 11 },
+  rsvpCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rsvpEmpty: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#d1d5db",
+    borderStyle: "dashed",
+  },
+});

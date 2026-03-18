@@ -7,6 +7,7 @@ import {
   type FieldChange,
 } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
+import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
 import type { Database } from "@/types/database";
 import { notificationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -164,22 +165,28 @@ export async function POST(request: Request) {
     ? `${event.title} schedule has been updated`
     : `${new Date(event.start_time).toLocaleDateString()} at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.locations?.name ? ` — ${event.locations.name}` : ""}`;
 
-  const pushPromises =
-    pushSubs
-      .filter((sub) => {
-        const pref = prefsMap.get(sub.profile_id);
-        return pref ? pref.push_enabled : true;
-      })
-      .map((sub) =>
-        sendPushNotification(
-          { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-          {
-            title: emailSubject,
-            body: pushBody,
-            url: `/dashboard/schedule/${event.id}`,
-          }
-        ).catch((err) => console.error("Push notification failed:", err))
+  const filteredPushSubs = pushSubs.filter((sub) => {
+    const pref = prefsMap.get(sub.profile_id);
+    return pref ? pref.push_enabled : true;
+  });
+
+  const pushPayload = {
+    title: emailSubject,
+    body: pushBody,
+    url: `/dashboard/schedule/${event.id}`,
+  };
+
+  const pushPromises = filteredPushSubs.map((sub) => {
+    if (sub.expo_push_token) {
+      return sendExpoPushNotification(sub.expo_push_token, pushPayload).catch(
+        (err) => console.error("Expo push notification failed:", err)
       );
+    }
+    return sendPushNotification(
+      { endpoint: sub.endpoint!, p256dh: sub.p256dh!, auth: sub.auth! },
+      pushPayload
+    ).catch((err) => console.error("Push notification failed:", err));
+  });
 
   await Promise.allSettled([...emailPromises, ...pushPromises]);
 

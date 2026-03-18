@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail, buildEventEmailHtml } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
+import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
 import type { Database } from "@/types/database";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
@@ -143,19 +144,25 @@ export async function GET(request: Request) {
       .select("*")
       .in("profile_id", profileIds);
 
+    const reminderPayload = {
+      title: `Reminder: ${event.title}`,
+      body: `Tomorrow at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
+      url: `/dashboard/schedule/${event.id}`,
+    };
+
     for (const sub of pushSubs ?? []) {
       const pref = prefsMap.get(sub.profile_id);
       if (pref && !pref.push_enabled) continue;
 
       try {
-        await sendPushNotification(
-          { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-          {
-            title: `Reminder: ${event.title}`,
-            body: `Tomorrow at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
-            url: `/dashboard/schedule/${event.id}`,
-          }
-        );
+        if (sub.expo_push_token) {
+          await sendExpoPushNotification(sub.expo_push_token, reminderPayload);
+        } else {
+          await sendPushNotification(
+            { endpoint: sub.endpoint!, p256dh: sub.p256dh!, auth: sub.auth! },
+            reminderPayload
+          );
+        }
         sent++;
       } catch (err) {
         console.error("Push reminder failed:", err);
