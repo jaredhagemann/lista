@@ -57,6 +57,13 @@ Defined in `supabase/migrations/`, types generated in `src/types/database.ts`. K
 
 All new feature development must be test-driven: write tests before implementation, and ensure they pass before considering a feature complete. If a feature request does not include enough detail to write meaningful tests (expected behavior, edge cases, access control rules, etc.), ask for clarification before proceeding with implementation.
 
+## Git Workflow
+
+- **All development must happen on feature branches** — never commit directly to `main`.
+- Branch naming: `feature/<short-description>` (e.g. `feature/ios-app`, `feature/org-support`).
+- Changes reach `main` exclusively via pull request. Open a PR, get it reviewed/approved, then merge.
+- When a task is complete: commit changes on the feature branch, push, and open a PR to `main`.
+
 ## Environment Variables
 
 Copy `env.example` to `.env.local`. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Optional for full functionality: `RESEND_API_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `CRON_SECRET`.
