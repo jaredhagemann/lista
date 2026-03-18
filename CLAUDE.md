@@ -64,6 +64,21 @@ All new feature development must be test-driven: write tests before implementati
 - Changes reach `main` exclusively via pull request. Open a PR, get it reviewed/approved, then merge.
 - When a task is complete: commit changes on the feature branch, push, and open a PR to `main`.
 
+## Database Migrations
+
+**Never run `supabase db push` manually against the production (or staging) database.**
+
+All schema changes go through the same PR flow as code:
+
+1. Create a migration file in `supabase/migrations/` named `YYYYMMDDNNNNNN_description.sql`.
+2. Commit it on a feature branch alongside any app code that depends on it.
+3. Open a PR to `main`. GitHub Actions (`.github/workflows/migrate.yml`) automatically runs the migration against the **staging** DB to validate it applies cleanly.
+4. Merge the PR. GitHub Actions then runs the migration against **production** in parallel with the Vercel deploy (migrations typically finish before the build completes).
+
+The required GitHub Actions secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `SUPABASE_STAGING_PROJECT_REF`, `SUPABASE_STAGING_DB_PASSWORD`) are already configured in the repo.
+
+**Hotfix exception:** If a migration must be applied to production before a PR can be merged (e.g., a live outage), apply the raw SQL directly via the Supabase dashboard SQL editor as a temporary patch, then immediately commit the migration file to a PR so the permanent record is captured. Do not use `supabase db push` from the command line.
+
 ## Environment Variables
 
 Copy `env.example` to `.env.local`. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Optional for full functionality: `RESEND_API_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `CRON_SECRET`.
