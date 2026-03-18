@@ -135,10 +135,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const memberships = (membershipsData ?? []) as unknown as TeamMemberRow[];
 
     // 5. Validate stored profile ID
-    const activeProfileId =
+    let activeProfileId =
       storedProfileId && allProfileIds.includes(storedProfileId)
         ? storedProfileId
         : userId;
+
+    // If the user's own profile has no direct team membership and they manage
+    // at least one player who does, automatically view as that player.
+    // This handles parents who are profile-only managers (no team_members row).
+    if (activeProfileId === userId) {
+      const hasOwnMembership = memberships.some((m) => m.profile_id === userId);
+      if (!hasOwnMembership && managedIds.length > 0) {
+        const firstManagedMembership = memberships.find((m) =>
+          managedIds.includes(m.profile_id)
+        );
+        if (firstManagedMembership) {
+          activeProfileId = firstManagedMembership.profile_id;
+          await SecureStore.setItemAsync("active_profile_id", activeProfileId);
+        }
+      }
+    }
 
     // 6. Resolve active profile data
     let activeProf: Profile | null = (ownData as Profile | null);

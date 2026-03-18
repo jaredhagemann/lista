@@ -58,5 +58,31 @@ export async function getActiveMembership(
     .limit(1)
     .maybeSingle();
 
-  return (data as ActiveMembership | null) ?? null;
+  if (data) return data as ActiveMembership;
+
+  // Last resort: if the active profile is the user's own and has no direct
+  // membership, check managed profiles (parent-only managers have no team_members
+  // row of their own — their access comes entirely through profile_managers).
+  if (activeProfileId === userId) {
+    const { data: managedLinks } = await supabase
+      .from("profile_managers")
+      .select("managed_id")
+      .eq("manager_id", userId)
+      .neq("managed_id", userId);
+
+    const managedIds = (managedLinks ?? []).map((l) => l.managed_id);
+    if (managedIds.length > 0) {
+      const { data: managedMembership } = await supabase
+        .from("team_members")
+        .select("*, teams(*)")
+        .in("profile_id", managedIds)
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+
+      if (managedMembership) return managedMembership as ActiveMembership;
+    }
+  }
+
+  return null;
 }

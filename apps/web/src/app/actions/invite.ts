@@ -217,13 +217,16 @@ export async function acceptManagerInvitation(invitationId: string) {
     .update({ accepted_at: new Date().toISOString() })
     .eq("id", invitationId);
 
-  // Switch the session to view as the managed player so the dashboard works
+  // Switch the session to view as the managed player so the dashboard works.
+  // Use a long-lived cookie (1 year) so it survives browser restarts — a parent
+  // with no direct team membership has no meaningful "self" view anyway.
   const cookieStore = await cookies();
   cookieStore.set(ACTIVE_PROFILE_COOKIE, invitation.managed_profile_id, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
+    maxAge: 60 * 60 * 24 * 365,
   });
 
   revalidatePath("/dashboard", "layout");
