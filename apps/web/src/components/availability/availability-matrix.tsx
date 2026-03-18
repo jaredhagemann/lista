@@ -430,6 +430,21 @@ export function AvailabilityMatrix({
                         </td>
                       </tr>
                       {renderMemberRows(players, 0)}
+                      <tr className="border-t">
+                        <td className="sticky left-0 z-10 bg-muted/30 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Total Available
+                        </td>
+                        {pagedEvents.map((e) => {
+                          const count = players.filter(
+                            (p) => statusMap.get(e.id)?.get(p.profileId) === "available"
+                          ).length;
+                          return (
+                            <td key={e.id} className="bg-muted/30 px-3 py-2 text-center text-sm font-semibold text-muted-foreground">
+                              {count}
+                            </td>
+                          );
+                        })}
+                      </tr>
                     </>
                   )}
                   {nonPlayers.length > 0 && (
