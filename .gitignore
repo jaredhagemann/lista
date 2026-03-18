@@ -51,3 +51,7 @@ next-env.d.ts
 
 # expo
 apps/mobile/.expo/
+
+# local scratch directories
+crash_logs/
+images/
