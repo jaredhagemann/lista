@@ -3,6 +3,7 @@ import {
   createTestUser,
   createTestTeam,
   addTeamMember,
+  createManagedProfile,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -178,6 +179,7 @@ describe("team_members RLS", () => {
       id: eventId,
       team_id: teamId,
       title: "Test Event",
+      event_type: "practice",
       start_time: new Date(Date.now() + 86400000).toISOString(),
       end_time: new Date(Date.now() + 90000000).toISOString(),
     });
@@ -219,6 +221,7 @@ describe("team_members RLS", () => {
       id: eventId,
       team_id: teamId,
       title: "Test Event",
+      event_type: "practice",
       start_time: new Date(Date.now() + 86400000).toISOString(),
       end_time: new Date(Date.now() + 90000000).toISOString(),
     });
