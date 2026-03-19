@@ -1,0 +1,37 @@
+name: iOS TestFlight
+
+# Trigger manually from the Actions tab, or push a tag like `ios-v1.2.3`
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "ios-v*"
+
+jobs:
+  build-and-submit:
+    name: Build & submit to TestFlight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install EAS CLI
+        run: pnpm add -g eas-cli
+
+      - name: Build iOS and submit to TestFlight
+        working-directory: apps/mobile
+        # --auto-submit runs `eas submit` immediately after the build finishes,
+        # using the submit.production.ios config already in eas.json.
+        # EAS Build runs on Expo's infrastructure, so no macOS runner is needed.
+        run: eas build --platform ios --profile production --non-interactive --auto-submit
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
