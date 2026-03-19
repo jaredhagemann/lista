@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { AddMemberButton } from "@/components/team/add-member-button";
 import { TeamRoster } from "@/components/team/team-roster";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
-import type { TeamMemberWithProfile } from "@/components/team/team-roster";
+import type { TeamMemberWithProfile, ContactInfo } from "@/components/team/team-roster";
 
 type InvitationRow = Database["public"]["Tables"]["invitations"]["Row"];
 
@@ -43,6 +44,34 @@ export default async function TeamPage() {
   const members = (rawMembers ?? []) as TeamMemberWithProfile[];
   const pendingInvites = (rawPendingInvites ?? []) as InvitationRow[];
 
+  // Fetch first profile manager for each member using service role (bypasses RLS
+  // so all team members can see contact info, not just admins).
+  const contactsMap: Record<string, ContactInfo> = {};
+  const profileIds = members.map((m) => m.profile_id).filter(Boolean) as string[];
+  if (profileIds.length > 0) {
+    const admin = createAdminClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data: managersData } = await admin
+      .from("profile_managers")
+      .select("managed_id, relationship, phone, profiles!profile_managers_manager_id_fkey(first_name, last_name, email)")
+      .in("managed_id", profileIds)
+      .order("created_at");
+    for (const row of managersData ?? []) {
+      if (!contactsMap[row.managed_id]) {
+        const p = row.profiles as { first_name: string | null; last_name: string | null; email: string | null };
+        contactsMap[row.managed_id] = {
+          name: [p.first_name, p.last_name].filter(Boolean).join(" "),
+          relationship: row.relationship,
+          email: p.email,
+          phone: row.phone,
+        };
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -67,7 +96,7 @@ export default async function TeamPage() {
         />
       )}
 
-      <TeamRoster members={members} pendingInvites={pendingInvites} isAdmin={isAdmin} teamId={team.id} />
+      <TeamRoster members={members} pendingInvites={pendingInvites} isAdmin={isAdmin} teamId={team.id} contactsMap={contactsMap} />
     </div>
   );
 }

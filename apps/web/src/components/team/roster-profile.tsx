@@ -33,6 +33,7 @@ import { ArrowLeft, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { ManagersCard } from "@/components/team/managers-card";
+import { removeTeamMember } from "@/app/actions/team";
 import type { Database } from "@/types/database";
 
 type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
@@ -53,6 +54,7 @@ interface RosterProfileProps {
   pendingInvites: InvitationRow[];
   canEdit: boolean;
   isAdmin: boolean;
+  isOwnProfile: boolean;
   teamId: string;
 }
 
@@ -62,9 +64,12 @@ export function RosterProfile({
   pendingInvites,
   canEdit,
   isAdmin,
+  isOwnProfile,
   teamId,
 }: RosterProfileProps) {
   const [editing, setEditing] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const profile = member.profiles;
   const fullName = [profile.first_name, profile.last_name]
     .filter(Boolean)
@@ -76,6 +81,18 @@ export function RosterProfile({
     .toUpperCase();
 
   const router = useRouter();
+
+  async function handleRemove() {
+    setRemoving(true);
+    const result = await removeTeamMember(member.id, teamId);
+    if (result.error) {
+      toast.error(result.error);
+      setRemoving(false);
+    } else {
+      toast.success("Member removed from team");
+      router.push("/dashboard/team");
+    }
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -131,6 +148,52 @@ export function RosterProfile({
           canAdd={canEdit}
           teamId={teamId}
         />
+      )}
+
+      {/* Remove from team — always visible to admins viewing another member's profile */}
+      {isAdmin && !isOwnProfile && (
+        <>
+          <div className="border-t pt-2">
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => setConfirmRemove(true)}
+            >
+              Remove from team
+            </Button>
+          </div>
+
+          <Dialog open={confirmRemove} onOpenChange={setConfirmRemove}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Remove Member</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to remove{" "}
+                  <strong>
+                    {profile.first_name} {profile.last_name}
+                  </strong>{" "}
+                  from the team? Their profile and history will be preserved,
+                  but they will lose all access to team pages.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmRemove(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleRemove}
+                  disabled={removing}
+                >
+                  {removing ? "Removing…" : "Remove"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
       )}
     </div>
   );
@@ -198,6 +261,12 @@ function ReadOnlyMode({
                 <dd>#{member.jersey_number}</dd>
               </div>
             )}
+            {member.role === "player" && member.position && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Position</dt>
+                <dd>{member.position}</dd>
+              </div>
+            )}
           </dl>
         </CardContent>
       </Card>
@@ -238,10 +307,10 @@ function EditMode({
   const [jerseyNumber, setJerseyNumber] = useState(
     member.jersey_number?.toString() ?? ""
   );
+  const [position, setPosition] = useState(member.position ?? "");
   const [savingRole, setSavingRole] = useState(false);
   const [savingJersey, setSavingJersey] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [savingPosition, setSavingPosition] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
@@ -304,21 +373,21 @@ function EditMode({
     setSavingJersey(false);
   }
 
-  async function handleRemove() {
-    setRemoving(true);
+  async function handleSavePosition() {
+    setSavingPosition(true);
     const { error } = await supabase
       .from("team_members")
-      .delete()
+      .update({ position: position.trim() || null })
       .eq("id", member.id)
       .eq("team_id", teamId);
 
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Member removed from team");
-      router.push("/dashboard/team");
+      toast.success("Position updated");
+      router.refresh();
     }
-    setRemoving(false);
+    setSavingPosition(false);
   }
 
   return (
@@ -458,48 +527,29 @@ function EditMode({
               </div>
             </div>
 
-            {/* Remove from team */}
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => setConfirmRemove(true)}
-            >
-              Remove from team
-            </Button>
+            {/* Edit position */}
+            <div className="space-y-2">
+              <Label>Position</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                  placeholder="e.g. Defender"
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSavePosition}
+                  disabled={savingPosition}
+                >
+                  {savingPosition ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+
           </CardContent>
         </Card>
       )}
-
-      {/* Remove confirmation dialog */}
-      <Dialog open={confirmRemove} onOpenChange={setConfirmRemove}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove Member</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to remove{" "}
-              <strong>
-                {profile.first_name} {profile.last_name}
-              </strong>{" "}
-              from the team? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmRemove(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRemove}
-              disabled={removing}
-            >
-              {removing ? "Removing..." : "Remove"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

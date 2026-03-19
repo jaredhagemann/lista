@@ -6,6 +6,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
+import { getActiveProfileId } from "@/lib/get-active-membership";
 
 export async function setActiveTeam(teamId: string) {
   const supabase = await createServerClient();
@@ -68,5 +69,124 @@ export async function setActiveTeam(teamId: string) {
   }
 
   revalidatePath("/dashboard", "layout");
+  return { success: true };
+}
+
+export async function removeTeamMember(memberId: string, teamId: string) {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const activeProfileId = await getActiveProfileId(user.id);
+
+  // Verify caller is an admin on this team
+  const { data: callerMembership } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", teamId)
+    .eq("profile_id", activeProfileId)
+    .maybeSingle();
+
+  if (
+    !callerMembership ||
+    !["coach", "manager"].includes(callerMembership.role)
+  ) {
+    return { error: "Not authorized" };
+  }
+
+  // Fetch the target member's profile_id
+  const { data: target } = await supabase
+    .from("team_members")
+    .select("profile_id")
+    .eq("id", memberId)
+    .eq("team_id", teamId)
+    .single();
+
+  if (!target) return { error: "Member not found" };
+
+  const profileId = target.profile_id!;
+
+  // Block self-removal
+  if (profileId === activeProfileId) {
+    return { error: "You cannot remove yourself from the team" };
+  }
+
+  // Service role client for cleanup operations that cross RLS boundaries
+  const admin = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  // Fetch profile email for invitation voiding
+  const { data: targetProfile } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", profileId)
+    .single();
+
+  // Fetch team channel IDs and upcoming event IDs in parallel
+  const now = new Date().toISOString();
+  const [{ data: teamChannels }, { data: upcomingEvents }] = await Promise.all([
+    admin.from("channels").select("id").eq("team_id", teamId),
+    admin.from("events").select("id").eq("team_id", teamId).gte("start_time", now),
+  ]);
+
+  const channelIds = (teamChannels ?? []).map((c) => c.id);
+  const upcomingEventIds = (upcomingEvents ?? []).map((e) => e.id);
+
+  // Run all cleanup in parallel before deleting the membership row
+  await Promise.all([
+    // Delete upcoming availability responses (preserve historical ones)
+    upcomingEventIds.length > 0
+      ? admin
+          .from("availability")
+          .delete()
+          .eq("profile_id", profileId)
+          .in("event_id", upcomingEventIds)
+      : Promise.resolve(),
+
+    // Remove from group/team channel membership
+    channelIds.length > 0
+      ? admin
+          .from("channel_members")
+          .delete()
+          .eq("profile_id", profileId)
+          .in("channel_id", channelIds)
+      : Promise.resolve(),
+
+    // Void pending invitations linked to this profile (managed profile flow)
+    admin
+      .from("invitations")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("managed_profile_id", profileId)
+      .is("accepted_at", null),
+
+    // Void pending invitations sent to this profile's email (direct invite flow)
+    ...(targetProfile?.email
+      ? [
+          admin
+            .from("invitations")
+            .delete()
+            .eq("team_id", teamId)
+            .eq("email", targetProfile.email)
+            .is("accepted_at", null),
+        ]
+      : []),
+  ]);
+
+  // Delete the team_members row — this is the access-revoking step
+  const { error } = await supabase
+    .from("team_members")
+    .delete()
+    .eq("id", memberId)
+    .eq("team_id", teamId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/team");
   return { success: true };
 }

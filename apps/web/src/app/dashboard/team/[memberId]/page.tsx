@@ -106,6 +106,7 @@ export default async function MemberProfilePage({
       pendingInvites={pendingInvites}
       canEdit={canEdit}
       isAdmin={isAdmin}
+      isOwnProfile={isOwnProfile}
       teamId={member.team_id!}
     />
   );

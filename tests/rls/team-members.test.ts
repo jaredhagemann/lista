@@ -3,6 +3,7 @@ import {
   createTestUser,
   createTestTeam,
   addTeamMember,
+  createManagedProfile,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -127,5 +128,122 @@ describe("team_members RLS", () => {
       .eq("team_id", teamId)
       .eq("profile_id", player.user.id);
     expect(data).toHaveLength(0);
+  });
+
+  it("admin can DELETE another admin (coach)", async () => {
+    const coach1 = await createTestUser();
+    const coach2 = await createTestUser();
+    const { teamId } = await createTestTeam(coach1.user.id);
+    await addTeamMember(teamId, coach2.user.id, "coach");
+
+    const { error } = await coach1.client
+      .from("team_members")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("profile_id", coach2.user.id);
+    expect(error).toBeNull();
+  });
+
+  it("player cannot DELETE a team member", async () => {
+    const coach = await createTestUser();
+    const player1 = await createTestUser();
+    const player2 = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player1.user.id, "player");
+    await addTeamMember(teamId, player2.user.id, "player");
+
+    await player1.client
+      .from("team_members")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("profile_id", player2.user.id);
+
+    // Verify player2 still exists
+    const { data } = await adminClient
+      .from("team_members")
+      .select()
+      .eq("team_id", teamId)
+      .eq("profile_id", player2.user.id);
+    expect(data).toHaveLength(1);
+  });
+
+  it("after removal, ex-member cannot read team events", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    // Create an event for the team
+    const eventId = crypto.randomUUID();
+    await adminClient.from("events").insert({
+      id: eventId,
+      team_id: teamId,
+      title: "Test Event",
+      event_type: "practice",
+      start_time: new Date(Date.now() + 86400000).toISOString(),
+      end_time: new Date(Date.now() + 90000000).toISOString(),
+    });
+
+    // Verify player can see the event before removal
+    const { data: before } = await player.client
+      .from("events")
+      .select()
+      .eq("team_id", teamId);
+    expect(before!.length).toBeGreaterThan(0);
+
+    // Remove the player
+    await adminClient
+      .from("team_members")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("profile_id", player.user.id);
+
+    // Verify player can no longer see the event
+    const { data: after } = await player.client
+      .from("events")
+      .select()
+      .eq("team_id", teamId);
+    expect(after).toHaveLength(0);
+  });
+
+  it("after removal, profile manager loses team access if no other managed member remains", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+
+    // Parent manages a player profile on the team
+    const managedProfileId = await createManagedProfile(parent.user.id);
+    await addTeamMember(teamId, managedProfileId, "player");
+
+    // Parent can see team events before removal
+    const eventId = crypto.randomUUID();
+    await adminClient.from("events").insert({
+      id: eventId,
+      team_id: teamId,
+      title: "Test Event",
+      event_type: "practice",
+      start_time: new Date(Date.now() + 86400000).toISOString(),
+      end_time: new Date(Date.now() + 90000000).toISOString(),
+    });
+
+    const { data: before } = await parent.client
+      .from("events")
+      .select()
+      .eq("team_id", teamId);
+    expect(before!.length).toBeGreaterThan(0);
+
+    // Remove the managed player from the team
+    await adminClient
+      .from("team_members")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("profile_id", managedProfileId);
+
+    // Parent should no longer have team access
+    const { data: after } = await parent.client
+      .from("events")
+      .select()
+      .eq("team_id", teamId);
+    expect(after).toHaveLength(0);
   });
 });
