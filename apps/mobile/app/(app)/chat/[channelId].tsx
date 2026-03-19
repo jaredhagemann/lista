@@ -8,7 +8,6 @@ import {
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import * as Crypto from "expo-crypto";
@@ -26,7 +25,6 @@ export default function ChannelScreen() {
 
   const ownId = session?.user.id ?? "";
   const isAdmin = membership?.role === "coach" || membership?.role === "manager";
-  const headerHeight = useHeaderHeight();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,12 +161,11 @@ export default function ChannelScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={headerHeight}
-      >
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={0}
+    >
         <FlatList
           data={messages}
           keyExtractor={(m) => m.id}
@@ -190,8 +187,7 @@ export default function ChannelScreen() {
           }}
         />
         <MessageInput onSend={handleSend} />
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
