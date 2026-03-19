@@ -1,6 +1,8 @@
 name: iOS TestFlight
 
-# Trigger manually from the Actions tab, or push a tag like `ios-v1.2.3`
+# Trigger manually from the Actions tab, or push a tag like `ios-v1.2.3`.
+# Tags should only be pushed after merging to main — the first job enforces
+# this by failing the build if the tagged commit is not on main.
 on:
   workflow_dispatch:
   push:
@@ -8,9 +10,25 @@ on:
       - "ios-v*"
 
 jobs:
+  check-main:
+    name: Verify tag is on main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail if tagged commit is not on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "❌ This tag does not point to a commit on main. Merge your PR first."
+            exit 1
+          fi
+
   build-and-submit:
     name: Build & submit to TestFlight
     runs-on: ubuntu-latest
+    needs: check-main
     steps:
       - uses: actions/checkout@v4
 
