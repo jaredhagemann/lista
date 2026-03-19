@@ -24,16 +24,25 @@ export type TeamMemberWithProfile = TeamMemberRow & {
   profiles: ProfileRow;
 };
 
+export type ContactInfo = {
+  name: string;
+  relationship: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
 interface TeamRosterProps {
   members: TeamMemberWithProfile[];
   pendingInvites?: InvitationRow[];
   isAdmin: boolean;
   teamId: string;
+  contactsMap?: Record<string, ContactInfo>;
 }
 
 export function TeamRoster({
   members,
   pendingInvites = [],
+  contactsMap = {},
 }: TeamRosterProps) {
   const router = useRouter();
   const [invites, setInvites] = useState(pendingInvites);
@@ -111,29 +120,48 @@ export function TeamRoster({
       .join("")
       .toUpperCase();
 
+    const isPlayer = member.role === "player";
+    const jerseyLine = isPlayer
+      ? [
+          member.jersey_number != null ? `#${member.jersey_number}` : null,
+          member.position ?? null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : null;
+
+    const contact = member.profile_id ? contactsMap[member.profile_id] : null;
+
     return (
       <div
-        className="flex cursor-pointer items-center justify-between rounded-md p-3 hover:bg-accent"
+        className="flex cursor-pointer items-center gap-3 rounded-md p-3 hover:bg-accent"
         onClick={() => router.push(`/dashboard/team/${member.id}`)}
       >
-        <div className="flex items-center gap-3">
-          <Avatar>
-            {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={fullName} />}
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="font-medium">
-              {fullName}
-              {member.jersey_number != null && (
-                <span className="ml-2 text-muted-foreground">
-                  #{member.jersey_number}
-                </span>
+        <Avatar>
+          {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={fullName} />}
+          <AvatarFallback>{initials}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{fullName}</p>
+          {jerseyLine && (
+            <p className="text-sm text-muted-foreground">{jerseyLine}</p>
+          )}
+        </div>
+        {contact ? (
+          <div className="hidden shrink-0 text-right text-sm sm:block">
+            <p className="font-medium text-foreground">
+              {contact.name}
+              {contact.relationship && (
+                <span className="font-normal capitalize text-muted-foreground"> · {contact.relationship}</span>
               )}
             </p>
-            <p className="text-sm text-muted-foreground">{profile.email}</p>
+            {contact.email && <p className="text-muted-foreground">{contact.email}</p>}
+            {contact.phone && <p className="text-muted-foreground">{contact.phone}</p>}
           </div>
-        </div>
-        <Badge variant="secondary" className="capitalize">
+        ) : (
+          <div className="hidden sm:block" />
+        )}
+        <Badge variant="secondary" className="capitalize shrink-0">
           {member.role}
         </Badge>
       </div>

@@ -261,6 +261,12 @@ function ReadOnlyMode({
                 <dd>#{member.jersey_number}</dd>
               </div>
             )}
+            {member.role === "player" && member.position && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Position</dt>
+                <dd>{member.position}</dd>
+              </div>
+            )}
           </dl>
         </CardContent>
       </Card>
@@ -301,8 +307,10 @@ function EditMode({
   const [jerseyNumber, setJerseyNumber] = useState(
     member.jersey_number?.toString() ?? ""
   );
+  const [position, setPosition] = useState(member.position ?? "");
   const [savingRole, setSavingRole] = useState(false);
   const [savingJersey, setSavingJersey] = useState(false);
+  const [savingPosition, setSavingPosition] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
@@ -363,6 +371,23 @@ function EditMode({
       router.refresh();
     }
     setSavingJersey(false);
+  }
+
+  async function handleSavePosition() {
+    setSavingPosition(true);
+    const { error } = await supabase
+      .from("team_members")
+      .update({ position: position.trim() || null })
+      .eq("id", member.id)
+      .eq("team_id", teamId);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Position updated");
+      router.refresh();
+    }
+    setSavingPosition(false);
   }
 
   return (
@@ -498,6 +523,26 @@ function EditMode({
                   disabled={savingJersey}
                 >
                   {savingJersey ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Edit position */}
+            <div className="space-y-2">
+              <Label>Position</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                  placeholder="e.g. Defender"
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSavePosition}
+                  disabled={savingPosition}
+                >
+                  {savingPosition ? "Saving..." : "Save"}
                 </Button>
               </div>
             </div>

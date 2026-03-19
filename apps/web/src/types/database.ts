@@ -646,6 +646,7 @@ export type Database = {
           created_at: string | null
           id: string
           jersey_number: number | null
+          position: string | null
           profile_id: string | null
           role: string
           team_id: string | null
@@ -654,6 +655,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           jersey_number?: number | null
+          position?: string | null
           profile_id?: string | null
           role: string
           team_id?: string | null
@@ -662,6 +664,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           jersey_number?: number | null
+          position?: string | null
           profile_id?: string | null
           role?: string
           team_id?: string | null
