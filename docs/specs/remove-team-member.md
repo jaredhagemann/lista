@@ -43,47 +43,39 @@ Any current team member, including other coaches and managers. The UI should not
 
 The iOS app does not yet have edit capabilities on team/profile screens. iOS support will be addressed in a follow-on feature.
 
-## Data Cleanup — Open Questions
+## Data Cleanup
 
-The `team_members` delete is the only strictly necessary change, but several related records become stale. Decisions are needed on each:
+The `team_members` delete is the only strictly necessary change, but the following related records must also be cleaned up in the same operation:
 
 ### 1. Availability responses
-The removed member may have submitted availability for upcoming events. Should these be:
-- **Deleted** — clean slate, upcoming events show them as no response
-- **Preserved** — historical record is kept, but the response is no longer acted upon
-
-Leaning toward **delete upcoming, preserve past**: delete `availability` rows for events with `start_time > now()` where `profile_id` matches the removed member. Past responses retain historical accuracy.
+Delete `availability` rows for events with `start_time > now()` where `profile_id` matches the removed member. Past responses are preserved for historical accuracy.
 
 ### 2. Channel membership (group channels)
-If the member was explicitly added to a group channel (`channel_members` row), they will still appear as a member of that channel after removal. Team channels are fine — access is gated by `is_team_member()` — but group channels use `is_channel_member()` which checks `channel_members` directly. Should the `channel_members` rows be deleted on removal?
-
-Leaning toward **yes** — stale channel membership is confusing for admins managing group channels.
+Delete all `channel_members` rows for the removed member in channels belonging to this team. Team channel access is already gated by `is_team_member()`, but group channels use `is_channel_member()` which checks `channel_members` directly — stale rows would leave them listed as group members.
 
 ### 3. Pending invitations
-If there is an outstanding invitation for this member (e.g. they were invited but haven't accepted yet, or a re-invite was sent), should it be expired/cancelled?
-
-Leaning toward **yes** — a pending invitation for a removed member should be voided to prevent them from re-joining via the invite link.
+Void any `invitations` rows for this team where `profile_id` matches the removed member and `accepted_at IS NULL`. This prevents them from re-joining via an existing invite link.
 
 ### 4. Notification preferences
-The `notification_preferences` table has a row per profile per team. This is low-stakes — it's a small record and has no user-visible impact once team access is gone. Leaning toward **leave in place** for now (simplicity), but could be cleaned up later.
+Leave in place — low-stakes, no user-visible impact once team access is gone.
 
 ### 5. Push subscriptions
-`push_subscriptions` rows are per-device, not per-team, so they should not be touched.
+Leave in place — these are per-device, not per-team.
 
-### 6. Can an admin remove themselves?
-A coach could navigate to their own profile and trigger this action. This should probably be **blocked** in the UI (hide the button on own profile) and optionally at the server level. Leaving a team via self-removal is a separate, lower-priority feature.
+### 6. Self-removal
+Block in the UI: hide the "Remove from team" button when viewing your own profile. This prevents accidental self-removal. Intentionally leaving a team is a separate, lower-priority feature.
 
 ## Migration
 
 No schema changes are required. The existing RLS DELETE policy on `team_members` already allows admins to delete any member. Any cleanup queries (availability, channel_members, invitations) can be executed as additional client-side Supabase calls or as a server action — no new tables or columns needed.
 
-If we decide to make cleanup atomic, a Postgres function or a Next.js server action wrapping multiple deletes is the right approach. This avoids partial state if one of the cleanup steps fails.
+The cleanup steps should be atomic — use a Next.js server action wrapping all deletes so partial state cannot occur if one step fails.
 
 ## RLS Test Coverage Needed
 
 - Admin can remove a player ✓ (already tested in `tests/rls/team-members.test.ts`)
 - Admin can remove another coach/manager
 - Non-admin (player) cannot remove anyone
-- Admin cannot remove themselves (if we block this)
+- Admin cannot remove themselves (button hidden on own profile)
 - After removal, ex-member cannot read team events, channels, or availability
 - After removal, ex-member's profile manager cannot read team data (unless they manage another active member)
