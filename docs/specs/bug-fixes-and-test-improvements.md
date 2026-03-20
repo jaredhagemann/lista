@@ -115,7 +115,7 @@ Tests to write:
 | Item | Status |
 |------|--------|
 | CLAUDE.md `pnpm test` correction | ✅ Done |
-| Bug 1 fix — email validation | 🔲 Todo |
+| Bug 1 fix — email validation | ✅ Done |
 | Bug 2 fix — middleware public routes | 🔲 Todo |
 | Bug 3 fix — middleware matcher | 🔲 Todo |
 | Playwright e2e tests | 🔲 Todo |
