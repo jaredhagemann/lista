@@ -1,6 +1,6 @@
 # Bug Fixes and Test Improvements
 
-**Status:** In Progress
+**Status:** Complete
 **Started:** 2026-03-20
 
 ---
@@ -118,8 +118,8 @@ Tests to write:
 | Bug 1 fix — email validation | ✅ Done |
 | Bug 2 fix — middleware public routes | ✅ Done |
 | Bug 3 fix — middleware matcher | ✅ Done |
-| Playwright e2e tests | 🔲 Todo |
-| Middleware unit tests (optional) | 🔲 Todo |
+| Playwright e2e tests | ✅ Done |
+| Middleware unit tests (optional) | ✅ Done |
 
 ---
 
