@@ -305,6 +305,27 @@ test("POST /api/invite/:id/accept with no Authorization header returns 401", asy
   expect(body).toHaveProperty("error", "Unauthorized");
 });
 
+// Item 2: invalid bearer token is rejected at the route level, not redirected
+test("POST /api/invite/:id/accept with an invalid bearer token returns 401", async ({ request }) => {
+  const response = await request.post(`/api/invite/${inviteId}/accept`, {
+    headers: { Authorization: "Bearer not-a-real-token" },
+    data: { type: "self" },
+  });
+  expect(response.status()).toBe(401);
+  const body = await response.json();
+  expect(body).toHaveProperty("error", "Unauthorized");
+});
+
+test("POST /api/managed-profiles with an invalid bearer token returns 401", async ({ request }) => {
+  const response = await request.post("/api/managed-profiles", {
+    headers: { Authorization: "Bearer not-a-real-token" },
+    data: { firstName: "Test" },
+  });
+  expect(response.status()).toBe(401);
+  const body = await response.json();
+  expect(body).toHaveProperty("error", "Unauthorized");
+});
+
 // Bug 2 regression: middleware was redirecting /api/managed-profiles to /login
 test("POST /api/managed-profiles without auth returns 401, not a redirect", async ({ request }) => {
   const response = await request.post("/api/managed-profiles", {

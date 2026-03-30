@@ -41,7 +41,7 @@ Assertions:
 - `profile_managers` count does not increase after the second manager acceptance attempt
 - `accepted_at` remains set to the original acceptance timestamp, not rewritten
 
-### 2. Invalid Bearer Token Coverage
+### 2. Invalid Bearer Token Coverage ✅ Done
 
 Add e2e tests for a syntactically valid but unrecognisable token on bearer-token routes.
 
@@ -145,7 +145,7 @@ Why this matters:
 3. ✅ Item 5 — invite lookup edge cases, cheap given fixture state after item 1
 4. ✅ Item 4 — one protected API boundary test
 5. ✅ Item 3 — unauthenticated redirect guardrails
-6. Item 2 — invalid bearer token coverage
+6. ✅ Item 2 — invalid bearer token coverage
 
 ## Suggested File Placement
 
