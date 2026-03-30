@@ -9,8 +9,11 @@ const FIXTURES_FILE = path.join(__dirname, ".fixtures.json");
 let tokenA: string;
 let tokenB: string;
 let inviteId: string;
+let userAId: string;
 let userBId: string;
 let teamId: string;
+let managedProfileId: string;
+let managerInviteId: string;
 let admin: SupabaseClient<Database>;
 
 test.beforeAll(async () => {
@@ -19,14 +22,20 @@ test.beforeAll(async () => {
     emailB: string;
     password: string;
     inviteId: string;
+    userAId: string;
     userBId: string;
     teamId: string;
+    managedProfileId: string;
+    managerInviteId: string;
   };
   inviteId = fixtures.inviteId;
+  userAId = fixtures.userAId;
   userBId = fixtures.userBId;
   teamId = fixtures.teamId;
+  managedProfileId = fixtures.managedProfileId;
+  managerInviteId = fixtures.managerInviteId;
 
-  admin = createClient(
+  admin = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
@@ -63,7 +72,7 @@ test("GET /api/invite/:id without auth returns JSON, not a redirect", async ({ r
 });
 
 // Bug 1 regression: mismatched email must be rejected before any DB writes
-test("POST /api/invite/:id/accept with mismatched email token returns 403 and leaves DB untouched", async ({ request }) => {
+test("POST /api/invite/:id/accept type=self with mismatched email returns 403 and leaves DB untouched", async ({ request }) => {
   const response = await request.post(`/api/invite/${inviteId}/accept`, {
     headers: { Authorization: `Bearer ${tokenB}` },
     data: { type: "self" },
@@ -90,7 +99,7 @@ test("POST /api/invite/:id/accept with mismatched email token returns 403 and le
 });
 
 // Bug 1 + Bug 2: matching email goes through and returns success
-test("POST /api/invite/:id/accept with matching email token returns success", async ({ request }) => {
+test("POST /api/invite/:id/accept type=self with matching email returns success", async ({ request }) => {
   const response = await request.post(`/api/invite/${inviteId}/accept`, {
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { type: "self" },
@@ -99,6 +108,61 @@ test("POST /api/invite/:id/accept with matching email token returns success", as
   expect(response.status()).not.toBe(307);
   const body = await response.json();
   expect(body).toHaveProperty("success", true);
+});
+
+// Gap 1: email guard must fire on the manager invite path, not just the self path
+test("POST /api/invite/:id/accept type=manager with mismatched email returns 403 and leaves DB untouched", async ({ request }) => {
+  const response = await request.post(`/api/invite/${managerInviteId}/accept`, {
+    headers: { Authorization: `Bearer ${tokenB}` },
+    data: { type: "manager" },
+  });
+  expect(response.status()).toBe(403);
+  const body = await response.json();
+  expect(body).toHaveProperty("error", "Forbidden");
+
+  // Verify the invitation was not accepted
+  const { data: invite } = await admin
+    .from("invitations")
+    .select("accepted_at")
+    .eq("id", managerInviteId)
+    .single();
+  expect(invite?.accepted_at).toBeNull();
+
+  // Verify no profile_managers row was created for user B
+  const { data: links } = await admin
+    .from("profile_managers")
+    .select("id")
+    .eq("managed_id", managedProfileId)
+    .eq("manager_id", userBId);
+  expect(links).toHaveLength(0);
+});
+
+// Gap 1: matching email on manager path writes the correct DB rows
+test("POST /api/invite/:id/accept type=manager with matching email returns success and writes DB", async ({ request }) => {
+  const response = await request.post(`/api/invite/${managerInviteId}/accept`, {
+    headers: { Authorization: `Bearer ${tokenA}` },
+    data: { type: "manager" },
+  });
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(body).toHaveProperty("success", true);
+
+  // Verify the profile_managers link was created for user A → managed profile
+  const { data: links } = await admin
+    .from("profile_managers")
+    .select("id, relationship")
+    .eq("managed_id", managedProfileId)
+    .eq("manager_id", userAId);
+  expect(links).toHaveLength(1);
+  expect(links![0].relationship).toBe("parent");
+
+  // Verify the invitation was marked accepted
+  const { data: invite } = await admin
+    .from("invitations")
+    .select("accepted_at")
+    .eq("id", managerInviteId)
+    .single();
+  expect(invite?.accepted_at).not.toBeNull();
 });
 
 // Bug 2 regression: middleware was redirecting /api/managed-profiles to /login

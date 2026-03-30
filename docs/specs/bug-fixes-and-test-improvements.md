@@ -1,6 +1,6 @@
 # Bug Fixes and Test Improvements
 
-**Status:** Complete
+**Status:** In Progress
 **Started:** 2026-03-20
 
 ---
@@ -120,6 +120,73 @@ Tests to write:
 | Bug 3 fix — middleware matcher | ✅ Done |
 | Playwright e2e tests | ✅ Done |
 | Middleware unit tests (optional) | ✅ Done |
+
+---
+
+## Post-Implementation Review
+
+Three gaps identified after the initial tests were written:
+
+### Gap 1 — HIGH: `type: "manager"` invite path has no test coverage
+
+The spec states the email check must apply to both `type === "self"` and `type === "manager"` paths. Every existing test uses `{ type: "self" }`. The manager branch writes to a different table (`profile_managers` instead of `team_members`), so a regression that moved or removed the email guard for that branch would go undetected.
+
+Tests needed:
+- `type: "manager"`, mismatched email → 403 + verify no `profile_managers` row created for user B
+- `type: "manager"`, matching email → 200 + verify `profile_managers` row created and `accepted_at` set
+
+Fixtures needed: a managed profile (no auth account) and a manager-type invitation with `managed_profile_id` set.
+
+### Gap 2 — MEDIUM: Success test does not verify DB writes
+
+The `type: "self"` success test only checks `{ success: true }` in the response body. The mismatch test verifies DB state (invitation unaccepted, no membership row), but the success test has no symmetric DB assertions. A route returning a hardcoded success without writing would still pass.
+
+Assertions to add to the existing success test:
+- `team_members` row exists for user A in the test team
+- `invitations.accepted_at` is non-null
+
+### Gap 3 — LOW: No test for missing `Authorization` header on accept endpoint
+
+We test the wrong-user case (403) and right-user case (200) but not the no-token case. The accept endpoint should return 401 when the `Authorization` header is absent entirely.
+
+---
+
+## Additional Test Plan
+
+### Step 6 — Manager invite path (Gap 1)
+
+**File:** `apps/web/tests/e2e/middleware.spec.ts`
+**Setup:** `apps/web/tests/e2e/global-setup.ts` / `global-teardown.ts`
+
+Add a managed profile and manager-type invitation to the global fixtures, then add two tests mirroring the existing self-invite tests.
+
+### Step 7 — Self invite success DB assertions (Gap 2)
+
+**File:** `apps/web/tests/e2e/middleware.spec.ts`
+
+Extend the existing `type: "self"` success test with DB-state assertions.
+
+### Step 8 — No-auth header on accept endpoint (Gap 3)
+
+**File:** `apps/web/tests/e2e/middleware.spec.ts`
+
+Add a single test: POST to accept with no `Authorization` header → 401.
+
+---
+
+## Progress
+
+| Item | Status |
+|------|--------|
+| CLAUDE.md `pnpm test` correction | ✅ Done |
+| Bug 1 fix — email validation | ✅ Done |
+| Bug 2 fix — middleware public routes | ✅ Done |
+| Bug 3 fix — middleware matcher | ✅ Done |
+| Playwright e2e tests | ✅ Done |
+| Middleware unit tests (optional) | ✅ Done |
+| Gap 1 — manager invite path tests | ✅ Done |
+| Gap 2 — self invite success DB assertions | 🔲 Todo |
+| Gap 3 — no-auth header test | 🔲 Todo |
 
 ---
 
