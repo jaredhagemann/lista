@@ -185,7 +185,7 @@ Add a single test: POST to accept with no `Authorization` header → 401.
 | Playwright e2e tests | ✅ Done |
 | Middleware unit tests (optional) | ✅ Done |
 | Gap 1 — manager invite path tests | ✅ Done |
-| Gap 2 — self invite success DB assertions | 🔲 Todo |
+| Gap 2 — self invite success DB assertions | ✅ Done |
 | Gap 3 — no-auth header test | 🔲 Todo |
 
 ---

@@ -98,8 +98,8 @@ test("POST /api/invite/:id/accept type=self with mismatched email returns 403 an
   expect(membership).toHaveLength(0);
 });
 
-// Bug 1 + Bug 2: matching email goes through and returns success
-test("POST /api/invite/:id/accept type=self with matching email returns success", async ({ request }) => {
+// Bug 1 + Bug 2: matching email goes through and writes the correct DB rows
+test("POST /api/invite/:id/accept type=self with matching email returns success and writes DB", async ({ request }) => {
   const response = await request.post(`/api/invite/${inviteId}/accept`, {
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { type: "self" },
@@ -108,6 +108,23 @@ test("POST /api/invite/:id/accept type=self with matching email returns success"
   expect(response.status()).not.toBe(307);
   const body = await response.json();
   expect(body).toHaveProperty("success", true);
+
+  // Verify the team_members row was created for user A
+  const { data: membership } = await admin
+    .from("team_members")
+    .select("id, role")
+    .eq("team_id", teamId)
+    .eq("profile_id", userAId);
+  expect(membership).toHaveLength(1);
+  expect(membership![0].role).toBe("player");
+
+  // Verify the invitation was marked accepted
+  const { data: invite } = await admin
+    .from("invitations")
+    .select("accepted_at")
+    .eq("id", inviteId)
+    .single();
+  expect(invite?.accepted_at).not.toBeNull();
 });
 
 // Gap 1: email guard must fire on the manager invite path, not just the self path
