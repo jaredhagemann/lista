@@ -182,6 +182,16 @@ test("POST /api/invite/:id/accept type=manager with matching email returns succe
   expect(invite?.accepted_at).not.toBeNull();
 });
 
+// Gap 3: missing Authorization header returns 401, not a redirect or unhandled error
+test("POST /api/invite/:id/accept with no Authorization header returns 401", async ({ request }) => {
+  const response = await request.post(`/api/invite/${inviteId}/accept`, {
+    data: { type: "self" },
+  });
+  expect(response.status()).toBe(401);
+  const body = await response.json();
+  expect(body).toHaveProperty("error", "Unauthorized");
+});
+
 // Bug 2 regression: middleware was redirecting /api/managed-profiles to /login
 test("POST /api/managed-profiles without auth returns 401, not a redirect", async ({ request }) => {
   const response = await request.post("/api/managed-profiles", {

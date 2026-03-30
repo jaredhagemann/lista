@@ -1,6 +1,6 @@
 # Bug Fixes and Test Improvements
 
-**Status:** In Progress
+**Status:** Complete
 **Started:** 2026-03-20
 
 ---
@@ -186,7 +186,7 @@ Add a single test: POST to accept with no `Authorization` header → 401.
 | Middleware unit tests (optional) | ✅ Done |
 | Gap 1 — manager invite path tests | ✅ Done |
 | Gap 2 — self invite success DB assertions | ✅ Done |
-| Gap 3 — no-auth header test | 🔲 Todo |
+| Gap 3 — no-auth header test | ✅ Done |
 
 ---
 
