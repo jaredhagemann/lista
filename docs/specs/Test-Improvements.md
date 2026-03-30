@@ -102,7 +102,7 @@ Assertions:
 - Response status is `302` or `307`
 - `location` header contains `/login`
 
-### 5. Invite Lookup Edge Cases
+### 5. Invite Lookup Edge Cases ✅ Done
 
 Add coverage for invalid or terminal invite states on the public GET endpoint.
 

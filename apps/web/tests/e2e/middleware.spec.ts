@@ -268,6 +268,33 @@ test("POST /api/invite/:id/accept type=manager a second time returns 410 and doe
   expect(afterLinks).toHaveLength(beforeLinks!.length);
 });
 
+// Item 5: invite lookup edge cases
+test("GET /api/invite/:id with a non-existent ID returns 404 JSON, not a redirect", async ({ request }) => {
+  const response = await request.get(`/api/invite/${crypto.randomUUID()}`);
+  expect(response.status()).toBe(404);
+  expect(response.status()).not.toBe(307);
+  const body = await response.json();
+  expect(body).toHaveProperty("error");
+});
+
+test("GET /api/invite/:id for an already-accepted invite returns 410 JSON, not a redirect", async ({ request }) => {
+  const response = await request.get(`/api/invite/${inviteId}`);
+  expect(response.status()).toBe(410);
+  expect(response.status()).not.toBe(307);
+  const body = await response.json();
+  expect(body).toHaveProperty("error");
+});
+
+test("POST /api/invite/:id/accept for a non-existent ID returns 404", async ({ request }) => {
+  const response = await request.post(`/api/invite/${crypto.randomUUID()}/accept`, {
+    headers: { Authorization: `Bearer ${tokenA}` },
+    data: { type: "self" },
+  });
+  expect(response.status()).toBe(404);
+  const body = await response.json();
+  expect(body).toHaveProperty("error");
+});
+
 // Gap 3: missing Authorization header returns 401, not a redirect or unhandled error
 test("POST /api/invite/:id/accept with no Authorization header returns 401", async ({ request }) => {
   const response = await request.post(`/api/invite/${inviteId}/accept`, {
