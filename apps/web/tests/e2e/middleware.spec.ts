@@ -180,6 +180,14 @@ test("POST /api/invite/:id/accept type=manager with matching email returns succe
     .eq("id", managerInviteId)
     .single();
   expect(invite?.accepted_at).not.toBeNull();
+
+  // Verify no team_members row was created — manager acceptance must not mix in self-invite side effects
+  const { data: membership } = await admin
+    .from("team_members")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("profile_id", userAId);
+  expect(membership).toHaveLength(1); // only the row from the earlier type=self test
 });
 
 // Gap 3: missing Authorization header returns 401, not a redirect or unhandled error
