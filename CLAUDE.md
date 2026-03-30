@@ -8,9 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 pnpm dev              # Start Next.js dev server (http://localhost:3000)
 pnpm build            # Production build
 pnpm lint             # ESLint
-pnpm test             # Run all Vitest tests
-pnpm test:rls         # Run only Supabase RLS integration tests
-npx vitest run tests/rls/teams.test.ts  # Run a single test file
+cd apps/web && pnpm test             # Run all Vitest tests
+pnpm test:rls         # Run only Supabase RLS integration tests (root)
+cd apps/web && npx vitest run tests/rls/teams.test.ts  # Run a single test file
 ```
 
 RLS tests run against the live Supabase instance and require `.env.local` with valid credentials. They create/clean up test users via the service role key and include retry logic for auth rate limits.

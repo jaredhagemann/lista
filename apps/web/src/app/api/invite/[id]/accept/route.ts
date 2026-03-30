@@ -55,6 +55,13 @@ export async function POST(
     return NextResponse.json({ error: "Invitation already accepted" }, { status: 410 });
   }
 
+  // Verify the signed-in user's email matches the invitation target
+  const userEmail = user.email?.trim().toLowerCase() ?? "";
+  const inviteEmail = invitation.email.trim().toLowerCase();
+  if (userEmail !== inviteEmail) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   if (body.type === "manager") {
     // Accept a "manage existing player" invitation
     if (!invitation.managed_profile_id) {
