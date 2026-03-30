@@ -190,6 +190,84 @@ test("POST /api/invite/:id/accept type=manager with matching email returns succe
   expect(membership).toHaveLength(1); // only the row from the earlier type=self test
 });
 
+// Item 1: duplicate acceptance — self invite
+test("POST /api/invite/:id/accept type=self a second time returns 410 and does not mutate DB", async ({ request }) => {
+  // Capture pre-retry state
+  const { data: beforeInvite } = await admin
+    .from("invitations")
+    .select("accepted_at")
+    .eq("id", inviteId)
+    .single();
+  const { data: beforeMembership } = await admin
+    .from("team_members")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("profile_id", userAId);
+
+  const response = await request.post(`/api/invite/${inviteId}/accept`, {
+    headers: { Authorization: `Bearer ${tokenA}` },
+    data: { type: "self" },
+  });
+  expect(response.status()).toBe(410);
+  const body = await response.json();
+  expect(body).toHaveProperty("error", "Invitation already accepted");
+
+  // accepted_at must not have been rewritten
+  const { data: afterInvite } = await admin
+    .from("invitations")
+    .select("accepted_at")
+    .eq("id", inviteId)
+    .single();
+  expect(afterInvite?.accepted_at).toBe(beforeInvite?.accepted_at);
+
+  // team_members count must not have increased
+  const { data: afterMembership } = await admin
+    .from("team_members")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("profile_id", userAId);
+  expect(afterMembership).toHaveLength(beforeMembership!.length);
+});
+
+// Item 1: duplicate acceptance — manager invite
+test("POST /api/invite/:id/accept type=manager a second time returns 410 and does not mutate DB", async ({ request }) => {
+  // Capture pre-retry state
+  const { data: beforeInvite } = await admin
+    .from("invitations")
+    .select("accepted_at")
+    .eq("id", managerInviteId)
+    .single();
+  const { data: beforeLinks } = await admin
+    .from("profile_managers")
+    .select("id")
+    .eq("managed_id", managedProfileId)
+    .eq("manager_id", userAId);
+
+  const response = await request.post(`/api/invite/${managerInviteId}/accept`, {
+    headers: { Authorization: `Bearer ${tokenA}` },
+    data: { type: "manager" },
+  });
+  expect(response.status()).toBe(410);
+  const body = await response.json();
+  expect(body).toHaveProperty("error", "Invitation already accepted");
+
+  // accepted_at must not have been rewritten
+  const { data: afterInvite } = await admin
+    .from("invitations")
+    .select("accepted_at")
+    .eq("id", managerInviteId)
+    .single();
+  expect(afterInvite?.accepted_at).toBe(beforeInvite?.accepted_at);
+
+  // profile_managers count must not have increased
+  const { data: afterLinks } = await admin
+    .from("profile_managers")
+    .select("id")
+    .eq("managed_id", managedProfileId)
+    .eq("manager_id", userAId);
+  expect(afterLinks).toHaveLength(beforeLinks!.length);
+});
+
 // Gap 3: missing Authorization header returns 401, not a redirect or unhandled error
 test("POST /api/invite/:id/accept with no Authorization header returns 401", async ({ request }) => {
   const response = await request.post(`/api/invite/${inviteId}/accept`, {

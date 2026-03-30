@@ -17,7 +17,7 @@ This is a strong baseline. The next test additions should focus on state integri
 
 ## Work Items
 
-### 1. Duplicate Acceptance Protection
+### 1. Duplicate Acceptance Protection ✅ Done
 
 Add e2e coverage for accepting the same invite twice.
 
