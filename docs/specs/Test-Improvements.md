@@ -61,7 +61,7 @@ Assertions:
 - Response body is JSON-shaped
 - No `team_members`, `profile_managers`, or `profiles` rows are created
 
-### 3. Unauthenticated Browser Redirect Guardrails
+### 3. Unauthenticated Browser Redirect Guardrails ✅ Done
 
 Add e2e checks that the middleware exemptions did not weaken protection of standard app pages.
 
@@ -144,7 +144,7 @@ Why this matters:
 2. ✅ Item 1 — duplicate acceptance for both invite paths, no new fixtures needed
 3. ✅ Item 5 — invite lookup edge cases, cheap given fixture state after item 1
 4. ✅ Item 4 — one protected API boundary test
-5. Item 3 — unauthenticated redirect guardrails
+5. ✅ Item 3 — unauthenticated redirect guardrails
 6. Item 2 — invalid bearer token coverage
 
 ## Suggested File Placement

@@ -313,6 +313,19 @@ test("POST /api/managed-profiles without auth returns 401, not a redirect", asyn
   expect(response.status()).toBe(401);
 });
 
+// Item 3: unauthenticated browser redirect guardrails
+test("logged-out GET /dashboard is redirected to /login by middleware", async ({ request }) => {
+  const response = await request.get("/dashboard", { maxRedirects: 0 });
+  expect([302, 307]).toContain(response.status());
+  expect(response.headers()["location"]).toContain("/login");
+});
+
+test("logged-out GET /dashboard/team is redirected to /login by middleware", async ({ request }) => {
+  const response = await request.get("/dashboard/team", { maxRedirects: 0 });
+  expect([302, 307]).toContain(response.status());
+  expect(response.headers()["location"]).toContain("/login");
+});
+
 // Item 4: protected API boundary — proves the public-route allowlist has not been over-broadened
 test("logged-out POST /api/notifications/send is redirected to /login by middleware", async ({ request }) => {
   // maxRedirects: 0 returns the raw redirect response instead of following it,
