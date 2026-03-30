@@ -313,6 +313,18 @@ test("POST /api/managed-profiles without auth returns 401, not a redirect", asyn
   expect(response.status()).toBe(401);
 });
 
+// Item 4: protected API boundary — proves the public-route allowlist has not been over-broadened
+test("logged-out POST /api/notifications/send is redirected to /login by middleware", async ({ request }) => {
+  // maxRedirects: 0 returns the raw redirect response instead of following it,
+  // letting us assert the middleware 307 and location header directly.
+  const response = await request.post("/api/notifications/send", {
+    maxRedirects: 0,
+    data: {},
+  });
+  expect([302, 307]).toContain(response.status());
+  expect(response.headers()["location"]).toContain("/login");
+});
+
 // Bug 3 regression: middleware was intercepting /manifest.json for logged-out users
 test("GET /manifest.json returns 200 for logged-out users", async ({ request }) => {
   const response = await request.get("/manifest.json");

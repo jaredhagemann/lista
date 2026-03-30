@@ -81,7 +81,7 @@ Assertions:
 - Response status is `302` or `307`
 - `location` header contains `/login`
 
-### 4. Protected API Boundary Test
+### 4. Protected API Boundary Test ✅ Done
 
 Add one negative test proving that a route outside the public allowlist is still protected.
 
@@ -140,10 +140,10 @@ Why this matters:
 
 ## Recommended Order Of Work
 
-1. Item 6 — one assertion added to an existing test, near-zero effort
-2. Item 1 — duplicate acceptance for both invite paths, no new fixtures needed
-3. Item 5 — invite lookup edge cases, cheap given fixture state after item 1
-4. Item 4 — one protected API boundary test
+1. ✅ Item 6 — one assertion added to an existing test, near-zero effort
+2. ✅ Item 1 — duplicate acceptance for both invite paths, no new fixtures needed
+3. ✅ Item 5 — invite lookup edge cases, cheap given fixture state after item 1
+4. ✅ Item 4 — one protected API boundary test
 5. Item 3 — unauthenticated redirect guardrails
 6. Item 2 — invalid bearer token coverage
 
