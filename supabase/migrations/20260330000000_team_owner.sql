@@ -53,7 +53,7 @@ begin
   -- Ownership transfer must go through the server action (service role).
   -- INSERT is allowed so team creation can set owner_id client-side.
   if tg_op = 'UPDATE' and new.owner_id is distinct from old.owner_id then
-    if current_role = 'authenticated' then
+    if auth.role() = 'authenticated' then
       raise exception 'owner_id can only be changed via a server action';
     end if;
   end if;
