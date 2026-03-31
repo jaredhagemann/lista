@@ -83,7 +83,7 @@ export async function createTestTeam(
 
   const { error: teamError } = await adminClient
     .from("teams")
-    .insert({ id: teamId, organization_id: orgId, name: `Test Team ${teamId.slice(0, 8)}` });
+    .insert({ id: teamId, organization_id: orgId, name: `Test Team ${teamId.slice(0, 8)}`, owner_id: coachUserId });
   if (teamError) throw new Error(`Failed to create team: ${teamError.message}`);
   createdTeamIds.push(teamId);
 

@@ -62,6 +62,7 @@ export function CreateTeamForm({ onSuccess }: { onSuccess?: () => void } = {}) {
         organization_id: orgId,
         name: teamName,
         season: season || null,
+        owner_id: user.id,
       });
 
     if (teamError) {

@@ -13,6 +13,7 @@ const admin = createClient<Database>(SUPABASE_URL, SERVICE_ROLE_KEY, {
 });
 
 export const TEST_COACH_EMAIL = "e2e-coach@lista.test";
+export const TEST_MANAGER_EMAIL = "e2e-manager@lista.test";
 export const TEST_PLAYER_EMAIL = "e2e-player@lista.test";
 export const TEST_INVITEE_EMAIL = "e2e-invitee@lista.test";
 export const TEST_PASSWORD = "Test1234!";
@@ -24,6 +25,7 @@ async function globalSetup() {
 
   // Create users (skip email confirmation via service role)
   const coach = await createUser(TEST_COACH_EMAIL);
+  const manager = await createUser(TEST_MANAGER_EMAIL);
   const player = await createUser(TEST_PLAYER_EMAIL);
   await createUser(TEST_INVITEE_EMAIL);
 
@@ -41,12 +43,14 @@ async function globalSetup() {
     id: teamId,
     name: TEST_TEAM_NAME,
     organization_id: orgId,
+    owner_id: coach.id,
   });
   if (teamError) throw new Error(`Failed to create team: ${teamError.message}`);
 
-  // Add coach and player as members
+  // Add coach (owner), manager (non-owner admin), and player as members
   const { error: membersError } = await admin.from("team_members").insert([
     { team_id: teamId, profile_id: coach.id, role: "coach" },
+    { team_id: teamId, profile_id: manager.id, role: "manager" },
     { team_id: teamId, profile_id: player.id, role: "player" },
   ]);
   if (membersError) throw new Error(`Failed to add members: ${membersError.message}`);
@@ -85,7 +89,7 @@ async function globalSetup() {
   if (inviteError) throw new Error(`Failed to create invitation: ${inviteError.message}`);
 
   // Write IDs to a shared state file for use in tests
-  const state = { orgId, teamId, eventId, invitationId };
+  const state = { orgId, teamId, eventId, invitationId, managerId: manager.id };
   const fs = await import("fs");
   fs.writeFileSync("tests/e2e/.state.json", JSON.stringify(state, null, 2));
 
@@ -104,7 +108,7 @@ async function createUser(email: string) {
 
 async function cleanupTestData() {
   // Find and delete test users — cascades to team_members, events, etc.
-  for (const email of [TEST_COACH_EMAIL, TEST_PLAYER_EMAIL, TEST_INVITEE_EMAIL]) {
+  for (const email of [TEST_COACH_EMAIL, TEST_MANAGER_EMAIL, TEST_PLAYER_EMAIL, TEST_INVITEE_EMAIL]) {
     const { data } = await admin.auth.admin.listUsers();
     const user = data?.users.find((u) => u.email === email);
     if (user) {

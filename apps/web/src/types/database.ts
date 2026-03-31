@@ -700,6 +700,7 @@ export type Database = {
           logo_url: string | null
           name: string
           organization_id: string | null
+          owner_id: string | null
           season: string | null
           sport: string | null
           team_photo_url: string | null
@@ -719,6 +720,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           organization_id?: string | null
+          owner_id?: string | null
           season?: string | null
           sport?: string | null
           team_photo_url?: string | null
@@ -738,6 +740,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           organization_id?: string | null
+          owner_id?: string | null
           season?: string | null
           sport?: string | null
           team_photo_url?: string | null

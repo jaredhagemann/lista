@@ -1,8 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
+import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
+import { DeleteTeamSection } from "@/components/settings/delete-team-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
@@ -29,6 +32,38 @@ export default async function SettingsPage() {
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
   const isAdmin =
     membership?.role === "coach" || membership?.role === "manager";
+  const team = membership?.teams as Database["public"]["Tables"]["teams"]["Row"] | undefined;
+  const isOwner = !!team && team.owner_id === user.id;
+
+  // Fetch eligible admins for ownership transfer (auth-backed coaches/managers only)
+  let eligibleAdmins: { profileId: string; name: string; role: string }[] = [];
+  if (isOwner && team) {
+    const admin = createAdminClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data: adminMembers } = await admin
+      .from("team_members")
+      .select("profile_id, role, profiles(first_name, last_name, auth_user_id)")
+      .eq("team_id", team.id)
+      .in("role", ["coach", "manager"])
+      .neq("profile_id", user.id);
+
+    eligibleAdmins = (adminMembers ?? [])
+      .filter((m) => {
+        const p = m.profiles as { auth_user_id: string | null } | null;
+        return p?.auth_user_id != null;
+      })
+      .map((m) => {
+        const p = m.profiles as { first_name: string | null; last_name: string | null } | null;
+        return {
+          profileId: m.profile_id!,
+          name: [p?.first_name, p?.last_name].filter(Boolean).join(" ") || "Unknown",
+          role: m.role,
+        };
+      });
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -42,9 +77,18 @@ export default async function SettingsPage() {
           <NotificationPrefsForm profileId={user.id} prefs={notifPrefs} />
           <PushSubscriptionButton />
         </TabsContent>
-        {membership && (
-          <TabsContent value="team">
-            <TeamSettingsForm team={membership.teams} isAdmin={isAdmin} />
+        {membership && team && (
+          <TabsContent value="team" className="space-y-6">
+            <TeamSettingsForm team={team} isAdmin={isAdmin} />
+            {isOwner && (
+              <>
+                <TransferOwnershipSection
+                  teamId={team.id}
+                  eligibleAdmins={eligibleAdmins}
+                />
+                <DeleteTeamSection teamId={team.id} teamName={team.name} />
+              </>
+            )}
           </TabsContent>
         )}
       </Tabs>
