@@ -36,12 +36,14 @@ interface TeamRosterProps {
   pendingInvites?: InvitationRow[];
   isAdmin: boolean;
   teamId: string;
+  ownerId?: string | null;
   contactsMap?: Record<string, ContactInfo>;
 }
 
 export function TeamRoster({
   members,
   pendingInvites = [],
+  ownerId,
   contactsMap = {},
 }: TeamRosterProps) {
   const router = useRouter();
@@ -161,9 +163,16 @@ export function TeamRoster({
         ) : (
           <div className="hidden sm:block" />
         )}
-        <Badge variant="secondary" className="capitalize shrink-0">
-          {member.role}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-1">
+          {ownerId && member.profile_id === ownerId && (
+            <Badge variant="outline" className="shrink-0 border-amber-400 text-amber-600">
+              Team Owner
+            </Badge>
+          )}
+          <Badge variant="secondary" className="capitalize shrink-0">
+            {member.role}
+          </Badge>
+        </div>
       </div>
     );
   }

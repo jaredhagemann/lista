@@ -4,9 +4,11 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import type { Database } from "@/types/database";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
 import { getActiveProfileId } from "@/lib/get-active-membership";
+import { sendTeamDeletionNotifications } from "@/lib/notifications/team-deletion";
 
 export async function setActiveTeam(teamId: string) {
   const supabase = await createServerClient();
@@ -108,9 +110,17 @@ export async function removeTeamMember(memberId: string, teamId: string) {
 
   const profileId = target.profile_id!;
 
-  // Block self-removal
-  if (profileId === activeProfileId) {
-    return { error: "You cannot remove yourself from the team" };
+  // Block removal of the current team owner — they must transfer ownership first.
+  // This applies whether the removal is self-initiated or initiated by another admin.
+  // Non-owner admins may remove themselves freely.
+  const { data: teamRow } = await supabase
+    .from("teams")
+    .select("owner_id")
+    .eq("id", teamId)
+    .single();
+
+  if (teamRow?.owner_id === profileId) {
+    return { error: "Transfer ownership before removing the team owner" };
   }
 
   // Service role client for cleanup operations that cross RLS boundaries
@@ -189,4 +199,97 @@ export async function removeTeamMember(memberId: string, teamId: string) {
 
   revalidatePath("/dashboard/team");
   return { success: true };
+}
+
+export async function transferOwnership(teamId: string, newOwnerProfileId: string) {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  // Ownership is a property of the auth user, not the active profile.
+  // owner_id always references an auth-backed profile whose id equals the auth user's id.
+  const { data: teamRow } = await supabase
+    .from("teams")
+    .select("owner_id")
+    .eq("id", teamId)
+    .single();
+
+  if (!teamRow) return { error: "Team not found" };
+  if (teamRow.owner_id !== user.id) return { error: "Not authorized" };
+
+  const admin = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  // Verify recipient is a current coach or manager with a real auth account
+  const { data: recipientMembership } = await admin
+    .from("team_members")
+    .select("role, profiles(auth_user_id)")
+    .eq("team_id", teamId)
+    .eq("profile_id", newOwnerProfileId)
+    .maybeSingle();
+
+  if (!recipientMembership) return { error: "Recipient is not a team member" };
+  if (!["coach", "manager"].includes(recipientMembership.role)) {
+    return { error: "Ownership can only be transferred to a coach or manager" };
+  }
+  const recipientProfile = recipientMembership.profiles as { auth_user_id: string | null } | null;
+  if (!recipientProfile?.auth_user_id) {
+    return { error: "Ownership cannot be transferred to a managed profile" };
+  }
+
+  const { error } = await admin
+    .from("teams")
+    .update({ owner_id: newOwnerProfileId })
+    .eq("id", teamId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/team");
+  return { success: true };
+}
+
+export async function deleteTeam(teamId: string) {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  // Ownership is a property of the auth user, not the active profile.
+  // owner_id always references an auth-backed profile whose id equals the auth user's id.
+  const { data: teamRow } = await supabase
+    .from("teams")
+    .select("owner_id, name")
+    .eq("id", teamId)
+    .single();
+
+  if (!teamRow) return { error: "Team not found" };
+  if (teamRow.owner_id !== user.id) return { error: "Not authorized" };
+
+  const admin = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  // Fan out notifications to all members (best-effort — failures do not abort)
+  await sendTeamDeletionNotifications(teamId, teamRow.name);
+
+  // Delete all storage objects under team-images/{teamId}/
+  const { data: storageObjects } = await admin.storage
+    .from("team-images")
+    .list(teamId);
+
+  if (storageObjects && storageObjects.length > 0) {
+    const paths = storageObjects.map((obj) => `${teamId}/${obj.name}`);
+    await admin.storage.from("team-images").remove(paths);
+  }
+
+  // Delete the team — cascades handle all child records
+  const { error } = await admin.from("teams").delete().eq("id", teamId);
+  if (error) return { error: error.message };
+
+  redirect("/dashboard");
 }

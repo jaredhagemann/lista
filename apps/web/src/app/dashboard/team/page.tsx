@@ -96,7 +96,7 @@ export default async function TeamPage() {
         />
       )}
 
-      <TeamRoster members={members} pendingInvites={pendingInvites} isAdmin={isAdmin} teamId={team.id} contactsMap={contactsMap} />
+      <TeamRoster members={members} pendingInvites={pendingInvites} isAdmin={isAdmin} teamId={team.id} ownerId={team.owner_id} contactsMap={contactsMap} />
     </div>
   );
 }

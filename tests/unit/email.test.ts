@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildInviteEmailHtml } from "@/lib/notifications/email";
+import { buildTeamDeletionEmailHtml } from "@/lib/notifications/team-deletion";
 
 describe("buildInviteEmailHtml", () => {
   const params = {
@@ -37,5 +38,29 @@ describe("buildInviteEmailHtml", () => {
     expect(html).toContain("<a ");
     expect(html).toContain("</table>");
     expect(html).toContain("</a>");
+  });
+});
+
+describe("buildTeamDeletionEmailHtml", () => {
+  const teamName = "U12 Blue";
+  const html = buildTeamDeletionEmailHtml({ teamName });
+
+  it("contains the team name", () => {
+    expect(html).toContain(teamName);
+  });
+
+  it("indicates the team has been permanently deleted", () => {
+    expect(html.toLowerCase()).toContain("deleted");
+    expect(html.toLowerCase()).toContain("permanently");
+  });
+
+  it("does not contain an action button or invite link", () => {
+    expect(html).not.toContain("href=");
+  });
+
+  it("produces valid-looking HTML", () => {
+    expect(html).toContain("<table");
+    expect(html).toContain("</table>");
+    expect(html).toContain("</html>");
   });
 });
