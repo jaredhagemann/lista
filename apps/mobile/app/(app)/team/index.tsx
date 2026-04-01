@@ -84,6 +84,7 @@ export default function TeamScreen() {
   const { membership, loading: membershipLoading } = useAppContext();
 
   const [sections, setSections] = useState<Section[]>([]);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -101,7 +102,7 @@ export default function TeamScreen() {
       return;
     }
 
-    const [membersResult, invitesResult] = await Promise.all([
+    const [membersResult, invitesResult, teamResult] = await Promise.all([
       supabase
         .from("team_members")
         .select(
@@ -116,10 +117,16 @@ export default function TeamScreen() {
             .is("accepted_at", null)
             .is("managed_profile_id", null)
         : Promise.resolve({ data: [] }),
+      supabase
+        .from("teams")
+        .select("owner_id")
+        .eq("id", membership.teamId)
+        .single(),
     ]);
 
     const members = (membersResult.data ?? []) as unknown as Member[];
     const invites = (invitesResult.data ?? []) as Invite[];
+    setOwnerId(teamResult.data?.owner_id ?? null);
 
     // Players: sorted by jersey number (nulls last)
     const players = members
@@ -229,11 +236,17 @@ export default function TeamScreen() {
                     </Text>
                   ) : null}
                 </View>
-                <View style={styles.roleBadge}>
-                  <Text style={styles.roleBadgeText} numberOfLines={1}>
-                    {item.role}
-                  </Text>
-                </View>
+                {ownerId && item.profile_id === ownerId ? (
+                  <View style={styles.ownerBadge}>
+                    <Text style={styles.ownerBadgeText}>Owner</Text>
+                  </View>
+                ) : (
+                  <View style={styles.roleBadge}>
+                    <Text style={styles.roleBadgeText} numberOfLines={1}>
+                      {item.role}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           }
@@ -323,6 +336,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: "#374151",
+    textTransform: "capitalize",
+  },
+  ownerBadge: {
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  ownerBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#d97706",
     textTransform: "capitalize",
   },
   invitedBadge: {
