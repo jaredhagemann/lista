@@ -25,7 +25,7 @@ export function NewMemberForm({
   role,
 }: {
   teamId: string;
-  role: "player" | "manager";
+  role: "player" | "manager" | "coach";
 }) {
   const router = useRouter();
   const [form, setForm] = useState({

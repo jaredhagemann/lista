@@ -10,7 +10,7 @@ export default async function NewMemberPage({
 }) {
   const { role } = await searchParams;
 
-  if (role !== "player" && role !== "manager") {
+  if (role !== "player" && role !== "manager" && role !== "coach") {
     redirect("/dashboard/team");
   }
 
@@ -32,13 +32,13 @@ export default async function NewMemberPage({
     <div className="mx-auto max-w-lg space-y-6">
       <div>
         <h1 className="text-2xl font-bold">
-          Invite {role === "player" ? "player" : "manager"}
+          Invite {role === "player" ? "player" : role === "coach" ? "coach" : "manager"}
         </h1>
         <p className="mt-1 text-muted-foreground">
           Send an invitation email to add a new team member.
         </p>
       </div>
-      <NewMemberForm teamId={membership.team_id!} role={role as "player" | "manager"} />
+      <NewMemberForm teamId={membership.team_id!} role={role as "player" | "manager" | "coach"} />
     </div>
   );
 }
