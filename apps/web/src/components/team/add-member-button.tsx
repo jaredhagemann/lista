@@ -32,6 +32,11 @@ export function AddMemberButton() {
         >
           Manager
         </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => router.push("/dashboard/team/new-member?role=coach")}
+        >
+          Coach
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
