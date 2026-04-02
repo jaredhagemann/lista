@@ -30,13 +30,14 @@ type Member = {
   team_id: string;
   role: string;
   jersey_number: number | null;
+  position: string | null;
   profiles: Profile;
 };
 
 type Manager = {
   manager_id: string;
   relationship: string;
-  profiles: { first_name: string; last_name: string };
+  profiles: { first_name: string; last_name: string; email: string | null };
 };
 
 function formatBirthday(dateStr: string) {
@@ -72,7 +73,7 @@ export default function MemberDetailScreen() {
     const { data: memberData } = await supabase
       .from("team_members")
       .select(
-        "id, profile_id, team_id, role, jersey_number, profiles(id, first_name, last_name, email, avatar_url, birthday, gender)"
+        "id, profile_id, team_id, role, jersey_number, position, profiles(id, first_name, last_name, email, avatar_url, birthday, gender)"
       )
       .eq("id", memberId)
       .single();
@@ -95,7 +96,7 @@ export default function MemberDetailScreen() {
     const { data: managersData } = await supabase
       .from("profile_managers")
       .select(
-        "manager_id, relationship, profiles!profile_managers_manager_id_fkey(first_name, last_name)"
+        "manager_id, relationship, profiles!profile_managers_manager_id_fkey(first_name, last_name, email)"
       )
       .eq("managed_id", m.profile_id);
 
@@ -172,9 +173,6 @@ export default function MemberDetailScreen() {
         {/* Profile details */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Profile</Text>
-          {(isAdmin || isOwnProfile) && profile.email ? (
-            <InfoRow label="Email" value={profile.email} />
-          ) : null}
           {profile.birthday ? (
             <InfoRow label="Birthday" value={formatBirthday(profile.birthday)} />
           ) : null}
@@ -189,6 +187,9 @@ export default function MemberDetailScreen() {
           <InfoRow label="Role" value={member.role.charAt(0).toUpperCase() + member.role.slice(1)} />
           {member.role === "player" && member.jersey_number != null ? (
             <InfoRow label="Jersey" value={`#${member.jersey_number}`} />
+          ) : null}
+          {member.role === "player" && member.position ? (
+            <InfoRow label="Position" value={member.position} />
           ) : null}
         </View>
 
@@ -216,6 +217,9 @@ export default function MemberDetailScreen() {
                     <Text style={styles.managerRelationship}>
                       {mgr.relationship}
                     </Text>
+                    {mgr.profiles.email ? (
+                      <Text style={styles.managerEmail}>{mgr.profiles.email}</Text>
+                    ) : null}
                   </View>
                   <Ionicons name="people-outline" size={16} color="#9ca3af" />
                 </View>
@@ -314,4 +318,5 @@ const styles = StyleSheet.create({
   managerAvatarText: { fontSize: 12, fontWeight: "700", color: "#374151" },
   managerName: { fontSize: 14, fontWeight: "600", color: "#111827" },
   managerRelationship: { fontSize: 12, color: "#9ca3af", textTransform: "capitalize" },
+  managerEmail: { fontSize: 12, color: "#6b7280", marginTop: 1 },
 });

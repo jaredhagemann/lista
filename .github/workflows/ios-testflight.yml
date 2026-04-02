@@ -42,6 +42,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Set app version from tag
+        if: startsWith(github.ref, 'refs/tags/ios-v')
+        run: |
+          VERSION=${GITHUB_REF_NAME#ios-v}
+          jq --arg v "$VERSION" '.expo.version = $v' apps/mobile/app.json > tmp.json && mv tmp.json apps/mobile/app.json
+          echo "Set app version to $VERSION"
+
       - name: Install EAS CLI
         run: pnpm add -g eas-cli
 
