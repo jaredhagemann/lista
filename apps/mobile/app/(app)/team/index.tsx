@@ -28,6 +28,7 @@ type Member = {
   profile_id: string;
   role: string;
   jersey_number: number | null;
+  position: string | null;
   profiles: Profile;
 };
 
@@ -106,7 +107,7 @@ export default function TeamScreen() {
       supabase
         .from("team_members")
         .select(
-          "id, profile_id, role, jersey_number, profiles(id, first_name, last_name, email, avatar_url)"
+          "id, profile_id, role, jersey_number, position, profiles(id, first_name, last_name, email, avatar_url)"
         )
         .eq("team_id", membership.teamId),
       isAdmin
@@ -226,13 +227,15 @@ export default function TeamScreen() {
                 <View style={styles.rowText}>
                   <Text style={styles.rowName} numberOfLines={1}>
                     {fullName}
-                    {item.jersey_number != null ? (
-                      <Text style={styles.jersey}> #{item.jersey_number}</Text>
-                    ) : null}
                   </Text>
-                  {profile.email ? (
+                  {item.role === "player" && (item.jersey_number != null || item.position) ? (
                     <Text style={styles.rowSub} numberOfLines={1}>
-                      {profile.email}
+                      {[
+                        item.jersey_number != null ? `#${item.jersey_number}` : null,
+                        item.position ?? null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </Text>
                   ) : null}
                 </View>
