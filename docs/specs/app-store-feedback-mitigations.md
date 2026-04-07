@@ -5,26 +5,7 @@ Review date: April 07, 2026
 
 ---
 
-## Issue 1 — Guideline 2.3.7: Accurate Metadata (Subtitle)
-
-### What Apple flagged
-The subtitle "Free sports team management" contains the word "Free", which Apple classifies as a price reference. Price references are not permitted in the subtitle field.
-
-### Proposed fix
-This is a metadata-only change — no code required. Update the subtitle in App Store Connect to remove the pricing reference.
-
-**Proposed new subtitle:** `Sports team management` (22 chars)
-
-This accurately describes the app without any price language. The "no fees, no ads" messaging can remain in the description, which Apple explicitly permits.
-
-### Steps
-1. Open App Store Connect → Lista → App Information
-2. Replace the subtitle with `Sports team management`
-3. Save and resubmit
-
----
-
-## Issue 2 — Guideline 5.1.1(v): Account Deletion
+## Issue 1 — Guideline 5.1.1(v): Account Deletion
 
 ### What Apple flagged
 The app supports account creation but does not provide an in-app option to permanently delete an account. Apple's requirements:
