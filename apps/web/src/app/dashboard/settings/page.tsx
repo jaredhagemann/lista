@@ -6,19 +6,27 @@ import { PushSubscriptionButton } from "@/components/notifications/push-subscrip
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
+import { AccountSettings } from "@/components/settings/account-settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
 type NotifPrefs = Database["public"]["Tables"]["notification_preferences"]["Row"];
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  const { tab } = await searchParams;
+  const defaultTab = tab === "account" || tab === "team" ? tab : "notifications";
 
   const [{ data: rawNotifPrefs }, membership] = await Promise.all([
     supabase
@@ -68,10 +76,11 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
-      <Tabs defaultValue="notifications">
+      <Tabs defaultValue={defaultTab}>
         <TabsList>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           {membership && <TabsTrigger value="team">Team</TabsTrigger>}
+          <TabsTrigger value="account">Account</TabsTrigger>
         </TabsList>
         <TabsContent value="notifications" className="space-y-8">
           <NotificationPrefsForm profileId={user.id} prefs={notifPrefs} />
@@ -91,6 +100,9 @@ export default async function SettingsPage() {
             )}
           </TabsContent>
         )}
+        <TabsContent value="account" className="space-y-6">
+          <AccountSettings />
+        </TabsContent>
       </Tabs>
     </div>
   );

@@ -2,71 +2,56 @@ export const metadata = {
   title: "Support — Lista",
 };
 
+const faqs = [
+  {
+    q: "How do I delete my account?",
+    a: "You can delete your account directly in the app. On iOS, go to Settings → Delete Account. On the web, go to Settings → Account → Delete Account. Note: if you own a team, you must transfer or delete that team first. Deletion is permanent and cannot be undone.",
+  },
+  {
+    q: "How do I join a team?",
+    a: "Ask your coach or team manager to send you an invitation link. Tapping the link will guide you through creating an account (or signing in) and joining the team automatically.",
+  },
+  {
+    q: "How do I add a player I manage (e.g., my child)?",
+    a: "In Settings → Managed Players, tap 'Add Player'. You can create a profile for any player you manage. Their profile will appear on the team roster and you can submit availability on their behalf.",
+  },
+  {
+    q: "Why am I not receiving push notifications?",
+    a: "Make sure notifications are enabled for Lista in your device's system settings. You can also check your in-app notification preferences under Settings → Notifications.",
+  },
+  {
+    q: "How do I transfer team ownership?",
+    a: "Go to Settings → Team → Transfer Ownership. You can hand off ownership to any coach or manager on the team who has an account.",
+  },
+  {
+    q: "How do I contact support?",
+    a: "Email us at support@lista.team and we'll get back to you as soon as we can.",
+  },
+];
+
 export default function SupportPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 text-sm text-foreground">
       <h1 className="mb-2 text-3xl font-bold tracking-tight">Support</h1>
-      <p className="mb-10 text-muted-foreground">We&apos;re here to help.</p>
+      <p className="mb-10 text-muted-foreground">
+        Frequently asked questions. Still stuck?{" "}
+        <a
+          href="mailto:support@lista.team"
+          className="underline underline-offset-4"
+        >
+          Email us
+        </a>
+        .
+      </p>
 
-      <section className="mb-8">
-        <h2 className="mb-3 text-lg font-semibold">Contact us</h2>
-        <p>
-          For any questions, issues, or feedback, email us at{" "}
-          <a href="mailto:support@lista.team" className="underline underline-offset-4">
-            support@lista.team
-          </a>
-          . We aim to respond within one business day.
-        </p>
-      </section>
-
-      <section className="mb-8">
-        <h2 className="mb-3 text-lg font-semibold">Frequently asked questions</h2>
-
-        <div className="space-y-6">
-          <div>
-            <h3 className="mb-1 font-medium">How do I join a team?</h3>
-            <p className="text-muted-foreground">
-              Your coach or team manager will send you an invitation by email. Follow the link in
-              that email to create an account and join the team.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="mb-1 font-medium">How do I add a child to my account?</h3>
-            <p className="text-muted-foreground">
-              A team admin can invite a managed profile on your behalf. Once accepted, the profile
-              will appear under your account and you can manage their schedule and availability.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="mb-1 font-medium">How do I turn off notifications?</h3>
-            <p className="text-muted-foreground">
-              Go to Settings in the app and adjust your notification preferences. You can control
-              email and push notifications for events and chat independently.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="mb-1 font-medium">How do I delete my account?</h3>
-            <p className="text-muted-foreground">
-              Email us at{" "}
-              <a href="mailto:support@lista.team" className="underline underline-offset-4">
-                support@lista.team
-              </a>{" "}
-              and we will permanently delete your account and all associated data.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="mb-1 font-medium">Is Lista really free?</h3>
-            <p className="text-muted-foreground">
-              Yes. Lista is completely free with no ads, no premium tier, and no limits on roster
-              size or events.
-            </p>
-          </div>
-        </div>
-      </section>
+      <div className="space-y-8">
+        {faqs.map(({ q, a }) => (
+          <section key={q}>
+            <h2 className="mb-2 font-semibold">{q}</h2>
+            <p className="text-muted-foreground">{a}</p>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

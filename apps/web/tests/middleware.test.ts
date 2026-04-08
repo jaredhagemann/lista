@@ -53,6 +53,18 @@ describe("updateSession — routing logic", () => {
     expect(locationOf(response)).toBeNull();
   });
 
+  it("passes through /api/account/delete when unauthenticated (mobile Bearer-auth route)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const response = await updateSession(req("/api/account/delete"));
+    expect(locationOf(response)).toBeNull();
+  });
+
+  it("passes through /support when unauthenticated (public FAQ page)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const response = await updateSession(req("/support"));
+    expect(locationOf(response)).toBeNull();
+  });
+
   it("redirects authenticated user on /login to /dashboard", async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: "user-123", email: "user@example.com" } } });
     const response = await updateSession(req("/login"));

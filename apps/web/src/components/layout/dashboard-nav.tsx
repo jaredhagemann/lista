@@ -141,11 +141,14 @@ export function DashboardNav({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">
+                <Link
+                  href="/dashboard/settings?tab=account"
+                  className="text-sm font-medium hover:underline"
+                >
                   {[profile?.first_name, profile?.last_name]
                     .filter(Boolean)
                     .join(" ")}
-                </p>
+                </Link>
                 <p className="text-xs text-muted-foreground">{profile?.email}</p>
               </div>
               <DropdownMenuSeparator />
