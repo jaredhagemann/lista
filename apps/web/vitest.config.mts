@@ -13,5 +13,6 @@ export default defineConfig({
     hookTimeout: 30_000,
     fileParallelism: false,
     globals: true,
+    exclude: ["**/node_modules/**", "**/tests/e2e/**"],
   },
 });
