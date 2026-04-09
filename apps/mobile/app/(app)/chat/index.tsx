@@ -466,7 +466,11 @@ export default function ChatScreen() {
   }, []);
 
   const fetchData = useCallback(async () => {
-    if (!membership?.teamId || !ownId) return;
+    if (!membership?.teamId || !ownId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const [teamChanResult, groupResult, dmResult, membersResult] = await Promise.all([
       supabase
@@ -688,6 +692,24 @@ export default function ChatScreen() {
     );
   }
 
+  if (!membership) {
+    return (
+      <SafeAreaView style={styles.center} edges={["bottom"]}>
+        <Ionicons name="chatbubble-outline" size={48} color="#d1d5db" />
+        <Text style={styles.noTeamTitle}>No team yet</Text>
+        <Text style={styles.noTeamSubtitle}>
+          Create a team or ask your coach for an invite link to get started.
+        </Text>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => router.push("/(app)/create-team")}
+        >
+          <Text style={styles.createButtonText}>Create a team</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <SectionList
@@ -792,7 +814,9 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
-  center: { flex: 1, backgroundColor: "#fff", justifyContent: "center", alignItems: "center" },
+  center: { flex: 1, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", gap: 8 },
+  noTeamTitle: { fontSize: 18, fontWeight: "600", color: "#374151" },
+  noTeamSubtitle: { fontSize: 14, color: "#9ca3af", textAlign: "center", paddingHorizontal: 32 },
   empty: { alignItems: "center", paddingTop: 64, gap: 8 },
   emptyText: { color: "#9ca3af", fontSize: 15 },
   sectionHeader: {

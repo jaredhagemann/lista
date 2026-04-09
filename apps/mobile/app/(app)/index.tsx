@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -109,9 +110,37 @@ export default function HomeScreen() {
           <Text className="text-xl font-bold text-gray-900 mt-4 mb-2 text-center">
             Welcome to Lista
           </Text>
-          <Text className="text-gray-500 text-center">
-            You're not on a team yet. Ask your coach for an invite link.
+          <Text className="text-gray-500 text-center mb-6">
+            Create a team to get started, or ask your coach for an invite link.
           </Text>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/create-team")}
+            style={{
+              backgroundColor: "#0f172a",
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 10,
+              marginBottom: 16,
+              width: "100%",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#ffffff", fontWeight: "600", fontSize: 16 }}>
+              Create a team
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert(
+                "I have an invite link",
+                "Ask your coach to share the invite link with you. Tap it on your device to join."
+              )
+            }
+          >
+            <Text style={{ color: "#6b7280", fontSize: 15 }}>
+              I have an invite link
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

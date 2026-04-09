@@ -1,33 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import type { Database } from "@/types/database";
-
-function getBearerToken(request: Request): string | null {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  return authHeader.slice(7);
-}
-
-async function authenticateRequest(token: string | null) {
-  if (!token) return null;
-
-  const supabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser(token);
-  return user ?? null;
-}
-
-function adminClient() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
+import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 
 async function checkOwnedTeams(
   userId: string
@@ -42,9 +14,7 @@ async function checkOwnedTeams(
 }
 
 export async function GET(request: Request) {
-  const token = getBearerToken(request);
-  const user = await authenticateRequest(token);
-
+  const user = await resolveRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -65,9 +35,7 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const token = getBearerToken(request);
-  const user = await authenticateRequest(token);
-
+  const user = await resolveRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

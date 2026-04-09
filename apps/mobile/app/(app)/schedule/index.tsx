@@ -155,7 +155,11 @@ export default function ScheduleScreen() {
   }, [isAdmin]);
 
   const fetchEvents = useCallback(async () => {
-    if (!membership?.teamId || !membership?.profileId) return;
+    if (!membership?.teamId || !membership?.profileId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const [eventsResult, availResult] = await Promise.all([
       supabase
@@ -213,6 +217,24 @@ export default function ScheduleScreen() {
     return (
       <SafeAreaView style={styles.center} edges={["bottom"]}>
         <ActivityIndicator size="large" color="#0f172a" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!membership) {
+    return (
+      <SafeAreaView style={styles.center} edges={["bottom"]}>
+        <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
+        <Text style={styles.emptyText}>No team yet</Text>
+        <Text style={[styles.emptyText, { fontSize: 13, marginTop: 4 }]}>
+          Create a team or ask your coach for an invite link to get started.
+        </Text>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => router.push("/(app)/create-team")}
+        >
+          <Text style={styles.createButtonText}>Create a team</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -326,7 +348,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  emptyText: { color: "#9ca3af", fontSize: 15 },
+  emptyText: { color: "#9ca3af", fontSize: 15, textAlign: "center", paddingHorizontal: 32 },
+  createButton: {
+    marginTop: 16,
+    backgroundColor: "#0f172a",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  createButtonText: { color: "#ffffff", fontWeight: "600", fontSize: 15 },
   listContent: { paddingVertical: 8 },
 
   // Today divider

@@ -137,6 +137,16 @@ export async function createManagedProfile(
   return profileId;
 }
 
+/**
+ * Register externally-created team/org IDs so cleanupTestData() picks them up.
+ * Use this when creating records via adminClient.rpc() or other paths that
+ * bypass the createTestTeam helper's internal tracking.
+ */
+export function trackIds({ orgId, teamId }: { orgId?: string; teamId?: string }) {
+  if (teamId) createdTeamIds.push(teamId);
+  if (orgId) createdOrgIds.push(orgId);
+}
+
 /** Clean up all test data in correct FK order */
 export async function cleanupTestData() {
   // Delete managed profiles and their manager links

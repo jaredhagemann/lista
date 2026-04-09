@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, Image, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useAppContext } from "../contexts/AppContext";
 import { SwitcherSheet } from "./SwitcherSheet";
 
@@ -16,6 +17,7 @@ function teamInitials(name: string) {
 export function TeamProfileStrip() {
   const { membership, ownProfile, activeProfile, loading, switching } =
     useAppContext();
+  const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const isViewingManaged =
@@ -80,6 +82,7 @@ export function TeamProfileStrip() {
       <SwitcherSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
+        onCreateTeam={() => router.push("/(app)/create-team")}
       />
     </>
   );

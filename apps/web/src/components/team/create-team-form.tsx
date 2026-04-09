@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { setActiveTeam } from "@/app/actions/team";
+import { clearActiveProfile } from "@/app/actions/team";
+import { executeCreateTeam } from "@/lib/create-team";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,77 +22,25 @@ export function CreateTeamForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const err = await executeCreateTeam({
+      teamName,
+      season,
+      orgName,
+      clearActiveProfileFn: clearActiveProfile,
+      onSuccess,
+      routerPush: router.push,
+      routerRefresh: router.refresh,
+    });
 
-    if (!user) {
-      setError("You must be signed in.");
+    if (err) {
+      setError(err);
       setLoading(false);
-      return;
-    }
-
-    // Generate IDs client-side to avoid needing .select() after insert.
-    // This sidesteps the RLS chicken-and-egg problem: the SELECT policy on
-    // teams requires the user to be a team_member, but that row doesn't
-    // exist yet at insert time.
-    const orgId = crypto.randomUUID();
-    const { error: orgError } = await supabase
-      .from("organizations")
-      .insert({ id: orgId, name: orgName || teamName });
-
-    if (orgError) {
-      setError(orgError.message);
-      setLoading(false);
-      return;
-    }
-
-    const teamId = crypto.randomUUID();
-    const { error: teamError } = await supabase
-      .from("teams")
-      .insert({
-        id: teamId,
-        organization_id: orgId,
-        name: teamName,
-        season: season || null,
-        owner_id: user.id,
-      });
-
-    if (teamError) {
-      setError(teamError.message);
-      setLoading(false);
-      return;
-    }
-
-    // Add current user as coach
-    const { error: memberError } = await supabase
-      .from("team_members")
-      .insert({
-        team_id: teamId,
-        profile_id: user.id,
-        role: "coach",
-      });
-
-    if (memberError) {
-      setError(memberError.message);
-      setLoading(false);
-      return;
-    }
-
-    await setActiveTeam(teamId);
-
-    if (onSuccess) {
-      onSuccess();
-    } else {
-      router.push("/dashboard");
-      router.refresh();
     }
   }
 
