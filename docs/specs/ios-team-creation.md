@@ -41,11 +41,13 @@ Accepts a JSON body `{ teamName, season?, orgName? }` with a Supabase session to
 
 1. Resolve the calling user from the session token
 2. Insert `organizations` row (`id`, `name = orgName || teamName`)
-3. Insert `teams` row (`id`, `organization_id`, `name`, `season`, `owner_id = userId`) — all in the same call
+3. Insert `teams` row (`id`, `organization_id`, `name`, `season`, `owner_id = userId`)
 4. Insert `team_members` row (`team_id`, `profile_id = userId`, `role = 'coach'`)
 5. Update `profiles.active_team_id = teamId` for the calling user
 
 Steps 2–5 are wrapped in a Postgres transaction via `supabase.rpc('create_team', { ... })` (see migration below), making the entire operation atomic. A failure at any step rolls back all changes — no orphaned records.
+
+**Chat channel provisioning is part of this contract.** The `teams` INSERT in step 3 fires the `create_team_channel` trigger (`supabase/migrations/20260307000000_team_chat.sql`, line 68), which creates the team-wide `channels` row and seeds it with a `channel_members` row for the new coach. This is not an incidental side effect — it is a guaranteed part of what "create a team" means in this system. The spec calls it out explicitly so that any future changes to the RPC (e.g. a dry-run mode, a bulk-import path, or a test helper that bypasses the trigger) are made with full awareness that chat provisioning would need to be handled separately.
 
 **Response:** `{ teamId }` on success, appropriate 4xx/5xx on failure.
 
