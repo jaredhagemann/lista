@@ -202,7 +202,50 @@ describe("migrated routes — 200 when valid Bearer token (§2.1.1)", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.teams).toEqual([]);
-    // Confirm the Bearer path was exercised (cookie returned null)
+    expect(mocks.mockBearerGetUser).toHaveBeenCalledWith("valid-jwt-token");
+  });
+
+  it("GET /api/account/delete returns 200 (not 401) when Bearer token is valid", async () => {
+    const { GET } = await import("@/app/api/account/delete/route");
+    // Stub: user owns no teams → eligible: true (200)
+    mocks.mockEq.mockResolvedValue({ data: [], error: null });
+    const res = await GET(makeRequest({ Authorization: "Bearer valid-jwt-token" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.eligible).toBe(true);
+    expect(mocks.mockBearerGetUser).toHaveBeenCalledWith("valid-jwt-token");
+  });
+
+  it("POST /api/managed-profiles returns 400 (not 401) when Bearer token is valid but body is empty", async () => {
+    // After auth succeeds, the route validates firstName — empty body → 400.
+    // No DB calls are made on this path so no additional mock setup is needed.
+    const { POST } = await import("@/app/api/managed-profiles/route");
+    const req = new Request("http://localhost:3000/api/managed-profiles", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt-token", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("First name is required");
+    expect(mocks.mockBearerGetUser).toHaveBeenCalledWith("valid-jwt-token");
+  });
+
+  it("POST /api/invite/[id]/accept returns 404 (not 401) when Bearer token is valid but invite is missing", async () => {
+    // After auth succeeds, the route fetches the invitation — mock .single() to
+    // simulate a missing invite → 404.
+    mocks.mockEq.mockReturnValue({
+      single: vi.fn().mockResolvedValue({ data: null, error: { message: "not found" } }),
+    });
+    const { POST } = await import("@/app/api/invite/[id]/accept/route");
+    const req = new Request("http://localhost:3000/api/invite/missing-id/accept", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt-token", "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "self" }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: "missing-id" }) });
+    expect(res.status).toBe(404);
     expect(mocks.mockBearerGetUser).toHaveBeenCalledWith("valid-jwt-token");
   });
 });
