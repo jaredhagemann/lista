@@ -40,12 +40,14 @@ export function CreateTeamForm({ onSuccess }: { onSuccess?: () => void } = {}) {
       return;
     }
 
+    // Always clear the managed-profile cookie on success — the new team belongs
+    // to the own profile, and a stale active_profile_id would cause the dashboard
+    // layout to try resolving a managed profile with no membership on the new team.
+    await clearActiveProfile();
+
     if (onSuccess) {
       onSuccess();
     } else {
-      // Clear any active managed-profile cookie before redirecting so the
-      // dashboard layout resolves to the own profile on the new team.
-      await clearActiveProfile();
       router.push("/dashboard");
       router.refresh();
     }
