@@ -140,15 +140,46 @@ Add `create-team` as a hidden tab in `(app)/_layout.tsx` (using `tabBarButton: (
 
 ---
 
-## Changes to the no-team home screen — `apps/mobile/app/(app)/index.tsx`
+## No-team empty state — all tabs
 
-Replace the current placeholder with a proper empty state:
+When `membership` is null the tab shell currently behaves inconsistently:
+
+- **Schedule** (`schedule/index.tsx` line 157): `fetchEvents` returns early when `!membership?.teamId` but never sets `loading = false`. The tab is stuck on the spinner indefinitely.
+- **Chat** (`chat/index.tsx` line 468): same bug — `fetchData` returns early without clearing `loading`, spinner never resolves.
+- **Team** (`team/index.tsx` line 99): `loading` is cleared correctly, but the tab falls through to the `SectionList` with empty sections, showing "No members yet." — misleading since it implies a team exists with no members.
+
+All four tabs (Home, Schedule, Team, Chat) should show the same consistent no-team empty state. The fix per tab:
+
+**Home (`app/(app)/index.tsx`)**
+
+Replace the current placeholder:
 
 - Icon: `people-outline` (keep existing)
 - Title: "Welcome to Lista"
 - Subtitle: "Create a team to get started, or ask your coach for an invite link."
 - Primary button: "Create a team" → `router.push('/(app)/create-team')`
-- Secondary link: "I have an invite link" → shows an `Alert` with instructions: _"Ask your coach to share the invite link with you. Tap it on your device to join."_ (The invite flow is URL-based and handled in `app/invite/[id].tsx` — there is no in-app entry point, so an informational alert is appropriate.)
+- Secondary link: "I have an invite link" → shows an `Alert`: _"Ask your coach to share the invite link with you. Tap it on your device to join."_
+
+**Schedule (`app/(app)/schedule/index.tsx`)**
+
+Fix the stuck-spinner bug: set `loading = false` (and `refreshing = false`) before the early return in `fetchEvents` when `!membership?.teamId`. Then add a `!membership` check after the `membershipLoading || loading` guard to render the no-team empty state instead of the list.
+
+**Team (`app/(app)/team/index.tsx`)**
+
+Add a `!membership` check after the loading guard to render the no-team empty state instead of falling through to the empty `SectionList`.
+
+**Chat (`app/(app)/chat/index.tsx`)**
+
+Fix the stuck-spinner bug: set `loading = false` before the early return in `fetchData` when `!membership?.teamId`. Then add a `!membership` check after the `membershipLoading || loading` guard to render the no-team empty state.
+
+**Shared empty state content (Schedule, Team, Chat)**
+
+These tabs have no reason for different copy — use a consistent, tab-neutral message:
+
+- Icon: appropriate to the tab (`calendar-outline` / `people-outline` / `chatbubble-outline`)
+- Title: "No team yet"
+- Subtitle: "Create a team or ask your coach for an invite link to get started."
+- Primary button: "Create a team" → `router.push('/(app)/create-team')`
 
 ---
 
