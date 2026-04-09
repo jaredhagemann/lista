@@ -63,6 +63,32 @@ This also keeps the door open for future callers that act on behalf of a differe
 
 ---
 
+## New shared helper — `apps/web/src/lib/api-auth.ts`
+
+`/api/teams` will be the first route callable from both web (cookie session) and mobile (Bearer token). Rather than adding another hand-rolled auth block, this is the right moment to factor out a shared helper that all hybrid routes use.
+
+**`resolveRequestUser(request: Request): Promise<User | null>`**
+
+Resolution order:
+1. Try cookie-based auth via `createServerClient` (the existing server Supabase client from `@/lib/supabase/server`) — covers web callers
+2. If no cookie session, check for `Authorization: Bearer <token>` header and verify via `adminClient().auth.getUser(token)` — covers mobile callers
+3. Return the resolved `User`, or `null` if neither method succeeds
+
+The helper also exports `adminClient()` as a named function so routes don't each inline the service-role client construction.
+
+**Existing routes to migrate onto the helper:**
+
+| Route | Current issue |
+|---|---|
+| `api/managed-profiles/route.ts` | Bearer-only; uses `authHeader.replace("Bearer ", "")` (doesn't validate prefix); uses anon client for `getUser` |
+| `api/account/owned-teams/route.ts` | Bearer-only; has local `getBearerToken` + `authenticateRequest` helpers that duplicate what the shared helper will do; uses anon client for `getUser` |
+| `api/account/delete/route.ts` | Should be checked for consistency |
+| `api/invite/[id]/accept/route.ts` | Bearer-only; uses admin client for `getUser` (inconsistent with others) |
+
+Migrating these routes is in scope for this PR — the `/api/teams` work touches `api-auth.ts` anyway, and leaving the duplicates in place immediately after introducing the helper defeats the purpose.
+
+---
+
 ## Web — refactor `apps/web/src/components/team/create-team-form.tsx`
 
 Replace the four sequential Supabase client calls and the `setActiveTeam` server action call with a single `fetch('POST /api/teams', { teamName, season, orgName })`. On success, call `router.push('/dashboard')` and `router.refresh()` as before.
