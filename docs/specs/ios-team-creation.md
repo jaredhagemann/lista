@@ -11,6 +11,20 @@ Both entry points navigate to a new `CreateTeamScreen`.
 
 Team creation is backed by a new shared server endpoint (`POST /api/teams`) that is used by **both** the iOS app and the web form. This replaces the current pattern of sequential client-side Supabase inserts with a single atomic operation, and provides one place to maintain creation logic, validation, and active-team assignment going forward.
 
+## Active context design
+
+The codebase has two layers of active context:
+
+1. **Active team** — `profiles.active_team_id` in the database (shared, authoritative)
+2. **Active viewed profile** — stored per-client: a cookie on web (`dashboard/layout.tsx`), `SecureStore` on iOS (`AppContext.tsx`)
+
+The endpoint is responsible for layer 1 only — it writes `active_team_id` as part of the atomic creation transaction and returns `{ teamId }`. It does not attempt to mutate browser cookies or device storage, and its response shape carries no client-state flags (e.g. no `shouldResetActiveProfile`). Coupling the endpoint's response to client-side state management concerns would leak UI decisions into a layer that has no business knowing about them.
+
+Each client is responsible for resetting its own active-profile state after a successful creation:
+
+- **Web** — calls `router.refresh()`, which re-fetches the server layout. The layout reads the active profile from the cookie and resolves context naturally. No explicit cookie reset needed — the newly active team has no managed profiles yet, so the own profile is always correct.
+- **iOS** — explicitly calls `await SecureStore.deleteItemAsync('active_profile_id')` before calling `refresh()`. This is necessary because the user may have had a managed profile active in SecureStore at the time of creation. That profile will not be a member of the new team, and while `loadData()` falls through gracefully, an explicit reset is cleaner and avoids a transient state where the app is viewing as a profile with no membership. After the delete, `refresh()` re-runs `loadData()`, which resolves `membership` from the updated `active_team_id` viewing as the own profile.
+
 ---
 
 ## New API endpoint — `apps/web/src/app/api/teams/route.ts`
@@ -67,7 +81,10 @@ Add `create-team` as a hidden tab in `(app)/_layout.tsx` (using `tabBarButton: (
 
 1. Retrieve the session token via `supabase.auth.getSession()`
 2. `POST /api/teams` with `Authorization: Bearer <token>` and `{ teamName, season, orgName }`
-3. On success: call `refresh()` from `AppContext`, then `router.replace('/(app)')`
+3. On success:
+   - `await SecureStore.deleteItemAsync('active_profile_id')` — reset any active managed profile before refreshing context (see Active context design above)
+   - `await refresh()` from `AppContext` — re-runs `loadData()`, resolves `membership` to the new team viewing as own profile
+   - `router.replace('/(app)')`
 4. On error: display inline error message
 
 ### UI
