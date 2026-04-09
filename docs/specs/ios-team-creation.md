@@ -51,7 +51,13 @@ Steps 2–5 are wrapped in a Postgres transaction via `supabase.rpc('create_team
 
 ### New migration — `supabase/migrations/YYYYMMDD_create_team_rpc.sql`
 
-A `security definer` Postgres function `create_team(user_id, team_name, season, org_name)` that wraps all four inserts/updates in a single transaction and returns the new `team_id`. Running as `security definer` means RLS is bypassed inside the function, eliminating the chicken-and-egg problem (previously worked around with client-side UUID generation).
+A `security definer` Postgres function `create_team(owner_profile_id uuid, team_name text, season text, org_name text)` that wraps all four inserts/updates in a single transaction and returns the new `team_id`.
+
+**Identity resolution is the server route's responsibility, not the function's.** The route resolves the calling user from the session token and passes the resulting `owner_profile_id` as an explicit argument. The function treats it as a trusted input and never calls `auth.uid()` internally.
+
+This separation matters because `security definer` is a privilege-escalation mechanism (bypass RLS), not an identity-resolution mechanism. If the function derived identity from session context rather than accepting it as an argument, the correctness of the function would depend on implicit session state that may not be set depending on how the function is invoked. Passing `owner_profile_id` explicitly makes the function a pure data operation: given this already-verified identity, create this team.
+
+This also keeps the door open for future callers that act on behalf of a different profile — the server route would resolve both the auth user and the target profile ID, and pass them in deliberately. The function signature could extend to `create_team(owner_profile_id, acting_user_id, ...)` without changing how identity resolution works.
 
 ---
 
