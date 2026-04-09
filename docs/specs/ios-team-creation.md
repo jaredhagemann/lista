@@ -9,17 +9,53 @@ Two entry points into team creation are added to the iOS app:
 
 Both entry points navigate to a new `CreateTeamScreen`.
 
+Team creation is backed by a new shared server endpoint (`POST /api/teams`) that is used by **both** the iOS app and the web form. This replaces the current pattern of sequential client-side Supabase inserts with a single atomic operation, and provides one place to maintain creation logic, validation, and active-team assignment going forward.
+
 ---
 
-## New screen — `apps/mobile/app/(app)/create-team.tsx`
+## New API endpoint — `apps/web/src/app/api/teams/route.ts`
+
+### `POST /api/teams`
+
+Accepts a JSON body `{ teamName, season?, orgName? }` with a Supabase session token in the `Authorization: Bearer <token>` header (for mobile callers) or via cookie (for web callers — the existing `createClient()` server client handles this automatically).
+
+**Request validation:**
+- `teamName` is required and must be a non-empty string
+- `season` and `orgName` are optional strings
+
+**Logic** — runs entirely as the service role, bypassing RLS:
+
+1. Resolve the calling user from the session token
+2. Insert `organizations` row (`id`, `name = orgName || teamName`)
+3. Insert `teams` row (`id`, `organization_id`, `name`, `season`, `owner_id = userId`) — all in the same call
+4. Insert `team_members` row (`team_id`, `profile_id = userId`, `role = 'coach'`)
+5. Update `profiles.active_team_id = teamId` for the calling user
+
+Steps 2–5 are wrapped in a Postgres transaction via `supabase.rpc('create_team', { ... })` (see migration below), making the entire operation atomic. A failure at any step rolls back all changes — no orphaned records.
+
+**Response:** `{ teamId }` on success, appropriate 4xx/5xx on failure.
+
+### New migration — `supabase/migrations/YYYYMMDD_create_team_rpc.sql`
+
+A `security definer` Postgres function `create_team(user_id, team_name, season, org_name)` that wraps all four inserts/updates in a single transaction and returns the new `team_id`. Running as `security definer` means RLS is bypassed inside the function, eliminating the chicken-and-egg problem (previously worked around with client-side UUID generation).
+
+---
+
+## Web — refactor `apps/web/src/components/team/create-team-form.tsx`
+
+Replace the four sequential Supabase client calls and the `setActiveTeam` server action call with a single `fetch('POST /api/teams', { teamName, season, orgName })`. On success, call `router.push('/dashboard')` and `router.refresh()` as before.
+
+The fields, UI, and error handling remain unchanged.
+
+---
+
+## New iOS screen — `apps/mobile/app/(app)/create-team.tsx`
 
 ### Routing
 
-Add `create-team` as a hidden tab in `(app)/_layout.tsx` (using `tabBarButton: () => null` and `tabBarStyle: { display: 'none' }`). This keeps it within the `AppProvider` context without restructuring the layout. It is navigated to with `router.push('/(app)/create-team')` and dismissed back to `/(app)` on success or cancel.
+Add `create-team` as a hidden tab in `(app)/_layout.tsx` (using `tabBarButton: () => null`). This keeps it within the `AppProvider` context without restructuring the layout. Navigated to with `router.push('/(app)/create-team')`, returns to `/(app)` on success or cancel.
 
 ### Fields
-
-Matches the web form:
 
 | Field | Required | Placeholder |
 |---|---|---|
@@ -29,47 +65,35 @@ Matches the web form:
 
 ### Creation logic
 
-Mirrors `CreateTeamForm` on the web exactly — uses client-side UUID generation to avoid needing `.select()` after insert (the RLS chicken-and-egg problem: the SELECT policy on `teams` requires a `team_members` row, which doesn't exist at insert time).
-
-Steps, each aborting with an error state on failure:
-
-1. `supabase.from('organizations').insert({ id: orgId, name: orgName || teamName })`
-2. `supabase.from('teams').insert({ id: teamId, organization_id: orgId, name: teamName, season: season || null, owner_id: user.id })`
-3. `supabase.from('team_members').insert({ team_id: teamId, profile_id: user.id, role: 'coach' })`
-4. `supabase.from('profiles').update({ active_team_id: teamId }).eq('id', user.id)`
-5. Call `refresh()` from `AppContext` — this re-runs `loadData()`, which will pick up the new membership and resolve `membership` to the new team
-6. `router.replace('/(app)')` — lands on the home screen, which will now have a team
+1. Retrieve the session token via `supabase.auth.getSession()`
+2. `POST /api/teams` with `Authorization: Bearer <token>` and `{ teamName, season, orgName }`
+3. On success: call `refresh()` from `AppContext`, then `router.replace('/(app)')`
+4. On error: display inline error message
 
 ### UI
 
 - Back/cancel button in the header (navigates back without creating)
-- Submit button disabled while loading, shows "Creating..." text during the async flow
-- Inline error message if any step fails
-- No success toast needed — the home screen immediately reflects the new team after `refresh()`
+- Submit button disabled while loading, shows "Creating..." during the request
+- Inline error message on failure
+- No success toast needed — home screen reflects the new team immediately after `refresh()`
 
 ---
 
 ## Changes to the no-team home screen — `apps/mobile/app/(app)/index.tsx`
 
-Replace the current placeholder (lines 104–118):
-
-```
-You're not on a team yet. Ask your coach for an invite link.
-```
-
-With a proper empty state:
+Replace the current placeholder with a proper empty state:
 
 - Icon: `people-outline` (keep existing)
 - Title: "Welcome to Lista"
 - Subtitle: "Create a team to get started, or ask your coach for an invite link."
 - Primary button: "Create a team" → `router.push('/(app)/create-team')`
-- Secondary link: "I have an invite link" → shows an `Alert` with instructions: _"Ask your coach to share the invite link with you. Tap it on your device to join."_ (The existing invite flow is web-URL-based and handled in `app/invite/[id].tsx` — there is no in-app invite entry point to navigate to, so an informational alert is the right approach here.)
+- Secondary link: "I have an invite link" → shows an `Alert` with instructions: _"Ask your coach to share the invite link with you. Tap it on your device to join."_ (The invite flow is URL-based and handled in `app/invite/[id].tsx` — there is no in-app entry point, so an informational alert is appropriate.)
 
 ---
 
 ## Changes to the switcher sheet — `components/SwitcherSheet.tsx`
 
-Add a "Create a new team" row at the bottom of the Teams section (after the team list, before the "View as" divider). The row uses a `+` icon and the same `NavRow`-style layout as the rest of the sheet.
+Add a "Create a new team" row at the bottom of the Teams section (after the team list, before the "View as" divider). The row uses a `+` icon.
 
 The sheet needs a new `onCreateTeam` prop (callback). Tapping the row calls `onClose()` then `onCreateTeam()`. The parent (`TeamProfileStrip`) passes `() => router.push('/(app)/create-team')`.
 
@@ -77,6 +101,5 @@ The sheet needs a new `onCreateTeam` prop (callback). Tapping the row calls `onC
 
 ## What is not in scope
 
-- Team avatar/logo upload at creation time (matches web — logo can be set later in Team Settings)
-- Joining a team via invite link from within this flow (handled separately by `app/invite/[id].tsx`)
-- Any changes to the web app
+- Team avatar/logo upload at creation time (can be set later in Team Settings)
+- Joining via invite link from within this flow (handled separately by `app/invite/[id].tsx`)
