@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearActiveProfile } from "@/app/actions/team";
+import { executeCreateTeam } from "@/lib/create-team";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,29 +28,19 @@ export function CreateTeamForm({ onSuccess }: { onSuccess?: () => void } = {}) {
     setLoading(true);
     setError(null);
 
-    const res = await fetch("/api/teams", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamName, season: season || undefined, orgName: orgName || undefined }),
+    const err = await executeCreateTeam({
+      teamName,
+      season,
+      orgName,
+      clearActiveProfileFn: clearActiveProfile,
+      onSuccess,
+      routerPush: router.push,
+      routerRefresh: router.refresh,
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Something went wrong. Please try again.");
+    if (err) {
+      setError(err);
       setLoading(false);
-      return;
-    }
-
-    // Always clear the managed-profile cookie on success — the new team belongs
-    // to the own profile, and a stale active_profile_id would cause the dashboard
-    // layout to try resolving a managed profile with no membership on the new team.
-    await clearActiveProfile();
-
-    if (onSuccess) {
-      onSuccess();
-    } else {
-      router.push("/dashboard");
-      router.refresh();
     }
   }
 

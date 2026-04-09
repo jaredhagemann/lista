@@ -16,7 +16,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => {
   const mockCookieGetUser = vi.fn();
   const mockBearerGetUser = vi.fn();
-  return { mockCookieGetUser, mockBearerGetUser };
+  // Chainable DB query builder used by adminClient().from() in DB-hitting routes.
+  // Configured per-test in describe blocks that need it; the 401 tests never
+  // reach DB calls so leaving this as vi.fn() with no default is safe.
+  const mockEq = vi.fn();
+  const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+  const mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
+  return { mockCookieGetUser, mockBearerGetUser, mockFrom, mockEq, mockSelect };
 });
 
 // Mock the server Supabase client (used for cookie-session auth)
@@ -26,10 +32,12 @@ vi.mock("@/lib/supabase/server", () => ({
   ),
 }));
 
-// Mock the supabase-js client factory (used by adminClient() for Bearer auth)
+// Mock the supabase-js client factory (used by adminClient() for Bearer auth
+// and for service-role DB calls in routes that reach beyond auth).
 vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => ({
     auth: { getUser: mocks.mockBearerGetUser },
+    from: mocks.mockFrom,
   })),
 }));
 
@@ -158,5 +166,43 @@ describe("migrated routes — 401 when unauthenticated (§2.1.2)", () => {
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe("Unauthorized");
+  });
+
+  it("POST /api/invite/[id]/accept returns 401 with no auth", async () => {
+    const { POST } = await import("@/app/api/invite/[id]/accept/route");
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: "some-invite-id" }) });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("Unauthorized");
+  });
+});
+
+// ── §2.1.1 — Valid Bearer token still accepted ────────────────────────────────
+//
+// Verifies that when resolveRequestUser succeeds via the Bearer path
+// (no cookie, valid token), migrated routes proceed rather than returning 401.
+// Uses owned-teams as the representative route: with no owned teams the route
+// returns 200 { teams: [] } without any additional DB reads, keeping the mock
+// surface minimal.
+
+describe("migrated routes — 200 when valid Bearer token (§2.1.1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // No cookie session — forces the Bearer path in resolveRequestUser
+    mocks.mockCookieGetUser.mockResolvedValue({ data: { user: null } });
+    // Valid Bearer token resolves to a real user
+    mocks.mockBearerGetUser.mockResolvedValue({ data: { user: TEST_USER } });
+    // Stub DB: from("teams").select().eq() → no owned teams
+    mocks.mockEq.mockResolvedValue({ data: [], error: null });
+  });
+
+  it("GET /api/account/owned-teams returns 200 (not 401) when Bearer token is valid", async () => {
+    const { GET } = await import("@/app/api/account/owned-teams/route");
+    const res = await GET(makeRequest({ Authorization: "Bearer valid-jwt-token" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.teams).toEqual([]);
+    // Confirm the Bearer path was exercised (cookie returned null)
+    expect(mocks.mockBearerGetUser).toHaveBeenCalledWith("valid-jwt-token");
   });
 });

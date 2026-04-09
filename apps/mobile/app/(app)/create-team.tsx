@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { supabase } from "../../lib/supabase";
 import { useAppContext } from "../../contexts/AppContext";
+import { executeCreateTeamMobile } from "../../lib/create-team";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -35,41 +36,24 @@ export default function CreateTeamScreen() {
     setLoading(true);
     setError(null);
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      setError("Not signed in. Please restart the app.");
-      setLoading(false);
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/api/teams`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+    const err = await executeCreateTeamMobile(
+      { teamName, season, orgName },
+      {
+        getAccessToken: async () => {
+          const { data } = await supabase.auth.getSession();
+          return data.session?.access_token ?? null;
+        },
+        deleteSecureStoreKey: SecureStore.deleteItemAsync,
+        refresh,
+        routerReplace: (path) => router.replace(path as Parameters<typeof router.replace>[0]),
       },
-      body: JSON.stringify({
-        teamName: teamName.trim(),
-        season: season.trim() || undefined,
-        orgName: orgName.trim() || undefined,
-      }),
-    });
+      API_BASE
+    );
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Something went wrong. Please try again.");
+    if (err) {
+      setError(err);
       setLoading(false);
-      return;
     }
-
-    // Reset any active managed profile before refreshing context — the new
-    // team belongs to the own profile, and a stale SecureStore entry would
-    // cause the app to try resolving a managed profile that has no membership
-    // on the new team.
-    await SecureStore.deleteItemAsync("active_profile_id");
-    await refresh();
-    router.replace("/(app)");
   }
 
   return (
