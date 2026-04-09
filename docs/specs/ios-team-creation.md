@@ -63,6 +63,16 @@ This also keeps the door open for future callers that act on behalf of a differe
 
 ---
 
+## Middleware — `apps/web/src/lib/supabase/middleware.ts`
+
+`/api/teams` must be added to the `publicRoutes` allowlist (line 37). Without this, unauthenticated-looking requests — i.e. mobile Bearer-token requests that carry no cookie — are redirected to `/login` by the middleware before they ever reach the route handler. The Bearer token is how mobile callers authenticate; the middleware must not intercept them.
+
+This is the same pattern already in place for `/api/account/` and `/api/managed-profiles`. The allowlist entry should be `/api/teams` (prefix match covers any future sub-routes).
+
+Note: adding a path to the allowlist does not bypass authentication — it only bypasses the redirect. The route handler itself still calls `resolveRequestUser()` and returns 401 for unauthenticated callers. The middleware and the route handler are two independent layers of auth enforcement serving different purposes: the middleware protects page routes from being rendered without a session; the route handler enforces identity for API access.
+
+---
+
 ## New shared helper — `apps/web/src/lib/api-auth.ts`
 
 `/api/teams` will be the first route callable from both web (cookie session) and mobile (Bearer token). Rather than adding another hand-rolled auth block, this is the right moment to factor out a shared helper that all hybrid routes use.
