@@ -92,7 +92,7 @@ The helper also exports `adminClient()` as a named function so routes don't each
 |---|---|
 | `api/managed-profiles/route.ts` | Bearer-only; uses `authHeader.replace("Bearer ", "")` (doesn't validate prefix); uses anon client for `getUser` |
 | `api/account/owned-teams/route.ts` | Bearer-only; has local `getBearerToken` + `authenticateRequest` helpers that duplicate what the shared helper will do; uses anon client for `getUser` |
-| `api/account/delete/route.ts` | Should be checked for consistency |
+| `api/account/delete/route.ts` | Duplicates the same `getBearerToken` + `authenticateRequest` helpers as `owned-teams`; explicit migration target |
 | `api/invite/[id]/accept/route.ts` | Bearer-only; uses admin client for `getUser` (inconsistent with others) |
 
 Migrating these routes is in scope for this PR — the `/api/teams` work touches `api-auth.ts` anyway, and leaving the duplicates in place immediately after introducing the helper defeats the purpose.
