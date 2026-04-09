@@ -10,6 +10,11 @@ import { ACTIVE_PROFILE_COOKIE } from "./constants";
 import { getActiveProfileId } from "@/lib/get-active-membership";
 import { sendTeamDeletionNotifications } from "@/lib/notifications/team-deletion";
 
+export async function clearActiveProfile() {
+  const cookieStore = await cookies();
+  cookieStore.delete(ACTIVE_PROFILE_COOKIE);
+}
+
 export async function setActiveTeam(teamId: string) {
   const supabase = await createServerClient();
   const {

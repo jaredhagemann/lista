@@ -58,9 +58,11 @@ function TeamAvatar({
 export function SwitcherSheet({
   visible,
   onClose,
+  onCreateTeam,
 }: {
   visible: boolean;
   onClose: () => void;
+  onCreateTeam: () => void;
 }) {
   const {
     membership,
@@ -179,6 +181,19 @@ export function SwitcherSheet({
                   );
                 })
               )}
+
+              {/* ── Create a new team ──────────────────────────────────── */}
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => { onClose(); onCreateTeam(); }}
+              >
+                <View style={styles.createTeamIcon}>
+                  <Ionicons name="add" size={20} color="#374151" />
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle}>Create a new team</Text>
+                </View>
+              </TouchableOpacity>
 
               {/* ── View as ────────────────────────────────────────────── */}
               {showProfileSection && (
@@ -332,5 +347,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#374151",
+  },
+  createTeamIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

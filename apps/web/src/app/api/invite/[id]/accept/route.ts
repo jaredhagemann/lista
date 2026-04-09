@@ -1,18 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import type { Database } from "@/types/database";
 
-// Bearer-token authenticated. Mobile app sends the Supabase access token in
-// Authorization: Bearer <token>. We verify it via getUser(), then run the
-// same acceptance logic as the web server actions.
-
-function adminClient() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
+// Accepts an invitation. Supports both mobile callers (Bearer token) and
+// web callers (cookie session) via the shared resolveRequestUser helper.
 
 export async function POST(
   request: Request,
@@ -20,21 +11,12 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  // Authenticate via Bearer token
-  const authHeader = request.headers.get("Authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) {
+  const user = await resolveRequestUser(request);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const admin = adminClient();
-
-  // Validate the token by fetching the user
-  const { data: userData, error: userError } = await admin.auth.getUser(token);
-  if (userError || !userData.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const user = userData.user;
 
   // Parse body
   const body = await request.json() as {

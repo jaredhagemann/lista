@@ -180,6 +180,24 @@ export default function TeamScreen() {
     );
   }
 
+  if (!membership) {
+    return (
+      <SafeAreaView style={styles.center} edges={["bottom"]}>
+        <Ionicons name="people-outline" size={48} color="#d1d5db" />
+        <Text style={styles.emptyStateTitle}>No team yet</Text>
+        <Text style={styles.emptyStateSubtitle}>
+          Create a team or ask your coach for an invite link to get started.
+        </Text>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => router.push("/(app)/create-team")}
+        >
+          <Text style={styles.createButtonText}>Create a team</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <SectionList
@@ -291,7 +309,11 @@ export default function TeamScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
-  center: { flex: 1, backgroundColor: "#ffffff", justifyContent: "center", alignItems: "center" },
+  center: { flex: 1, backgroundColor: "#ffffff", justifyContent: "center", alignItems: "center", gap: 8 },
+  emptyStateTitle: { fontSize: 18, fontWeight: "600", color: "#374151" },
+  emptyStateSubtitle: { fontSize: 14, color: "#9ca3af", textAlign: "center", paddingHorizontal: 32 },
+  createButton: { marginTop: 8, backgroundColor: "#0f172a", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 },
+  createButtonText: { color: "#ffffff", fontWeight: "600", fontSize: 15 },
   empty: { flex: 1, alignItems: "center", paddingTop: 64, gap: 8 },
   emptyText: { color: "#9ca3af", fontSize: 15 },
   sectionHeader: {

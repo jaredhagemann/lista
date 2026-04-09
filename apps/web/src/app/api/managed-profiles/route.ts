@@ -1,21 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 
 export async function POST(request: Request) {
-  // Authenticate via Bearer token (mobile sends the Supabase session JWT)
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.replace("Bearer ", "");
-  if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const anonClient = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-  const { data: { user } } = await anonClient.auth.getUser(token);
+  const user = await resolveRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -32,12 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "First name is required" }, { status: 400 });
   }
 
-  // Use service role to create the managed profile (no auth account)
-  const admin = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
+  const admin = adminClient();
 
   // Find the manager's profile (auth_user_id = user.id)
   const { data: managerProfile } = await admin
