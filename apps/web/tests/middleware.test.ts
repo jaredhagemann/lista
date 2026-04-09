@@ -65,6 +65,16 @@ describe("updateSession — routing logic", () => {
     expect(locationOf(response)).toBeNull();
   });
 
+  // §3.1 — POST /api/teams must not redirect Bearer-only mobile requests.
+  // The middleware cannot distinguish a "no cookie" request from an
+  // unauthenticated one, so /api/teams is on the allowlist. The route handler
+  // itself enforces auth via resolveRequestUser (Bearer fallback).
+  it("3.1 passes through POST /api/teams when unauthenticated-looking (Bearer-auth mobile route)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const response = await updateSession(req("/api/teams"));
+    expect(locationOf(response)).toBeNull();
+  });
+
   it("redirects authenticated user on /login to /dashboard", async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: "user-123", email: "user@example.com" } } });
     const response = await updateSession(req("/login"));
