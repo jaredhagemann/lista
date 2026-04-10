@@ -5,6 +5,7 @@ import { Calendar, Users } from "lucide-react";
 import Link from "next/link";
 import { CreateTeamForm } from "@/components/team/create-team-form";
 import { getActiveMembership } from "@/lib/get-active-membership";
+import { LocalTime } from "@/components/ui/local-time";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -86,13 +87,16 @@ export default async function DashboardPage() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {new Date(event.start_time).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
+                      <LocalTime
+                        isoString={event.start_time}
+                        options={{
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        }}
+                      />
                     </p>
                     {event.locations?.name && (
                       <p className="text-sm text-muted-foreground">
