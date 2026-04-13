@@ -69,7 +69,7 @@ export default function AppLayout() {
             <Tabs.Screen
               name="create-team"
               options={{
-                tabBarButton: () => null,
+                href: null,
                 title: "Create a Team",
               }}
             />
