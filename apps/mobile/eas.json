@@ -11,19 +11,19 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://lista.team"
+        "EXPO_PUBLIC_API_URL": "https://www.lista.team"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://lista.team"
+        "EXPO_PUBLIC_API_URL": "https://www.lista.team"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://lista.team"
+        "EXPO_PUBLIC_API_URL": "https://www.lista.team"
       }
     }
   },
