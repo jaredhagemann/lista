@@ -28,8 +28,14 @@ export async function resolveRequestUser(request: Request): Promise<User | null>
 
   // 2. Bearer token (mobile callers)
   const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
+  if (!authHeader?.startsWith("Bearer ")) {
+    console.log("[api-auth] no Bearer header, header was:", authHeader ?? "(none)");
+    return null;
+  }
   const token = authHeader.slice(7);
-  const { data: { user } } = await adminClient().auth.getUser(token);
+  const { data: { user }, error } = await adminClient().auth.getUser(token);
+  if (!user) {
+    console.log("[api-auth] Bearer getUser failed:", error?.message ?? "no user returned", "| token prefix:", token.slice(0, 20));
+  }
   return user ?? null;
 }
