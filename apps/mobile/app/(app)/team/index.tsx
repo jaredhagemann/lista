@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  Alert,
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -14,6 +15,8 @@ import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { useAppContext } from "../../../contexts/AppContext";
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
 type Profile = {
   id: string;
@@ -93,8 +96,20 @@ export default function TeamScreen() {
     membership?.role === "coach" || membership?.role === "manager";
 
   useEffect(() => {
-    navigation.setOptions({ title: "Team" });
-  }, []);
+    navigation.setOptions({
+      title: "Team",
+      headerRight: isAdmin
+        ? () => (
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/invite-member" as any)}
+              style={{ marginRight: 4 }}
+            >
+              <Ionicons name="person-add-outline" size={22} color="#0f172a" />
+            </TouchableOpacity>
+          )
+        : undefined,
+    });
+  }, [isAdmin]);
 
   async function fetchData() {
     if (!membership?.teamId) {
@@ -167,6 +182,43 @@ export default function TeamScreen() {
   function onRefresh() {
     setRefreshing(true);
     fetchData();
+  }
+
+  async function handleResendInvite(invite: Invite) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${API_URL}/api/invitations/${invite.id}/resend`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      Alert.alert(
+        res.ok ? "Invitation resent" : "Failed",
+        res.ok
+          ? data.emailSent
+            ? `Resent to ${invite.email}.`
+            : "Invitation link is ready but email could not be delivered."
+          : (data.error ?? "Something went wrong.")
+      );
+    } catch {
+      Alert.alert("Error", "Failed to resend invitation. Check your connection.");
+    }
+  }
+
+  function handleInviteRowPress(invite: Invite) {
+    Alert.alert(
+      invite.first_name || invite.last_name
+        ? `${[invite.first_name, invite.last_name].filter(Boolean).join(" ")}`
+        : invite.email,
+      "This invitation is still pending.",
+      [
+        { text: "Resend invitation", onPress: () => handleResendInvite(invite) },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
   }
 
   if (membershipLoading || loading) {
@@ -282,8 +334,8 @@ export default function TeamScreen() {
             .join("")
             .toUpperCase();
 
-          return (
-            <View style={[styles.row, styles.rowInvite]}>
+          const inviteRowContent = (
+            <>
               <ProfileAvatar avatarUrl={null} initials={initials || "?"} />
               <View style={styles.rowText}>
                 <Text style={styles.rowName} numberOfLines={1}>
@@ -299,7 +351,18 @@ export default function TeamScreen() {
                 <Ionicons name="time-outline" size={11} color="#6b7280" />
                 <Text style={styles.invitedBadgeText}>Invited</Text>
               </View>
-            </View>
+            </>
+          );
+
+          return isAdmin ? (
+            <TouchableOpacity
+              style={[styles.row, styles.rowInvite]}
+              onPress={() => handleInviteRowPress(item)}
+            >
+              {inviteRowContent}
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.row, styles.rowInvite]}>{inviteRowContent}</View>
           );
         }}
       />

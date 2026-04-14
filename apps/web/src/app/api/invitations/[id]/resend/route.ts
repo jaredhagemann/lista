@@ -1,20 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import type { Database } from "@/types/database";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await resolveRequestUser(request);
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,11 +17,7 @@ export async function POST(
   const { success } = await invitationLimiter.limit(user.id);
   if (!success) return rateLimitResponse();
 
-  const admin = createAdminClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
+  const admin = adminClient();
 
   const { data: invitation } = await admin
     .from("invitations")
@@ -47,7 +37,7 @@ export async function POST(
   }
 
   // Verify caller is a team admin
-  const { data: membership } = await supabase
+  const { data: membership } = await admin
     .from("team_members")
     .select("role")
     .eq("team_id", invitation.team_id!)
