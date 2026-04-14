@@ -103,8 +103,14 @@ First name and last name are omitted — the player profile already exists; the 
 
 ### Send logic
 
+All fetch calls must use an absolute URL constructed from `EXPO_PUBLIC_API_URL`, following the existing pattern in `invite/[id].tsx` and `create-team.tsx`:
+
+```ts
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
+```
+
 1. Retrieve the session token via `supabase.auth.getSession()`
-2. `POST /api/invitations/send` with `Authorization: Bearer <token>` and body:
+2. `POST ${API_URL}/api/invitations/send` with `Authorization: Bearer <token>` and body:
 
    **General invite:**
    ```json
@@ -198,7 +204,7 @@ RLS enforces that only team admins can read these rows (see migration dependency
 - Pending invitations as dashed rows: email + relationship badge + "Resend" button.
 - An "Add contact" button in the card header (admin only): `router.push({ pathname: '/(app)/invite-member', params: { memberId } })`.
 
-**Resend** — tapping "Resend" on a pending invitation calls `POST /api/invitations/<id>/resend` with the Bearer token. Shows a brief inline "Sent" / "Failed" state on the button.
+**Resend** — tapping "Resend" on a pending invitation calls `POST ${API_URL}/api/invitations/<id>/resend` with the Bearer token. Shows a brief inline "Sent" / "Failed" state on the button.
 
 ---
 
@@ -206,7 +212,7 @@ RLS enforces that only team admins can read these rows (see migration dependency
 
 Admins can already see pending invite rows in the team roster (`team/index.tsx`). Currently these rows are non-interactive. Make them tappable for admins: tapping a pending invite row shows an `Alert` with two options:
 
-- **Resend invitation** — calls `POST /api/invitations/<id>/resend` with Bearer token; shows a success/failure `Alert` on completion.
+- **Resend invitation** — calls `POST ${API_URL}/api/invitations/<id>/resend` with Bearer token; shows a success/failure `Alert` on completion.
 - **Cancel** — dismisses.
 
 This is the iOS equivalent of the web's "Resend" button in the roster.
