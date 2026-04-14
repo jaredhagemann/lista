@@ -33,13 +33,24 @@ Both routes should be added to the `publicRoutes` allowlist in `apps/web/src/lib
 
 ### Routing
 
-Add `invite-member` as a hidden tab in `(app)/_layout.tsx` (using `tabBarButton: () => null`), keeping it within `AppProvider` context. Navigated to with `router.push('/(app)/invite-member')`. An optional `memberId` query param is passed when the screen is opened from a player's detail page (see Guardian invite section below).
+Add `invite-member` as a hidden tab in `(app)/_layout.tsx` (using `tabBarButton: () => null`), keeping it within `AppProvider` context.
+
+The screen has two modes, selected by query params:
+
+- **General invite** (no params): `router.push('/(app)/invite-member')` — shows role picker, all fields. Entry point: Team tab header button.
+- **Guardian invite** (`memberId=<team_member_id>`): `router.push({ pathname: '/(app)/invite-member', params: { memberId } })` — hides the role picker (role is fixed to `manager`), shows relationship field instead. Entry point: "Add contact" button on `[memberId].tsx`.
+
+Both modes share the same screen, send logic, and confirmation state. The `memberId` param is used to look up `profile_id` and `team_id` for the API call.
 
 ### Role selection
 
-The screen opens with a role picker at the top: **Player**, **Manager**, **Coach**. The selected role determines which additional fields are shown below.
+In **general invite** mode, the screen opens with a role picker at the top: **Player**, **Manager**, **Coach**. The selected role determines which additional fields are shown below.
+
+In **guardian invite** mode, the role picker is not rendered. The role is fixed to `manager` and a relationship picker is shown instead (see Guardian invite section below).
 
 ### Fields
+
+**General invite mode:**
 
 | Field | Required | Shown for roles | Notes |
 |---|---|---|---|
@@ -51,10 +62,21 @@ The screen opens with a role picker at the top: **Player**, **Manager**, **Coach
 
 This mirrors the web `NewMemberForm` exactly. Birthday and gender are optional for players, matching the web form behavior.
 
+**Guardian invite mode** (when `memberId` param is present):
+
+| Field | Required | Notes |
+|---|---|---|
+| Email | Yes | |
+| Relationship | Yes | Picker: Self, Mom, Dad, Guardian, Other |
+
+First name and last name are omitted — the player profile already exists; the invitation is for the guardian, not the player.
+
 ### Send logic
 
 1. Retrieve the session token via `supabase.auth.getSession()`
 2. `POST /api/invitations/send` with `Authorization: Bearer <token>` and body:
+
+   **General invite:**
    ```json
    {
      "teamId": "<current team>",
@@ -66,6 +88,18 @@ This mirrors the web `NewMemberForm` exactly. Birthday and gender are optional f
      "gender": "..."             // player only, optional
    }
    ```
+
+   **Guardian invite** (resolve `profile_id` and `team_id` from the `memberId` param before sending):
+   ```json
+   {
+     "teamId": "<team id from member row>",
+     "email": "...",
+     "role": "manager",
+     "managedProfileId": "<profile_id from member row>",
+     "relationship": "..."
+   }
+   ```
+
 3. On success: show the confirmation state (see below).
 4. On error: display an inline error message (do not dismiss the screen).
 
@@ -73,8 +107,10 @@ This mirrors the web `NewMemberForm` exactly. Birthday and gender are optional f
 
 After a successful send, replace the form with a confirmation view:
 
-- **Email delivered** (`emailSent: true`): Show "Invitation sent to `<email>`." with a "Invite another" button (resets the form) and a "Done" button (pops back to the team roster).
+- **Email delivered** (`emailSent: true`): Show "Invitation sent to `<email>`." with an "Invite another" button (resets the form) and a "Done" button.
 - **Email failed** (`emailSent: false`): Show "Invitation created but we couldn't deliver the email. Share this link instead:" with the invite URL displayed in a copyable text box, a copy button (uses `Clipboard.setStringAsync`), plus the same "Invite another" and "Done" buttons.
+
+"Done" pops back one screen in both modes — back to the team roster in general invite mode, back to the member detail screen in guardian invite mode. "Invite another" resets the form and stays on the screen; in guardian invite mode it keeps the `memberId` param context so the next invite is also a guardian invite for the same player.
 
 ### UI
 
@@ -109,11 +145,11 @@ The `isAdmin` check must be inside the `useEffect` dependency array (add `isAdmi
 
 ## Guardian invite — from member detail screen
 
-When an admin views a player's detail screen, a "Contact information" card is shown (mirroring the web `ManagersCard`). This section allows admins to invite a parent or guardian to manage the player.
+When an admin views a player's detail screen, a "Contact information" card is shown (mirroring the web `ManagersCard`). Tapping "Add contact" pushes `invite-member` in guardian invite mode — no separate bottom sheet or modal is needed.
 
 ### Changes to `apps/mobile/app/(app)/team/[memberId].tsx`
 
-**Data fetching** — the existing `fetchData` already loads `profile_managers`. Also load pending guardian invitations for the player:
+**Data fetching** — the existing `fetchData` already loads `profile_managers`. Also load pending guardian invitations for the player when `isAdmin` is true:
 
 ```ts
 supabase
@@ -124,33 +160,13 @@ supabase
   .is("accepted_at", null)
 ```
 
-This is only fetched when `isAdmin` is true.
+Call `fetchData` on `useFocusEffect` (not just `useEffect`) so the card refreshes automatically after returning from the invite screen.
 
-**"Contact information" card** — rendered below the "Managed by" section (or replacing it when admin). Shows:
+**"Contact information" card** — rendered below the existing "Managed by" section when `isAdmin` is true (admins see both; non-admins continue to see only "Managed by" as before). Shows:
 
 - Existing managers (name + relationship + email), read-only.
 - Pending invitations as dashed rows: email + relationship badge + "Resend" button.
-- An "Add contact" `+` button in the card header (admin only).
-
-**Add contact flow** — tapping "Add contact" opens a bottom sheet (or modal) with two fields:
-
-| Field | Required | Notes |
-|---|---|---|
-| Email | Yes | |
-| Relationship | Yes | Picker: Self, Mom, Dad, Guardian, Other |
-
-On submit, calls `POST /api/invitations/send` with:
-```json
-{
-  "teamId": "<team id>",
-  "email": "...",
-  "role": "manager",
-  "managedProfileId": "<player's profile_id>",
-  "relationship": "..."
-}
-```
-
-On success: show the same email-sent/link-fallback confirmation as the main invite screen. Dismiss the sheet and refresh the detail screen.
+- An "Add contact" button in the card header (admin only): `router.push({ pathname: '/(app)/invite-member', params: { memberId } })`.
 
 **Resend** — tapping "Resend" on a pending invitation calls `POST /api/invitations/<id>/resend` with the Bearer token. Shows a brief inline "Sent" / "Failed" state on the button.
 
