@@ -70,7 +70,9 @@ The screen has two modes, selected by query params:
 - **General invite** (no params): `router.push('/(app)/invite-member')` — shows role picker, all fields. Entry point: Team tab header button.
 - **Guardian invite** (`memberId=<team_member_id>`): `router.push({ pathname: '/(app)/invite-member', params: { memberId } })` — hides the role picker (role is fixed to `manager`), shows relationship field instead. Entry point: "Add contact" button on `[memberId].tsx`.
 
-Both modes share the same screen, send logic, and confirmation state. The `memberId` param is used to look up `profile_id` and `team_id` for the API call.
+Both modes share the same screen, send logic, and confirmation state. The `memberId` param is used to look up `profile_id`, `team_id`, and `role` for the API call.
+
+**Guardian mode must verify `member.role === "player"` before rendering the form.** If the resolved member has any other role, the screen must not render the form or allow a submission — pop back immediately with no visible error (the entry point in `[memberId].tsx` already gates on player role, so this is a defensive check against stale links or incorrect programmatic navigation). If the member row cannot be fetched at all (network error, invalid ID), show a brief error and pop back.
 
 ### Role selection
 
@@ -198,7 +200,7 @@ supabase
 
 RLS enforces that only team admins can read these rows (see migration dependency above) — no `isAdmin` UI guard is needed to protect this query, though the "Contact information" card and "Add contact" button are still only rendered when `isAdmin` is true for UX reasons. Call `fetchData` on `useFocusEffect` (not just `useEffect`) so the card refreshes automatically after returning from the invite screen.
 
-**"Contact information" card** — rendered below the existing "Managed by" section when `isAdmin` is true (admins see both; non-admins continue to see only "Managed by" as before). Shows:
+**"Contact information" card** — rendered below the existing "Managed by" section when `isAdmin && member.role === "player"` (admins see it for players only; non-players and non-admins never see it). Shows:
 
 - Existing managers (name + relationship + email), read-only.
 - Pending invitations as dashed rows: email + relationship badge + "Resend" button.
