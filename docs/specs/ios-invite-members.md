@@ -11,6 +11,36 @@ Both paths call the existing `POST /api/invitations/send` endpoint, which needs 
 
 ---
 
+## Migration dependency — tighten invitations SELECT policy
+
+**This migration must be applied before any iOS screen queries the `invitations` table client-side.**
+
+The existing "Invited users can view own invitation" RLS policy contains an `accepted_at is null` branch that grants every authenticated user read access to all pending invitations across all teams. Every code path that legitimately needs to read an invitation without the invitee being signed in (the `/api/invite/[id]` route, the web invite page, the mobile invite screen) uses a service-role client that bypasses RLS, so the clause was never doing useful work — it was only leaking invitee names, email addresses, roles, and relationship metadata to any signed-in user.
+
+**Migration: `supabase/migrations/20260414000000_fix_invitations_select_policy.sql`**
+
+Drop and recreate the policy, removing the `accepted_at is null` branch:
+
+```sql
+drop policy if exists "Invited users can view own invitation" on invitations;
+
+create policy "Invited users can view own invitation"
+  on invitations for select using (
+    email = (auth.jwt() ->> 'email')
+  );
+```
+
+After this migration the two SELECT policies on `invitations` are:
+
+| Policy | Who can read |
+|---|---|
+| Invitations visible to team admins | Any `coach` or `manager` on the invitation's `team_id` — via `is_team_admin(team_id)` |
+| Invited users can view own invitation | The user whose email matches the invitation's `email` field |
+
+The guardian invite query on the member detail screen (filtered by `managed_profile_id`) is correctly gated by the first policy: only coaches and managers of the team will have rows returned. No server endpoint is needed — client-side Supabase queries are sufficient once this policy is in place.
+
+---
+
 ## API changes — Bearer auth support
 
 Two existing API routes are cookie-only today and must be updated to accept Bearer tokens before any iOS UI can call them.
@@ -149,7 +179,7 @@ When an admin views a player's detail screen, a "Contact information" card is sh
 
 ### Changes to `apps/mobile/app/(app)/team/[memberId].tsx`
 
-**Data fetching** — the existing `fetchData` already loads `profile_managers`. Also load pending guardian invitations for the player when `isAdmin` is true:
+**Data fetching** — the existing `fetchData` already loads `profile_managers`. Also load pending guardian invitations for the player:
 
 ```ts
 supabase
@@ -160,7 +190,7 @@ supabase
   .is("accepted_at", null)
 ```
 
-Call `fetchData` on `useFocusEffect` (not just `useEffect`) so the card refreshes automatically after returning from the invite screen.
+RLS enforces that only team admins can read these rows (see migration dependency above) — no `isAdmin` UI guard is needed to protect this query, though the "Contact information" card and "Add contact" button are still only rendered when `isAdmin` is true for UX reasons. Call `fetchData` on `useFocusEffect` (not just `useEffect`) so the card refreshes automatically after returning from the invite screen.
 
 **"Contact information" card** — rendered below the existing "Managed by" section when `isAdmin` is true (admins see both; non-admins continue to see only "Managed by" as before). Shows:
 
