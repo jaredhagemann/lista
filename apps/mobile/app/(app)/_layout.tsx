@@ -73,6 +73,13 @@ export default function AppLayout() {
                 title: "Create a Team",
               }}
             />
+            <Tabs.Screen
+              name="invite-member"
+              options={{
+                href: null,
+                title: "Invite Member",
+              }}
+            />
           </Tabs>
         </View>
       </SafeAreaView>

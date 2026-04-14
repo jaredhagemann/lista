@@ -1,18 +1,22 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
   ScrollView,
   Image,
+  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useNavigation } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { useAppContext } from "../../../contexts/AppContext";
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
 type Profile = {
   id: string;
@@ -40,6 +44,12 @@ type Manager = {
   profiles: { first_name: string; last_name: string; email: string | null };
 };
 
+type PendingInvite = {
+  id: string;
+  email: string;
+  relationship: string | null;
+};
+
 function formatBirthday(dateStr: string) {
   return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
     month: "long",
@@ -60,12 +70,18 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 export default function MemberDetailScreen() {
   const { memberId } = useLocalSearchParams<{ memberId: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
   const { membership, activeProfile } = useAppContext();
 
   const [member, setMember] = useState<Member | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const isAdmin =
+    membership?.role === "coach" || membership?.role === "manager";
 
   async function fetchData() {
     if (!memberId) return;
@@ -92,29 +108,73 @@ export default function MemberDetailScreen() {
         .join(" "),
     });
 
-    // Fetch managers for this profile (visible to teammates via RLS)
-    const { data: managersData } = await supabase
-      .from("profile_managers")
-      .select(
-        "manager_id, relationship, profiles!profile_managers_manager_id_fkey(first_name, last_name, email)"
-      )
-      .eq("managed_id", m.profile_id);
+    const fetchManagers = async () => {
+      const { data } = await supabase
+        .from("profile_managers")
+        .select(
+          "manager_id, relationship, profiles!profile_managers_manager_id_fkey(first_name, last_name, email)"
+        )
+        .eq("managed_id", m.profile_id);
+      setManagers((data ?? []) as unknown as Manager[]);
+    };
 
-    setManagers((managersData ?? []) as unknown as Manager[]);
+    const fetchPendingInvites = async () => {
+      if (!isAdmin || m.role !== "player") return;
+      // RLS enforces admin-only access; this returns 0 rows for non-admins
+      const { data } = await supabase
+        .from("invitations")
+        .select("id, email, relationship")
+        .eq("team_id", m.team_id)
+        .eq("managed_profile_id", m.profile_id)
+        .is("accepted_at", null);
+      setPendingInvites((data ?? []) as PendingInvite[]);
+    };
+
+    await Promise.all([fetchManagers(), fetchPendingInvites()]);
     setLoading(false);
     setRefreshing(false);
   }
 
-  useEffect(() => {
-    fetchData();
-  }, [memberId]);
+  // useFocusEffect so the contact card refreshes after returning from invite-member
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [memberId, isAdmin])
+  );
+
+  async function handleResendInvite(invite: PendingInvite) {
+    setResendingId(invite.id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) { setResendingId(null); return; }
+
+    try {
+      const res = await fetch(`${API_URL}/api/invitations/${invite.id}/resend`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      Alert.alert(
+        res.ok ? "Invitation resent" : "Failed",
+        res.ok
+          ? data.emailSent
+            ? `Resent to ${invite.email}.`
+            : "Link is ready but email could not be delivered."
+          : (data.error ?? "Something went wrong.")
+      );
+    } catch {
+      Alert.alert("Error", "Failed to resend. Check your connection.");
+    } finally {
+      setResendingId(null);
+    }
+  }
 
   function onRefresh() {
     setRefreshing(true);
     fetchData();
   }
 
-  if (loading) {
+  if (loading && !member) {
     return (
       <SafeAreaView style={styles.center} edges={["bottom"]}>
         <ActivityIndicator size="large" color="#0f172a" />
@@ -140,9 +200,8 @@ export default function MemberDetailScreen() {
     .join("")
     .toUpperCase();
 
-  const isAdmin =
-    membership?.role === "coach" || membership?.role === "manager";
   const isOwnProfile = profile.id === activeProfile?.id;
+  const showContactCard = isAdmin && member.role === "player";
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -193,15 +252,31 @@ export default function MemberDetailScreen() {
           ) : null}
         </View>
 
-        {/* Managers section — only shown when relevant */}
-        {managers.length > 0 ? (
+        {/* Contact information card — admins on player profiles */}
+        {showContactCard ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Managed by</Text>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>Contact information</Text>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(app)/invite-member" as any,
+                    params: { memberId: member.id },
+                  })
+                }
+              >
+                <Ionicons name="person-add-outline" size={16} color="#0f172a" />
+                <Text style={styles.addButtonText}>Add contact</Text>
+              </TouchableOpacity>
+            </View>
+
+            {managers.length === 0 && pendingInvites.length === 0 ? (
+              <Text style={styles.emptyContacts}>No contacts yet.</Text>
+            ) : null}
+
             {managers.map((mgr) => {
-              const mgrName = [
-                mgr.profiles.first_name,
-                mgr.profiles.last_name,
-              ]
+              const mgrName = [mgr.profiles.first_name, mgr.profiles.last_name]
                 .filter(Boolean)
                 .join(" ");
               return (
@@ -214,9 +289,60 @@ export default function MemberDetailScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.managerName}>{mgrName}</Text>
-                    <Text style={styles.managerRelationship}>
-                      {mgr.relationship}
+                    {mgr.relationship ? (
+                      <Text style={styles.managerRelationship}>{mgr.relationship}</Text>
+                    ) : null}
+                    {mgr.profiles.email ? (
+                      <Text style={styles.managerEmail}>{mgr.profiles.email}</Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="people-outline" size={16} color="#9ca3af" />
+                </View>
+              );
+            })}
+
+            {pendingInvites.map((inv) => (
+              <View key={inv.id} style={[styles.managerRow, styles.managerRowPending]}>
+                <View style={styles.managerAvatar}>
+                  <Ionicons name="time-outline" size={14} color="#9ca3af" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.managerEmail}>{inv.email}</Text>
+                  {inv.relationship ? (
+                    <Text style={styles.managerRelationship}>{inv.relationship}</Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={[styles.resendButton, resendingId === inv.id && { opacity: 0.5 }]}
+                  onPress={() => handleResendInvite(inv)}
+                  disabled={resendingId === inv.id}
+                >
+                  <Text style={styles.resendButtonText}>
+                    {resendingId === inv.id ? "Sending…" : "Resend"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : managers.length > 0 ? (
+          /* Read-only "Managed by" for non-admins and non-player members */
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Managed by</Text>
+            {managers.map((mgr) => {
+              const mgrName = [mgr.profiles.first_name, mgr.profiles.last_name]
+                .filter(Boolean)
+                .join(" ");
+              return (
+                <View key={mgr.manager_id} style={styles.managerRow}>
+                  <View style={styles.managerAvatar}>
+                    <Text style={styles.managerAvatarText}>
+                      {(mgr.profiles.first_name?.[0] ?? "") +
+                        (mgr.profiles.last_name?.[0] ?? "")}
                     </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.managerName}>{mgrName}</Text>
+                    <Text style={styles.managerRelationship}>{mgr.relationship}</Text>
                     {mgr.profiles.email ? (
                       <Text style={styles.managerEmail}>{mgr.profiles.email}</Text>
                     ) : null}
@@ -319,4 +445,31 @@ const styles = StyleSheet.create({
   managerName: { fontSize: 14, fontWeight: "600", color: "#111827" },
   managerRelationship: { fontSize: 12, color: "#9ca3af", textTransform: "capitalize" },
   managerEmail: { fontSize: 12, color: "#6b7280", marginTop: 1 },
+  managerRowPending: { opacity: 0.7 },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+  addButtonText: { fontSize: 13, fontWeight: "500", color: "#0f172a" },
+  emptyContacts: { fontSize: 14, color: "#9ca3af" },
+  resendButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+  resendButtonText: { fontSize: 12, color: "#374151" },
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
 import type { Database } from "@/types/database";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
@@ -7,11 +7,7 @@ import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 type InvitationRole = Database["public"]["Tables"]["invitations"]["Row"]["role"];
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await resolveRequestUser(request);
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -50,8 +46,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const admin = adminClient();
+
   // Verify caller is a team admin OR a profile manager for the managed profile
-  const { data: membership } = await supabase
+  const { data: membership } = await admin
     .from("team_members")
     .select("role")
     .eq("team_id", teamId)
@@ -66,7 +64,7 @@ export async function POST(request: Request) {
     if (!managedProfileId) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
-    const { data: managerLink } = await supabase
+    const { data: managerLink } = await admin
       .from("profile_managers")
       .select("id")
       .eq("manager_id", user.id)
@@ -81,7 +79,7 @@ export async function POST(request: Request) {
   // Generate invitation ID client-side to avoid SELECT RLS issue
   const invitationId = crypto.randomUUID();
 
-  const { error: insertError } = await supabase.from("invitations").insert({
+  const { error: insertError } = await admin.from("invitations").insert({
     id: invitationId,
     team_id: teamId,
     email,
@@ -101,8 +99,8 @@ export async function POST(request: Request) {
 
   // Fetch team name and inviter profile for the email
   const [{ data: team }, { data: inviterProfile }] = await Promise.all([
-    supabase.from("teams").select("name").eq("id", teamId).single(),
-    supabase
+    admin.from("teams").select("name").eq("id", teamId).single(),
+    admin
       .from("profiles")
       .select("first_name, last_name")
       .eq("id", user.id)

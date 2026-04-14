@@ -191,4 +191,73 @@ describe("invitations RLS", () => {
     expect(error).toBeNull();
     expect(data!.length).toBeGreaterThanOrEqual(1);
   });
+
+  // Regression tests for the removed `accepted_at is null` broad-select clause.
+  // Before the migration, any authenticated user could read all pending
+  // invitations across all teams. These cases must return 0 rows.
+
+  it("player team member cannot read pending invitations for their own team", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    await adminClient.from("invitations").insert({
+      team_id: teamId,
+      email: "pending@test.local",
+      role: "player",
+      invited_by: coach.user.id,
+    });
+
+    const { data, error } = await player.client
+      .from("invitations")
+      .select()
+      .eq("team_id", teamId)
+      .is("accepted_at", null);
+    expect(error).toBeNull();
+    expect(data!.length).toBe(0);
+  });
+
+  it("authenticated user cannot read pending invitations for a team they don't belong to", async () => {
+    const coach = await createTestUser();
+    const outsider = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+
+    await adminClient.from("invitations").insert({
+      team_id: teamId,
+      email: "someone@test.local",
+      role: "player",
+      invited_by: coach.user.id,
+    });
+
+    const { data, error } = await outsider.client
+      .from("invitations")
+      .select()
+      .eq("team_id", teamId)
+      .is("accepted_at", null);
+    expect(error).toBeNull();
+    expect(data!.length).toBe(0);
+  });
+
+  it("admin cannot read pending invitations for another team", async () => {
+    const coachA = await createTestUser();
+    const coachB = await createTestUser();
+    const { teamId: teamA } = await createTestTeam(coachA.user.id);
+    const { teamId: teamB } = await createTestTeam(coachB.user.id);
+
+    await adminClient.from("invitations").insert({
+      team_id: teamB,
+      email: "teamb-player@test.local",
+      role: "player",
+      invited_by: coachB.user.id,
+    });
+
+    const { data, error } = await coachA.client
+      .from("invitations")
+      .select()
+      .eq("team_id", teamB)
+      .is("accepted_at", null);
+    expect(error).toBeNull();
+    expect(data!.length).toBe(0);
+  });
 });
