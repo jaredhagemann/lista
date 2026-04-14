@@ -49,7 +49,21 @@ Two existing API routes are cookie-only today and must be updated to accept Bear
 
 Replace the `createClient()` call for auth resolution with `resolveRequestUser(request)` from `src/lib/api-auth.ts` (the shared helper introduced for `/api/teams`). No other logic changes.
 
-The authorization check inside the handler that verifies the caller is a team admin (or a profile manager for the managed profile) uses the user-scoped Supabase client returned by `createClient()` to evaluate RLS-governed queries. After the `resolveRequestUser` migration, the handler must construct a per-user Supabase client using `createServiceClientWithUser(userId)` or equivalent — preserving the RLS-based authorization checks. The simplest approach is to keep a user-scoped client for the membership/profile_managers checks and the service role client for the invitation insert (which is the current pattern).
+The authorization checks that follow — verifying the caller is a team admin, or a profile manager for the managed profile — currently use the user-scoped `supabase` client to leverage RLS. After the migration, replace these with explicit `adminClient()` queries that filter by the resolved `userId` directly:
+
+```ts
+// before
+const { data: membership } = await supabase
+  .from("team_members").select("role")
+  .eq("team_id", teamId).eq("profile_id", user.id).single();
+
+// after
+const { data: membership } = await adminClient()
+  .from("team_members").select("role")
+  .eq("team_id", teamId).eq("profile_id", userId).single();
+```
+
+This is semantically equivalent — the authorization logic is the same, just enforced explicitly by the route rather than implicitly by RLS. It's the pattern already used by every other Bearer-auth route in the repo (`api/account/owned-teams`, `api/account/delete`, `api/invite/[id]/accept`). The service-role client was already used for the invitation insert; this change makes the membership/profile_managers checks consistent with that.
 
 ### `POST /api/invitations/[id]/resend` — `apps/web/src/app/api/invitations/[id]/resend/route.ts`
 
@@ -114,10 +128,10 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 1. Retrieve the session token via `supabase.auth.getSession()`
 2. `POST ${API_URL}/api/invitations/send` with `Authorization: Bearer <token>` and body:
 
-   **General invite:**
+   **General invite** (`teamId` comes from `membership?.teamId` via `AppContext`):
    ```json
    {
-     "teamId": "<current team>",
+     "teamId": "<membership.teamId>",
      "email": "...",
      "role": "player|manager|coach",
      "firstName": "...",
@@ -200,11 +214,11 @@ supabase
 
 RLS enforces that only team admins can read these rows (see migration dependency above) — no `isAdmin` UI guard is needed to protect this query, though the "Contact information" card and "Add contact" button are still only rendered when `isAdmin` is true for UX reasons. Call `fetchData` on `useFocusEffect` (not just `useEffect`) so the card refreshes automatically after returning from the invite screen.
 
-**"Contact information" card** — rendered below the existing "Managed by" section when `isAdmin && member.role === "player"` (admins see it for players only; non-players and non-admins never see it). Shows:
+**"Contact information" card** — when `isAdmin && member.role === "player"`, this card *replaces* the existing "Managed by" section entirely (it shows the same managers data plus pending invites and edit capability, so showing both sections would be redundant). Non-admins, and admins viewing non-player members, continue to see the existing read-only "Managed by" section unchanged. The card shows:
 
 - Existing managers (name + relationship + email), read-only.
 - Pending invitations as dashed rows: email + relationship badge + "Resend" button.
-- An "Add contact" button in the card header (admin only): `router.push({ pathname: '/(app)/invite-member', params: { memberId } })`.
+- An "Add contact" button in the card header: `router.push({ pathname: '/(app)/invite-member', params: { memberId } })`.
 
 **Resend** — tapping "Resend" on a pending invitation calls `POST ${API_URL}/api/invitations/<id>/resend` with the Bearer token. Shows a brief inline "Sent" / "Failed" state on the button.
 
@@ -218,6 +232,24 @@ Admins can already see pending invite rows in the team roster (`team/index.tsx`)
 - **Cancel** — dismisses.
 
 This is the iOS equivalent of the web's "Resend" button in the roster.
+
+---
+
+## Testing
+
+The RLS policy change in the migration is a meaningful security boundary and must be covered by tests in `tests/rls/invitations.test.ts` before this PR merges.
+
+**New cases to add:**
+
+| Scenario | Expected result |
+|---|---|
+| Non-admin team member reads `invitations` for their own team | 0 rows returned (was previously all pending rows) |
+| Authenticated user reads `invitations` for a team they don't belong to | 0 rows returned |
+| Invited user reads their own invitation by ID (email matches JWT) | Row returned |
+| Team admin reads pending invitations for their team | Rows returned |
+| Team admin reads pending invitations for another team | 0 rows returned |
+
+The first two cases are the direct regression tests for the removed `accepted_at is null` clause — they should fail against the old policy and pass against the new one.
 
 ---
 
