@@ -88,3 +88,41 @@ CREATE POLICY "org owners can manage org_members"
   ON organization_members FOR ALL
   USING (is_org_owner(organization_id))
   WITH CHECK (is_org_owner(organization_id));
+
+-- ── RLS policies for organizations ───────────────────────────────────────────
+-- Defined here (not in 20260416000000) because organization_members,
+-- is_org_admin(), and is_org_owner() must all exist before these policies
+-- can be created.
+
+-- SELECT: visible to profiles that are a direct team member in this org,
+-- or are an explicit org member in organization_members.
+CREATE POLICY "Orgs visible to members"
+  ON organizations FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM teams t
+      JOIN team_members tm ON tm.team_id = t.id
+      JOIN profiles p ON p.id = tm.profile_id
+      WHERE t.organization_id = organizations.id
+        AND p.auth_user_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM organization_members om
+      JOIN profiles p ON p.id = om.profile_id
+      WHERE om.organization_id = organizations.id
+        AND p.auth_user_id = auth.uid()
+    )
+  );
+
+-- UPDATE: only org owners/admins may update branding, settings, etc.
+CREATE POLICY "Orgs updatable by org admins"
+  ON organizations FOR UPDATE
+  USING (is_org_admin(id));
+
+-- INSERT: no permissive client policy — blocked by default-deny.
+-- Org creation is only permitted via the create_team() service-role RPC.
+
+-- DELETE: only the org owner may delete an org.
+CREATE POLICY "Orgs deletable by org owner"
+  ON organizations FOR DELETE
+  USING (is_org_owner(id));

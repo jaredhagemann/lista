@@ -1,8 +1,12 @@
 -- ── Organization enhancements ─────────────────────────────────────────────────
 -- Promotes organizations to the primary tenant boundary for multi-tenancy.
 -- Adds slug, plan, branding, Stripe, and created_by columns.
--- Drops the old permissive RLS policies and replaces them with
--- membership-scoped ones.
+-- Drops the old permissive RLS policies.
+--
+-- The new membership-scoped RLS policies for organizations are defined in
+-- 20260416000001_organization_members.sql, which runs next and creates the
+-- organization_members table and is_org_admin()/is_org_owner() helpers that
+-- those policies depend on.
 
 -- ── New columns ───────────────────────────────────────────────────────────────
 
@@ -48,41 +52,6 @@ DROP POLICY IF EXISTS "Authenticated users can create orgs" ON organizations;
 DROP POLICY IF EXISTS "Authenticated users can view organizations" ON organizations;
 DROP POLICY IF EXISTS "Authenticated users can insert organizations" ON organizations;
 
--- ── New RLS policies ──────────────────────────────────────────────────────────
-
--- SELECT: visible to profiles that are a member of any team in this org,
--- or are an explicit org member in organization_members.
--- NOTE: is_org_admin() is defined in the organization_members migration which
--- must run after this one. This policy references organization_members directly
--- so it can be created here without a forward dependency on the helper.
-CREATE POLICY "Orgs visible to members"
-  ON organizations FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM teams t
-      JOIN team_members tm ON tm.team_id = t.id
-      JOIN profiles p ON p.id = tm.profile_id
-      WHERE t.organization_id = organizations.id
-        AND p.auth_user_id = auth.uid()
-    )
-    OR EXISTS (
-      SELECT 1 FROM organization_members om
-      JOIN profiles p ON p.id = om.profile_id
-      WHERE om.organization_id = organizations.id
-        AND p.auth_user_id = auth.uid()
-    )
-  );
-
--- UPDATE: only org owners/admins may update branding, settings, etc.
--- Uses is_org_admin() defined in the organization_members migration.
-CREATE POLICY "Orgs updatable by org admins"
-  ON organizations FOR UPDATE
-  USING (is_org_admin(id));
-
--- INSERT: no permissive client policy — blocked by default-deny.
--- Org creation is only permitted via the create_team() service-role RPC.
-
--- DELETE: only the org owner may delete an org.
-CREATE POLICY "Orgs deletable by org owner"
-  ON organizations FOR DELETE
-  USING (is_org_owner(id));
+-- New RLS policies for organizations are created at the end of
+-- 20260416000001_organization_members.sql after organization_members,
+-- is_org_admin(), and is_org_owner() are all defined.
