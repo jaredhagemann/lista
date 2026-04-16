@@ -20,12 +20,14 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_org_id  uuid := gen_random_uuid();
-  v_team_id uuid := gen_random_uuid();
-  v_slug    text;
+  v_org_id   uuid := gen_random_uuid();
+  v_team_id  uuid := gen_random_uuid();
+  v_slug     text;
+  v_base     text;
+  v_counter  int := 2;
 BEGIN
-  -- Generate slug from org name (same logic as the backfill migration)
-  v_slug := TRIM(BOTH '-' FROM
+  -- Generate base slug from org name (same logic as the backfill migration)
+  v_base := TRIM(BOTH '-' FROM
     SUBSTRING(
       LOWER(REGEXP_REPLACE(
         COALESCE(NULLIF(TRIM(org_name), ''), TRIM(team_name)),
@@ -34,14 +36,13 @@ BEGIN
       1, 48
     )
   );
+  v_slug := v_base;
 
-  -- Deduplicate slug if already taken (append _2, _3, ...)
+  -- Deduplicate: produce acme, acme_2, acme_3, … consistent with backfill.
+  -- v_base stays fixed so each iteration tests the correct suffixed candidate.
   WHILE EXISTS (SELECT 1 FROM organizations WHERE slug = v_slug) LOOP
-    v_slug := v_slug || '_2';
-    -- For collisions beyond _2, append a random suffix to guarantee uniqueness
-    IF LENGTH(v_slug) > 50 THEN
-      v_slug := SUBSTRING(v_slug, 1, 44) || '_' || SUBSTRING(gen_random_uuid()::text, 1, 4);
-    END IF;
+    v_slug := v_base || '_' || v_counter;
+    v_counter := v_counter + 1;
   END LOOP;
 
   -- Step 1: Create organization
