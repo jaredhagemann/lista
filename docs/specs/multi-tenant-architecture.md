@@ -128,7 +128,7 @@ ALTER TABLE organizations ADD COLUMN created_by   uuid REFERENCES profiles(id);
 **RLS policies for `organizations`:**
 - `SELECT`: profile is a member of any team in the org, OR is an org member
 - `UPDATE`: `is_org_admin(id)` — only org owners/admins can update branding, settings
-- `INSERT`: any authenticated user (handled via `create_team()` RPC, not direct insert)
+- `INSERT`: **no permissive client INSERT policy** — direct inserts from the client are blocked by default-deny. Org creation is only permitted via the `create_team()` RPC, which runs with the service role and therefore bypasses RLS.
 - `DELETE`: `is_org_owner(id)` only
 
 ---
@@ -148,22 +148,34 @@ CREATE TABLE organization_members (
   PRIMARY KEY (organization_id, profile_id)
 );
 
+-- Enforce exactly one owner per org at the database level.
+-- Without this, the backfill and future ownership transfers could silently
+-- produce multiple owner rows, making billing authority ambiguous.
+CREATE UNIQUE INDEX organization_members_one_owner
+  ON organization_members (organization_id)
+  WHERE role = 'owner';
+
 -- RLS
 ALTER TABLE organization_members ENABLE ROW LEVEL SECURITY;
 
+-- SECURITY DEFINER helper to fetch the org IDs the current user belongs to,
+-- bypassing RLS so the organization_members SELECT policy below does not
+-- self-reference its own table and trigger infinite recursion.
+CREATE OR REPLACE FUNCTION get_user_org_ids() RETURNS SETOF uuid AS $$
+  SELECT organization_id FROM organization_members om
+  JOIN profiles p ON p.id = om.profile_id
+  WHERE p.auth_user_id = auth.uid()
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
 -- Any org member (owner or director) can see the full org_members list.
--- Written as inline SQL (not via is_org_admin()) to avoid circular dependency:
--- is_org_admin() reads organization_members, so calling it inside this table's
--- own SELECT policy would cause infinite recursion.
+-- Uses get_user_org_ids() rather than inline SQL against organization_members
+-- to avoid infinite recursion: a direct sub-query on the same table re-enters
+-- this policy, whereas a SECURITY DEFINER function bypasses RLS entirely.
 CREATE POLICY "org members can view org_members"
   ON organization_members FOR SELECT
   USING (
     profile_id = (SELECT id FROM profiles WHERE auth_user_id = auth.uid())
-    OR organization_id IN (
-      SELECT om2.organization_id FROM organization_members om2
-      JOIN profiles p ON p.id = om2.profile_id
-      WHERE p.auth_user_id = auth.uid()
-    )
+    OR organization_id IN (SELECT get_user_org_ids())
   );
 
 -- Only org owners can manage org membership (add/remove directors)
@@ -174,12 +186,12 @@ CREATE POLICY "org owners can manage org_members"
 ```
 
 **Role definitions:**
-- `owner`: full control — billing, branding, subdomain, creating teams, inviting directors. One per org (enforced by convention; allows transfer).
+- `owner`: full control — billing, branding, subdomain, creating teams, inviting directors. Exactly one per org (enforced by the partial unique index above; ownership transfer must delete the old row before inserting the new one, or use an UPDATE).
 - `director`: can create teams, manage all teams in the org, invite members. No billing access.
 
 **`director` in `team_members`:** Directors also appear in `team_members` with a new `director` role. This is how they get team-level visibility and chat access for teams they create. See §1.3 for the role addition and §1.4 for auto-enrollment on team creation.
 
-**Backfill:** Insert an `organization_members` row (`role = 'owner'`) for every existing team's `owner_id` profile, scoped to that team's `organization_id`. Existing free-user orgs are unaffected — the owner entry is just a record-keeping row; no UI change for them.
+**Backfill:** Insert one `organization_members` row (`role = 'owner'`) per organization, using the `owner_id` of the team with the earliest `created_at` in that org. Because `create_team()` today always creates a new org atomically, every existing org should have exactly one team and one owner — but the migration must be defensive. Use `INSERT ... ON CONFLICT DO NOTHING` (the partial unique index on `(organization_id) WHERE role = 'owner'` will reject any duplicate), so if a org somehow has multiple teams with different owners, the earliest team's owner wins and the rest are silently skipped. After migration, review any orgs that had conflicts and resolve ownership manually if needed. Existing free-user orgs are unaffected functionally — the owner entry is a record-keeping row; no UI change for them.
 
 **Update `create_team()` RPC:** After creating the org and team, also insert into `organization_members` with `role = 'owner'`. See §1.4 for the separate club team creation path.
 
@@ -356,7 +368,8 @@ Team creation now has two distinct paths depending on context.
 **Path B — Club director creates a team within an existing org:**
 - Caller: must be `owner` or `director` in `organization_members` for the target org (enforced in the RPC; raises `insufficient_privilege` otherwise)
 - New RPC: `create_club_team(org_id uuid, team_name text, season text)` — does NOT create a new org
-- On success: inserts into `teams` (with the given `org_id`), adds the caller to `team_members` as `director`, updates `profiles.active_team_id` to the new team
+- On success: inserts into `teams` (with the given `org_id`, and `owner_id` set to the caller's profile ID), adds the caller to `team_members` as `director`, updates `profiles.active_team_id` to the new team
+- `owner_id` is the caller at creation time. Ownership can be transferred later by any org director via the club portal (`/dashboard/club/teams`). The `isOwner` flag in the team settings page is intentionally suppressed for directors (see §1.3) — ownership transfer for club teams surfaces in the club portal only, not the per-team settings page.
 - Other directors in the org are **not** auto-enrolled in `team_members` for the new team — they gain access via the `is_org_admin()` check in `is_team_member()`. Only the creating director gets an explicit row.
 
 **Why explicit row for creator only:** An explicit `team_members` row for the creating director ensures they appear in the team roster, receive team notifications, and have access to team chat. Other directors can view and manage the team via RLS but won't appear in the roster or receive notifications until they're explicitly added — which is the correct default for a club with many teams.
@@ -673,7 +686,7 @@ All existing teams already have a 1:1 organization created by `create_team()`. T
 1. Add new columns with safe defaults (plan = 'free', subscription_status = 'active')
 2. Generate slugs: `regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g')`, truncate to 48 chars, deduplicate with `_2`, `_3` suffix
 3. Set `created_by` from the first `organization_members` backfill (see §1.2)
-4. Insert `organization_members` rows for existing team owners
+4. Insert one `organization_members` row (`role = 'owner'`) per org using the earliest team's `owner_id`; use `ON CONFLICT DO NOTHING` to handle any pre-existing multi-team orgs defensively
 5. Update `create_team()` RPC to insert into `organization_members`
 
 **User-visible impact:** None. Individual coaches see exactly what they see today. The org structure is invisible to free users.
@@ -856,15 +869,25 @@ The `apps/mobile/` Expo app is parameterized so a single codebase produces any c
 
 ```javascript
 export default ({ config }) => {
-  const orgId    = process.env.EXPO_PUBLIC_ORG_ID;
-  const appName  = process.env.EXPO_APP_NAME  ?? 'Lista';
-  const bundleId = process.env.EXPO_BUNDLE_ID ?? 'team.lista.app';
+  const orgId        = process.env.EXPO_PUBLIC_ORG_ID;
+  const appName      = process.env.EXPO_APP_NAME      ?? 'Lista';
+  const bundleId     = process.env.EXPO_BUNDLE_ID     ?? 'team.lista.app';
+  const subdomain    = process.env.EXPO_SUBDOMAIN;    // e.g. 'jogafc' → jogafc.lista.team
+  const customDomain = process.env.EXPO_CUSTOM_DOMAIN; // Phase 2: e.g. 'app.jogafc.org'
+
+  // Determine the hostname this app handles universal links for.
+  // Priority: custom domain (Phase 2) > subdomain > default lista.team
+  const appHost = customDomain ?? (subdomain ? `${subdomain}.lista.team` : 'lista.team');
 
   return {
     ...config,
     name: appName,
     slug: bundleId.replace(/\./g, '-'),
-    ios: { bundleIdentifier: bundleId, ... },
+    ios: {
+      bundleIdentifier: bundleId,
+      associatedDomains: [`applinks:${appHost}`],
+      // ...
+    },
     extra: { orgId },   // accessible at runtime via Constants.expoConfig.extra.orgId
   };
 };
@@ -883,7 +906,9 @@ Each club gets a named build profile:
       "env": {
         "EXPO_PUBLIC_ORG_ID": "uuid-of-jogafc-org",
         "EXPO_APP_NAME": "Joga FC",
-        "EXPO_BUNDLE_ID": "org.jogafc.app"
+        "EXPO_BUNDLE_ID": "org.jogafc.app",
+        "EXPO_SUBDOMAIN": "jogafc",
+        "EXPO_CUSTOM_DOMAIN": ""
       }
     }
   }
@@ -893,7 +918,7 @@ Each club gets a named build profile:
 **Build script `scripts/build-club-app.sh`:**
 
 A thin wrapper that:
-1. Accepts `--org-id`, `--app-name`, `--bundle-id`, `--platform` args
+1. Accepts `--org-id`, `--app-name`, `--bundle-id`, `--subdomain`, `--custom-domain` (optional, Phase 2), `--platform` args
 2. Creates or updates the EAS build profile in `eas.json`
 3. Creates the Expo project via Expo API if `expo_project_id` doesn't exist yet
 4. Runs `eas build --profile {club}-production --platform {ios|android}`
@@ -968,15 +993,7 @@ New clubs require adding a new env var on Vercel. This is a manual step in the c
 
 Invite links generated for teams in a club org should open the club's app, not the standard Lista app. This requires universal links configured per club app.
 
-**`apps/mobile/app.config.js`** includes the associated domains:
-
-```javascript
-ios: {
-  associatedDomains: [
-    `applinks:${bundleId === 'team.lista.app' ? 'lista.team' : `${subdomain}.lista.team`}`,
-  ]
-}
-```
+**`apps/mobile/app.config.js`** includes the associated domains via the `appHost` value derived from `EXPO_SUBDOMAIN` / `EXPO_CUSTOM_DOMAIN` (see §3.4 for the full config — the `associatedDomains` field is defined there). Each club build passes its subdomain via `EXPO_SUBDOMAIN` in `eas.json` and the build script, so `appHost` resolves to the correct hostname at build time without any runtime lookup.
 
 **Invite URL generation (backend):** When generating invite links for a team that belongs to a Club-plan org with a subdomain, use the org's subdomain as the base URL:
 
