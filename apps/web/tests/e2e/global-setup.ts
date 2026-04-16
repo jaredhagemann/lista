@@ -48,7 +48,7 @@ export default async function globalSetup() {
   const orgId = crypto.randomUUID();
   const { error: orgErr } = await admin
     .from("organizations")
-    .insert({ id: orgId, name: `Test Org ${ts}` });
+    .insert({ id: orgId, name: `Test Org ${ts}`, slug: `test-org-${ts}` });
   if (orgErr) throw new Error(`Failed to create org: ${orgErr.message}`);
 
   const teamId = crypto.randomUUID();

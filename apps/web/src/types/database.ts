@@ -496,23 +496,106 @@ export type Database = {
           },
         ]
       }
-      organizations: {
+      organization_members: {
         Row: {
           created_at: string | null
-          id: string
-          name: string
+          organization_id: string
+          profile_id: string
+          role: string
         }
         Insert: {
           created_at?: string | null
-          id?: string
-          name: string
+          organization_id: string
+          profile_id: string
+          role: string
         }
         Update: {
           created_at?: string | null
-          id?: string
-          name?: string
+          organization_id?: string
+          profile_id?: string
+          role?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          brand_color: string | null
+          brand_color_secondary: string | null
+          created_at: string | null
+          created_by: string | null
+          custom_domain: string | null
+          favicon_url: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          org_name_public: string | null
+          plan: string
+          slug: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subdomain: string | null
+          subscription_status: string | null
+        }
+        Insert: {
+          brand_color?: string | null
+          brand_color_secondary?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          custom_domain?: string | null
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          name: string
+          org_name_public?: string | null
+          plan?: string
+          slug: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subdomain?: string | null
+          subscription_status?: string | null
+        }
+        Update: {
+          brand_color?: string | null
+          brand_color_secondary?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          custom_domain?: string | null
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string
+          org_name_public?: string | null
+          plan?: string
+          slug?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subdomain?: string | null
+          subscription_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profile_managers: {
         Row: {
@@ -689,6 +772,7 @@ export type Database = {
       teams: {
         Row: {
           age_group: string | null
+          archived_at: string | null
           away_uniform: string | null
           country: string | null
           created_at: string | null
@@ -709,6 +793,7 @@ export type Database = {
         }
         Insert: {
           age_group?: string | null
+          archived_at?: string | null
           away_uniform?: string | null
           country?: string | null
           created_at?: string | null
@@ -729,6 +814,7 @@ export type Database = {
         }
         Update: {
           age_group?: string | null
+          archived_at?: string | null
           away_uniform?: string | null
           country?: string | null
           created_at?: string | null
@@ -762,11 +848,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_club_team: {
+        Args: { org_id: string; team_name: string; season: string }
+        Returns: string
+      }
+      create_team: {
+        Args: {
+          owner_profile_id: string
+          team_name: string
+          season: string
+          org_name: string
+        }
+        Returns: string
+      }
+      get_user_org_ids: { Args: Record<PropertyKey, never>; Returns: string[] }
       is_admin_of_profile: { Args: { p_id: string }; Returns: boolean }
       is_channel_member: { Args: { c_id: string }; Returns: boolean }
       is_managed_by_me: { Args: { p_id: string }; Returns: boolean }
+      is_org_admin: { Args: { o_id: string }; Returns: boolean }
+      is_org_owner: { Args: { o_id: string }; Returns: boolean }
       is_team_admin: { Args: { t_id: string }; Returns: boolean }
       is_team_member: { Args: { t_id: string }; Returns: boolean }
+      team_org_id: { Args: { t_id: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

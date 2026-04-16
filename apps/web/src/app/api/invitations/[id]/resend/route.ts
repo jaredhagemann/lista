@@ -36,15 +36,15 @@ export async function POST(
     );
   }
 
-  // Verify caller is a team admin
+  // Verify caller is a team admin (coach, manager, or director)
   const { data: membership } = await admin
     .from("team_members")
     .select("role")
     .eq("team_id", invitation.team_id!)
     .eq("profile_id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (!membership || !["coach", "manager"].includes(membership.role)) {
+  if (!membership || !["coach", "manager", "director"].includes(membership.role)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
