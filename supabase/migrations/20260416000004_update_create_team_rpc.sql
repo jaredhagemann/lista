@@ -2,6 +2,13 @@
 -- Adds Step 5: insert the creator as 'owner' into organization_members.
 -- This ensures every new org created via this RPC has a corresponding owner row
 -- from creation time, consistent with the backfill in migration 000003.
+--
+-- Security: revoke execute from all client roles; grant only to service_role.
+-- The function accepts a caller-supplied owner_profile_id (trusted input) so it
+-- cannot resolve ownership from auth.uid() — the server route calls it via the
+-- service-role adminClient() and is responsible for passing the correct profile.
+-- Revoking client access prevents an authenticated user from forging a call with
+-- another profile's UUID.
 
 CREATE OR REPLACE FUNCTION create_team(
   owner_profile_id uuid,
@@ -72,3 +79,9 @@ BEGIN
   RETURN v_team_id;
 END;
 $$;
+
+-- Revoke execute from all client-accessible roles so authenticated users cannot
+-- call this function directly via .rpc(). Only the service_role (used by the
+-- server-side adminClient()) retains execute permission.
+REVOKE EXECUTE ON FUNCTION create_team(uuid, text, text, text) FROM public, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION create_team(uuid, text, text, text) TO service_role;
