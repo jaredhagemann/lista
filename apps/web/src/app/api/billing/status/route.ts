@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   // Resolve the caller's active org via their active team
   const { data: profile } = await admin
     .from("profiles")
-    .select("active_team_id")
+    .select("id, active_team_id")
     .eq("auth_user_id", user.id)
     .single();
 
@@ -38,6 +38,20 @@ export async function GET(request: Request) {
 
   if (!team?.organization_id) {
     return NextResponse.json({ error: "no_organization" }, { status: 404 });
+  }
+
+  // Verify caller is still an active member of this team.
+  // active_team_id is a stale pointer — it is not cleared when a user is removed
+  // from a team, so we must gate on current team_members state, not the pointer.
+  const { data: membership } = await admin
+    .from("team_members")
+    .select("profile_id")
+    .eq("team_id", profile.active_team_id)
+    .eq("profile_id", profile.id)
+    .maybeSingle();
+
+  if (!membership) {
+    return NextResponse.json({ error: "not_a_member" }, { status: 403 });
   }
 
   const { data: org, error } = await admin
