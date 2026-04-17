@@ -77,7 +77,7 @@ export async function createTestTeam(
 
   const { error: orgError } = await adminClient
     .from("organizations")
-    .insert({ id: orgId, name: `Test Org ${orgId.slice(0, 8)}` });
+    .insert({ id: orgId, name: `Test Org ${orgId.slice(0, 8)}`, slug: `test-org-${orgId.slice(0, 8)}` });
   if (orgError) throw new Error(`Failed to create org: ${orgError.message}`);
   createdOrgIds.push(orgId);
 

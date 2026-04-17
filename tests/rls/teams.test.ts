@@ -34,11 +34,14 @@ describe("teams RLS", () => {
     expect(data).toHaveLength(0);
   });
 
-  it("authenticated user can INSERT a team", async () => {
+  it("authenticated user can INSERT a team into an existing org", async () => {
     const { client } = await createTestUser();
 
+    // Org creation is service-role only; use admin to set up the org
     const orgId = crypto.randomUUID();
-    await client.from("organizations").insert({ id: orgId, name: "Org" });
+    await adminClient
+      .from("organizations")
+      .insert({ id: orgId, name: "Org", slug: `org-${orgId.slice(0, 8)}` });
 
     const { error } = await client
       .from("teams")
@@ -239,29 +242,27 @@ describe("teams RLS", () => {
     expect(data2![0].team_photo_url).toBeNull();
   });
 
-  it("REGRESSION: full team creation flow with client-side UUIDs works", async () => {
+  it("full team creation flow via create_team() RPC creates a visible team", async () => {
+    // The client-side direct-insert path (org + team + member) was replaced by
+    // the create_team() service-role RPC called from /api/teams. This test
+    // verifies the new path: RPC creates org + team + membership atomically,
+    // and the owner can immediately SELECT the team.
     const { client, user } = await createTestUser();
 
-    // Replicate the fixed create-team-form flow
-    const orgId = crypto.randomUUID();
-    const { error: orgError } = await client
-      .from("organizations")
-      .insert({ id: orgId, name: "My Club" });
-    expect(orgError).toBeNull();
+    const { data: teamId, error: rpcError } = await adminClient.rpc("create_team", {
+      owner_profile_id: user.id,
+      team_name: "U12 Blue",
+      season: "Spring 2026",
+      org_name: "My Club",
+    });
+    expect(rpcError).toBeNull();
+    expect(typeof teamId).toBe("string");
 
-    const teamId = crypto.randomUUID();
-    const { error: teamError } = await client
+    // Owner (now a team member via the RPC) should be able to SELECT the team
+    const { data, error } = await client
       .from("teams")
-      .insert({ id: teamId, organization_id: orgId, name: "U12 Blue", season: "Spring 2026" });
-    expect(teamError).toBeNull();
-
-    const { error: memberError } = await client
-      .from("team_members")
-      .insert({ team_id: teamId, profile_id: user.id, role: "coach" });
-    expect(memberError).toBeNull();
-
-    // Now the user should be able to see the team
-    const { data, error } = await client.from("teams").select().eq("id", teamId);
+      .select()
+      .eq("id", teamId as string);
     expect(error).toBeNull();
     expect(data).toHaveLength(1);
     expect(data![0].name).toBe("U12 Blue");
