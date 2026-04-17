@@ -34,10 +34,12 @@ describe("teams RLS", () => {
     expect(data).toHaveLength(0);
   });
 
-  it("authenticated user can INSERT a team into an existing org", async () => {
+  it("non-org-member cannot directly INSERT a team into an existing org", async () => {
+    // Team creation inside an existing org must go through create_club_team().
+    // A random authenticated client should not be able to bypass this by
+    // inserting directly into the teams table.
     const { client } = await createTestUser();
 
-    // Org creation is service-role only; use admin to set up the org
     const orgId = crypto.randomUUID();
     await adminClient
       .from("organizations")
@@ -46,7 +48,39 @@ describe("teams RLS", () => {
     const { error } = await client
       .from("teams")
       .insert({ organization_id: orgId, name: "New Team" });
+
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501");
+  });
+
+  it("org director can create a team via create_club_team() RPC", async () => {
+    const { user: owner } = await createTestUser();
+    const { orgId } = await createTestTeam(owner.id);
+
+    // Register owner in organization_members so create_club_team() can validate
+    await adminClient
+      .from("organization_members")
+      .insert({ organization_id: orgId, profile_id: owner.id, role: "owner" });
+
+    // Director signs in and calls the RPC (authenticated path)
+    const { client: dirClient, user: director } = await createTestUser();
+    await adminClient
+      .from("organization_members")
+      .insert({ organization_id: orgId, profile_id: director.id, role: "director" });
+
+    const { data: newTeamId, error } = await dirClient.rpc("create_club_team", {
+      org_id: orgId,
+      team_name: "U10 Red",
+      season: "Fall 2026",
+    });
+
     expect(error).toBeNull();
+    expect(typeof newTeamId).toBe("string");
+
+    // Director should be able to see the new team (they were enrolled as member)
+    const { data } = await dirClient.from("teams").select().eq("id", newTeamId as string);
+    expect(data).toHaveLength(1);
+    expect(data![0].name).toBe("U10 Red");
   });
 
   it("team admin can UPDATE their team", async () => {
