@@ -163,6 +163,32 @@ describe("create_team RPC — cascade verification (§1.3)", () => {
   });
 });
 
+// ── Execute-permission hardening ─────────────────────────────────────────────
+// create_team() accepts a caller-supplied owner_profile_id (trusted input).
+// Migration 000004 revokes EXECUTE from public/anon/authenticated and grants
+// it only to service_role so an authenticated client cannot forge a call with
+// another profile's UUID. This test ensures that boundary cannot silently
+// regress if the REVOKE migration is ever rolled back.
+
+describe("create_team RPC — execute permission (service-role only)", () => {
+  it("authenticated client cannot call create_team() directly", async () => {
+    const { client, user } = await createTestUser();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (client as any).rpc("create_team", {
+      owner_profile_id: user.id,
+      team_name: "Should Not Exist",
+      season: "",
+      org_name: "",
+    });
+
+    expect(error).not.toBeNull();
+    // Postgres raises 42501 (insufficient_privilege) when execute is revoked
+    expect(error!.code).toBe("42501");
+    expect(data).toBeNull();
+  });
+});
+
 // ── §1.4 — Atomicity ──────────────────────────────────────────────────────────
 
 describe("create_team RPC — atomicity (§1.4)", () => {
