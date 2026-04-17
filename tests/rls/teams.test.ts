@@ -5,6 +5,7 @@ import {
   addTeamMember,
   cleanupTestData,
   adminClient,
+  trackIds,
 } from "./helpers";
 
 describe("teams RLS", () => {
@@ -76,6 +77,7 @@ describe("teams RLS", () => {
 
     expect(error).toBeNull();
     expect(typeof newTeamId).toBe("string");
+    trackIds({ teamId: newTeamId as string });
 
     // Director should be able to see the new team (they were enrolled as member)
     const { data } = await dirClient.from("teams").select().eq("id", newTeamId as string);
@@ -291,6 +293,14 @@ describe("teams RLS", () => {
     });
     expect(rpcError).toBeNull();
     expect(typeof teamId).toBe("string");
+
+    // Resolve and track the org created by the RPC for cleanup
+    const { data: teamRow } = await adminClient
+      .from("teams")
+      .select("organization_id")
+      .eq("id", teamId as string)
+      .single();
+    trackIds({ teamId: teamId as string, orgId: teamRow!.organization_id! });
 
     // Owner (now a team member via the RPC) should be able to SELECT the team
     const { data, error } = await client

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { createTestUser, createTestTeam, adminClient, cleanupTestData } from "./helpers";
+import { createTestUser, createTestTeam, adminClient, cleanupTestData, trackIds } from "./helpers";
 
 describe("organizations RLS", () => {
   afterAll(async () => {
@@ -34,15 +34,17 @@ describe("organizations RLS", () => {
     });
     expect(rpcError).toBeNull();
 
-    // The RPC enrolls the owner as a team member, so the SELECT policy grants
-    // them visibility of the org.
-    const { data: teams } = await adminClient
+    // Resolve the org created by the RPC and register both for cleanup
+    const { data: teamRow } = await adminClient
       .from("teams")
       .select("organization_id")
       .eq("id", teamId as string)
       .single();
-    const orgId = teams!.organization_id;
+    const orgId = teamRow!.organization_id!;
+    trackIds({ teamId: teamId as string, orgId });
 
+    // The RPC enrolls the owner as a team member, so the SELECT policy grants
+    // them visibility of the org.
     const { data, error } = await client
       .from("organizations")
       .select()
