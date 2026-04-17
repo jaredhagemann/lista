@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { adminClient } from "@/lib/api-auth";
+import { invalidateTenantCache } from "@/lib/supabase/tenant";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -93,6 +94,16 @@ export async function POST(request: Request) {
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
 
+      // Fetch current subdomain/custom_domain before clearing so we know which
+      // Redis cache keys to bust. Without this, the old tenant:{hostname} entries
+      // would remain valid until TTL expiry, letting the downgraded org continue
+      // resolving as a club tenant from the cache.
+      const { data: currentOrg } = await admin
+        .from("organizations")
+        .select("subdomain, custom_domain")
+        .eq("stripe_subscription_id", subscription.id)
+        .maybeSingle();
+
       // Intentionally do NOT clear stripe_subscription_id here. Keeping it set
       // allows the checkout.session.completed guard to detect that a retried old
       // checkout event would resurrect an already-canceled org and block it.
@@ -108,6 +119,18 @@ export async function POST(request: Request) {
           custom_domain: null,
         })
         .eq("stripe_subscription_id", subscription.id);
+
+      // Invalidate tenant cache so the downgrade takes effect immediately
+      // instead of waiting for the 60s TTL to expire.
+      const invalidations: Promise<void>[] = [];
+      if (currentOrg?.subdomain) {
+        invalidations.push(invalidateTenantCache(`${currentOrg.subdomain}.lista.team`));
+      }
+      if (currentOrg?.custom_domain) {
+        invalidations.push(invalidateTenantCache(currentOrg.custom_domain));
+      }
+      await Promise.all(invalidations);
+
       break;
     }
 
