@@ -127,7 +127,11 @@ ALTER TABLE organizations ADD COLUMN created_by   uuid REFERENCES profiles(id);
 
 **RLS policies for `organizations`:**
 - `SELECT`: profile is a member of any team in the org, OR is an org member
-- `UPDATE`: `is_org_admin(id)` — only org owners/admins can update branding, settings
+- `UPDATE`: two separate policies scoped to column sets:
+  - `is_org_owner(id)` — required to update billing-related columns (`stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `plan`) and identity/domain columns (`slug`, `subdomain`, `custom_domain`, `logo_url`, `favicon_url`, `brand_color`, `brand_color_secondary`, `org_name_public`)
+  - `is_org_admin(id)` — directors and owners may update operational columns (`name`)
+
+  > **Implementation note:** PostgreSQL does not support column-level `USING`/`WITH CHECK` expressions in row-level policies. Enforce the owner-only column restriction in the API layer (`/api/club/settings` and `/api/club/branding`) rather than at the RLS layer. The RLS `UPDATE` policy uses `is_org_admin(id)` as the single row-level gate; the API routes apply the additional owner check before touching restricted columns. This matches the pattern already used by the billing routes, which gate on `membership.role === 'owner'` before calling Stripe.
 - `INSERT`: **no permissive client INSERT policy** — direct inserts from the client are blocked by default-deny. Org creation is only permitted via the `create_team()` RPC, which runs with the service role and therefore bypasses RLS.
 - `DELETE`: `is_org_owner(id)` only
 
@@ -538,7 +542,7 @@ export default async function RootLayout({ children }) {
 
 #### 1.8 — Club Admin Portal
 
-New dashboard section visible only to org owners and admins.
+New dashboard section visible only to org owners and directors.
 
 **New routes under `src/app/dashboard/club/`:**
 
@@ -550,6 +554,19 @@ New dashboard section visible only to org owners and admins.
 /dashboard/club/billing            → Subscription status, invoices, Stripe portal link, cancel
 /dashboard/club/settings           → Org name, contact info, director management
 ```
+
+**Route-level access matrix:**
+
+| Route | Owner | Director |
+|---|---|---|
+| `/dashboard/club` | ✓ | ✓ |
+| `/dashboard/club/teams` | ✓ | ✓ |
+| `/dashboard/club/members` | ✓ | ✓ |
+| `/dashboard/club/settings` | ✓ | ✓ |
+| `/dashboard/club/branding` | ✓ | ✗ |
+| `/dashboard/club/billing` | ✓ | ✗ |
+
+Directors can view and operate on teams and members org-wide, and manage org settings (name, contact info, director roster). Branding and billing are reserved for the org owner — consistent with the role definitions in §1.2, which assign branding, subdomain control, and billing to `owner` and full team management to `director`.
 
 **Team archiving:** A director can mark a team as archived from `/dashboard/club/teams`. This requires a new `archived_at timestamptz` column on `teams`.
 
@@ -672,7 +689,11 @@ The club portal (`/dashboard/club/*`) handles org-level concerns that don't exis
 
 **Navigation:** The existing `DashboardNav` conditionally renders a "Club" section when the active user has an `organization_members` row for the org that owns their active team. This check happens in the dashboard layout RSC alongside the existing membership fetch.
 
-**Access guard:** Each `/dashboard/club/*` page server component calls `is_org_admin()` via the server Supabase client. Non-admins get a 403 or redirect to `/dashboard`.
+**Access guard:** Each `/dashboard/club/*` page server component checks the caller's `organization_members.role` via the server Supabase client and enforces the route-level access matrix above:
+- Pages accessible to owners and directors (`/dashboard/club`, `/dashboard/club/teams`, `/dashboard/club/members`, `/dashboard/club/settings`): redirect to `/dashboard` if the caller has no `organization_members` row for this org.
+- Pages restricted to owners only (`/dashboard/club/branding`, `/dashboard/club/billing`): redirect to `/dashboard/club` if the caller's role is `director`.
+
+This means the page-level guard does two things: authenticate that the caller is *any* org member, then authorize that they hold the required role for that specific route. Directors who land on a branding or billing URL are redirected — they are not shown a 403 error page.
 
 **Cross-team data queries:** Club admin pages query teams scoped by `organization_id` rather than `team_id`. Because `is_team_member()` now returns true for org admins, these queries pass RLS automatically — no service role needed for read operations.
 
