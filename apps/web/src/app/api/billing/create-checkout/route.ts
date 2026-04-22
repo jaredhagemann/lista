@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+import { stripe } from "@/lib/stripe";
 
 /**
  * POST /api/billing/create-checkout

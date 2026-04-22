@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { adminClient } from "@/lib/api-auth";
 import { invalidateTenantCache } from "@/lib/supabase/tenant";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+import { stripe } from "@/lib/stripe";
 
 /**
  * POST /api/billing/webhook

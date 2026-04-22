@@ -1,5 +1,5 @@
-import { Redis } from "@upstash/redis";
 import { createClient } from "@supabase/supabase-js";
+import { getRedis } from "@/lib/supabase/redis";
 import type { Database } from "@/types/database";
 import type { ReadonlyHeaders } from "next/dist/server/web/spec-extension/adapters/headers";
 
@@ -29,13 +29,6 @@ function tenantDbClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
-}
-
-function redis() {
-  return new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-  });
 }
 
 function cacheKey(hostname: string) {
@@ -76,7 +69,7 @@ export async function resolveTenant(
   }
 
   // 4. Redis cache
-  const r = redis();
+  const r = getRedis();
   const cached = await r.get<TenantContext | "null">(cacheKey(hostname));
   if (cached !== null && cached !== undefined) {
     return cached === "null" ? null : cached;
@@ -164,5 +157,5 @@ export function getTenantFromHeaders(
  * Call this whenever an org's subdomain, plan, or branding changes.
  */
 export async function invalidateTenantCache(hostname: string): Promise<void> {
-  await redis().del(cacheKey(hostname));
+  await getRedis().del(cacheKey(hostname));
 }
