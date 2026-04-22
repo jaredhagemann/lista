@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 
 /**
  * POST /api/billing/create-checkout
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   // Reuse existing Stripe customer or create a new one
   let customerId = org.stripe_customer_id;
   if (!customerId) {
-    const customer = await stripe.customers.create({
+    const customer = await getStripe().customers.create({
       name: org.name,
       metadata: { org_id: orgId },
     });
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   } else {
     // Customer already exists — check Stripe directly for active subscriptions
     // so we don't open a second checkout session before the webhook has landed.
-    const existing = await stripe.subscriptions.list({
+    const existing = await getStripe().subscriptions.list({
       customer: customerId,
       status: "active",
       limit: 1,
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
   // Idempotency key scoped to this org: concurrent requests (e.g. double-click)
   // get back the same Stripe session instead of creating duplicate subscriptions.
   // The key is valid for 24 hours — matches Stripe Checkout Session expiry.
-  const session = await stripe.checkout.sessions.create(
+  const session = await getStripe().checkout.sessions.create(
     {
       customer: customerId,
       mode: "subscription",

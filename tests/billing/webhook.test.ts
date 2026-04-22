@@ -32,11 +32,11 @@ vi.mock("@/lib/supabase/tenant", () => ({
   invalidateTenantCache: mockInvalidateTenantCache,
 }));
 
-// Stripe mock — mock the local stripe singleton so vi.mock() reliably intercepts it.
+// Stripe mock — mock the local getStripe() factory so vi.mock() reliably intercepts it.
 const mockConstructEvent = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/stripe", () => ({
-  stripe: { webhooks: { constructEvent: mockConstructEvent } },
+  getStripe: vi.fn().mockReturnValue({ webhooks: { constructEvent: mockConstructEvent } }),
 }));
 
 // adminClient mock — controls the Supabase query chain.
