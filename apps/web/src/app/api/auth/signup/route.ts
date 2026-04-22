@@ -1,9 +1,11 @@
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   sendEmail,
   buildConfirmationEmailHtml,
 } from "@/lib/notifications/email";
+import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { signupLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
@@ -27,21 +29,23 @@ export async function POST(request: Request) {
     );
   }
 
+  // Resolve branding and base URL from the tenant the user signed up on
+  const tenant = getTenantFromHeaders(await headers());
+  const brandName = tenant?.isWhiteLabel ? (tenant.orgNamePublic ?? undefined) : undefined;
+  const logoUrl = tenant?.logoUrl ?? undefined;
+
+  // Derive the base URL from the request origin so confirmation links land
+  // on the correct host (club subdomain or lista.team)
+  const origin = new URL(request.url).origin;
+  const redirectTo = `${origin}/auth/confirm${
+    inviteId ? `?next=/invite/${inviteId}` : ""
+  }`;
+
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
-
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.NEXT_PUBLIC_VERCEL_URL
-      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-      : "http://localhost:3000");
-
-  const redirectTo = `${appUrl}/auth/confirm${
-    inviteId ? `?next=/invite/${inviteId}` : ""
-  }`;
 
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "signup",
@@ -71,12 +75,14 @@ export async function POST(request: Request) {
   }
 
   const confirmUrl = data.properties.action_link;
+  const platform = brandName ?? "Lista";
 
   try {
     await sendEmail({
       to: email,
-      subject: "Confirm your Lista account",
-      html: buildConfirmationEmailHtml({ confirmUrl, firstName }),
+      subject: `Confirm your ${platform} account`,
+      html: buildConfirmationEmailHtml({ confirmUrl, firstName, brandName, logoUrl }),
+      brandName,
     });
   } catch (err) {
     console.error("Failed to send confirmation email:", err);

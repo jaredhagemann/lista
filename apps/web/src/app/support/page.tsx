@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Support — Lista",
+  title: "Support",
 };
 
 const faqs = [

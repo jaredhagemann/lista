@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -39,6 +40,8 @@ export function DashboardNav({
   activeMembership,
   profilesOnActiveTeam,
   chatUnreadCount = 0,
+  logoUrl = null,
+  orgName,
 }: {
   ownProfile: Profile | null;
   activeProfile: Profile | null;
@@ -46,6 +49,10 @@ export function DashboardNav({
   activeMembership: TeamMember | null;
   profilesOnActiveTeam: TeamMember[];
   chatUnreadCount?: number;
+  /** Club logo URL — shows an <img> instead of the Lista wordmark when set. */
+  logoUrl?: string | null;
+  /** Club display name — used as alt text and wordmark fallback. */
+  orgName?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -74,8 +81,18 @@ export function DashboardNav({
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="text-xl font-bold">
-            lista
+          <Link href="/dashboard" className="flex items-center">
+            {logoUrl ? (
+              <Image
+                src={logoUrl}
+                alt={orgName ?? "Home"}
+                width={120}
+                height={36}
+                className="h-9 w-auto object-contain"
+              />
+            ) : (
+              <span className="text-xl font-bold">{orgName ?? "lista"}</span>
+            )}
           </Link>
 
           {/* Desktop nav */}

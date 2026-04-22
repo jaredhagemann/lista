@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
+import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import type { Database } from "@/types/database";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -97,34 +98,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  // Fetch team name and inviter profile for the email
-  const [{ data: team }, { data: inviterProfile }] = await Promise.all([
-    admin.from("teams").select("name").eq("id", teamId).single(),
-    admin
-      .from("profiles")
-      .select("first_name, last_name")
-      .eq("id", user.id)
-      .single(),
-  ]);
+  // Resolve branding and invite URL from the team's org (not the request host)
+  const [{ data: inviterProfile }, { brandName, logoUrl }, baseUrl] =
+    await Promise.all([
+      admin
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", user.id)
+        .single(),
+      inviteBranding(teamId),
+      inviteBaseUrl(teamId),
+    ]);
+
+  // Fetch team name (already needed for email; org lookup happens inside helpers above)
+  const { data: team } = await admin
+    .from("teams")
+    .select("name")
+    .eq("id", teamId)
+    .single();
 
   const teamName = team?.name ?? "your team";
   const inviterName =
     [inviterProfile?.first_name, inviterProfile?.last_name]
       .filter(Boolean)
       .join(" ") || "Your coach";
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.NEXT_PUBLIC_VERCEL_URL
-      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-      : "http://localhost:3000");
-  const inviteUrl = `${appUrl}/invite/${invitationId}`;
+  const inviteUrl = `${baseUrl}/invite/${invitationId}`;
 
   let emailSent = false;
   try {
     await sendEmail({
       to: email,
-      subject: `You've been invited to join ${teamName} on Lista`,
-      html: buildInviteEmailHtml({ teamName, inviterName, role, inviteUrl }),
+      subject: `You've been invited to join ${teamName} on ${brandName ?? "Lista"}`,
+      html: buildInviteEmailHtml({ teamName, inviterName, role, inviteUrl, brandName, logoUrl }),
+      brandName,
     });
     emailSent = true;
   } catch (err) {
