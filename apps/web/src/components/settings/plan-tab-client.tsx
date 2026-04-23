@@ -2,9 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { ExternalLink, Zap, Building2, Users, Palette } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -23,29 +33,41 @@ type OrgPlan = {
 };
 
 export function PlanTabClient({ orgPlan }: { orgPlan: OrgPlan | null }) {
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const router = useRouter();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [upgrading, setUpgrading] = useState(false);
 
   const isClub = orgPlan?.plan === "club";
   const isOwner = orgPlan?.orgRole === "owner";
 
-  async function handleUpgrade() {
-    if (!orgPlan) return;
-    setCheckoutLoading(true);
+  async function handleAdminUpgrade(e: React.FormEvent) {
+    e.preventDefault();
+    if (!orgPlan || !code.trim()) return;
+    setUpgrading(true);
     try {
-      const res = await fetch("/api/billing/create-checkout", {
+      const res = await fetch("/api/admin/upgrade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId: orgPlan.id }),
+        body: JSON.stringify({ orgId: orgPlan.id, code: code.trim() }),
       });
       if (!res.ok) {
         const { error } = await res.json();
-        toast.error(error === "already_subscribed" ? "Already subscribed to Club." : (error ?? "Failed to start checkout"));
+        if (error === "invalid_code") {
+          toast.error("Invalid code.");
+        } else if (error === "not_available") {
+          toast.error("Upgrade not available.");
+        } else {
+          toast.error(error ?? "Upgrade failed.");
+        }
         return;
       }
-      const { url } = await res.json();
-      window.location.href = url;
+      toast.success("Upgraded to Club!");
+      setDialogOpen(false);
+      setCode("");
+      router.refresh();
     } finally {
-      setCheckoutLoading(false);
+      setUpgrading(false);
     }
   }
 
@@ -138,13 +160,38 @@ export function PlanTabClient({ orgPlan }: { orgPlan: OrgPlan | null }) {
         </ul>
 
         {orgPlan ? (
-          <Button
-            className="w-full"
-            onClick={handleUpgrade}
-            disabled={checkoutLoading}
-          >
-            {checkoutLoading ? "Redirecting to checkout…" : "Upgrade to Club"}
-          </Button>
+          <>
+            <Button className="w-full" onClick={() => setDialogOpen(true)}>
+              Upgrade to Club
+            </Button>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Upgrade to Club</DialogTitle>
+                  <DialogDescription>
+                    Enter your access code to unlock Club features.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAdminUpgrade} className="space-y-4 pt-1">
+                  <div className="space-y-2">
+                    <Label htmlFor="upgrade-code">Access code</Label>
+                    <Input
+                      id="upgrade-code"
+                      type="password"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      placeholder="Enter code"
+                      autoComplete="off"
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={upgrading}>
+                    {upgrading ? "Upgrading…" : "Confirm upgrade"}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">
             You need to create a team before upgrading.
