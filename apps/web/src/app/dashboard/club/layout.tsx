@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ClubOrgContext } from "@/context/club-org-context";
+import { ClubOrgProvider } from "@/context/club-org-context";
 import { ClubSidebar } from "@/components/club/club-sidebar";
 import type { Database } from "@/types/database";
 
@@ -59,11 +59,11 @@ export default async function ClubLayout({
   };
 
   return (
-    <ClubOrgContext value={clubOrg}>
+    <ClubOrgProvider value={clubOrg}>
       <div className="flex gap-8">
         <ClubSidebar />
         <div className="flex-1 min-w-0">{children}</div>
       </div>
-    </ClubOrgContext>
+    </ClubOrgProvider>
   );
 }

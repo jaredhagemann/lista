@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { ReactNode } from "react";
 
 export type ClubOrg = {
   orgId: string;
@@ -11,6 +12,10 @@ export type ClubOrg = {
 };
 
 export const ClubOrgContext = createContext<ClubOrg | null>(null);
+
+export function ClubOrgProvider({ children, value }: { children: ReactNode; value: ClubOrg }) {
+  return <ClubOrgContext.Provider value={value}>{children}</ClubOrgContext.Provider>;
+}
 
 export function useClubOrg(): ClubOrg {
   const ctx = useContext(ClubOrgContext);
