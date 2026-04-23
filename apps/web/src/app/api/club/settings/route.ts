@@ -29,9 +29,10 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json();
-  const { orgId, orgNamePublic, brandColor, brandColorSecondary, subdomain } =
+  const { orgId, orgName, orgNamePublic, brandColor, brandColorSecondary, subdomain } =
     body as {
       orgId?: string;
+      orgName?: string;
       orgNamePublic?: string;
       brandColor?: string;
       brandColorSecondary?: string;
@@ -44,7 +45,7 @@ export async function PATCH(request: Request) {
 
   const admin = adminClient();
 
-  // Verify caller is the org owner
+  // Verify caller is an org owner or director
   const { data: profile } = await admin
     .from("profiles")
     .select("id")
@@ -62,7 +63,13 @@ export async function PATCH(request: Request) {
     .eq("profile_id", profile.id)
     .single();
 
-  if (membership?.role !== "owner") {
+  if (!membership || !["owner", "director"].includes(membership.role)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  // Branding/subdomain fields are owner-only
+  const isOwner = membership.role === "owner";
+  if (!isOwner && (brandColor !== undefined || brandColorSecondary !== undefined || subdomain !== undefined)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -75,6 +82,7 @@ export async function PATCH(request: Request) {
 
   // Build the update payload from only the fields that were provided
   const updates: Record<string, string | null> = {};
+  if (orgName !== undefined) updates.name = orgName || null;
   if (orgNamePublic !== undefined) updates.org_name_public = orgNamePublic || null;
   if (brandColor !== undefined) updates.brand_color = brandColor || null;
   if (brandColorSecondary !== undefined) updates.brand_color_secondary = brandColorSecondary || null;

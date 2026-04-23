@@ -106,6 +106,19 @@ export default async function DashboardLayout({
     ? allMemberships.filter((m) => m.team_id === activeTeamId)
     : [];
 
+  // Check if the active user is an org owner/director for the active team's org
+  const activeOrgId = (activeMembership?.teams as { organization_id?: string | null } | null)?.organization_id ?? null;
+  let orgRole: "owner" | "director" | null = null;
+  if (activeOrgId) {
+    const { data: orgMembership } = await supabase
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", activeOrgId)
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    orgRole = (orgMembership?.role as "owner" | "director" | null) ?? null;
+  }
+
   // Compute total unread chat count for the nav badge
   // Count messages newer than last_read_at in channels/DMs the user participates in
   let chatUnreadCount = 0;
@@ -149,6 +162,7 @@ export default async function DashboardLayout({
         chatUnreadCount={chatUnreadCount}
         logoUrl={tenant?.logoUrl ?? null}
         orgName={tenant?.isWhiteLabel ? (tenant.orgNamePublic ?? undefined) : undefined}
+        orgRole={orgRole}
       />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {children}

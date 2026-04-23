@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
@@ -8,6 +9,8 @@ import { TransferOwnershipSection } from "@/components/settings/transfer-ownersh
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
 import { AccountSettings } from "@/components/settings/account-settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
@@ -26,7 +29,8 @@ export default async function SettingsPage({
   if (!user) redirect("/login");
 
   const { tab } = await searchParams;
-  const defaultTab = tab === "account" || tab === "team" ? tab : "notifications";
+  const defaultTab =
+    tab === "account" || tab === "team" || tab === "plan" ? tab : "notifications";
 
   const [{ data: rawNotifPrefs }, membership] = await Promise.all([
     supabase
@@ -36,6 +40,31 @@ export default async function SettingsPage({
       .single(),
     getActiveMembership(supabase, user.id),
   ]);
+
+  // Resolve active org for the Plan tab
+  const activeTeamId = (membership?.teams as { id?: string } | undefined)?.id;
+  let orgPlan: { id: string; plan: string | null; subscriptionStatus: string | null; orgRole: string | null } | null = null;
+  if (activeTeamId) {
+    const { data: teamOrg } = await supabase
+      .from("teams")
+      .select("organization_id")
+      .eq("id", activeTeamId)
+      .single();
+    if (teamOrg?.organization_id) {
+      const { data: orgMembership } = await supabase
+        .from("organization_members")
+        .select("role, organizations(id, plan, subscription_status)")
+        .eq("organization_id", teamOrg.organization_id)
+        .eq("profile_id", user.id)
+        .maybeSingle();
+      if (orgMembership) {
+        const org = orgMembership.organizations as { id: string; plan: string | null; subscription_status: string | null } | null;
+        orgPlan = org
+          ? { id: org.id, plan: org.plan, subscriptionStatus: org.subscription_status, orgRole: orgMembership.role }
+          : null;
+      }
+    }
+  }
 
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
   const isAdmin =
@@ -81,6 +110,7 @@ export default async function SettingsPage({
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           {membership && <TabsTrigger value="team">Team</TabsTrigger>}
           <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="plan">Plan</TabsTrigger>
         </TabsList>
         <TabsContent value="notifications" className="space-y-8">
           <NotificationPrefsForm profileId={user.id} prefs={notifPrefs} />
@@ -102,6 +132,46 @@ export default async function SettingsPage({
         )}
         <TabsContent value="account" className="space-y-6">
           <AccountSettings />
+        </TabsContent>
+        <TabsContent value="plan" className="space-y-6">
+          {orgPlan ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border p-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Current plan</span>
+                  <span className="font-semibold capitalize">{orgPlan.plan ?? "Free"}</span>
+                </div>
+                {orgPlan.subscriptionStatus && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Status</span>
+                    <Badge
+                      variant={orgPlan.subscriptionStatus === "active" ? "outline" : "secondary"}
+                      className={orgPlan.subscriptionStatus === "active" ? "text-green-600 border-green-200 bg-green-50" : undefined}
+                    >
+                      {orgPlan.subscriptionStatus}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+              {orgPlan.orgRole === "owner" && (
+                <Button asChild variant="outline">
+                  <Link href="/dashboard/club/billing">Manage billing</Link>
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border p-6 space-y-4">
+              <div className="space-y-1">
+                <p className="font-semibold">Free plan</p>
+                <p className="text-sm text-muted-foreground">
+                  Upgrade to Club to unlock white-label branding, custom subdomains, and multi-team management.
+                </p>
+              </div>
+              <Button asChild>
+                <Link href="/dashboard/club/billing">Upgrade to Club</Link>
+              </Button>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, ClipboardList, Home, MessageSquare, Settings, Users, LogOut, Menu, X } from "lucide-react";
+import { Calendar, ClipboardList, Home, MessageSquare, Settings, Users, LogOut, Menu, X, Building2 } from "lucide-react";
 import { useState } from "react";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 import { ProfileSwitcher } from "@/components/layout/profile-switcher";
@@ -24,13 +24,12 @@ type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
   teams: Database["public"]["Tables"]["teams"]["Row"];
 };
 
-const navItems = [
+const baseNavItems = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/dashboard/schedule", label: "Schedule", icon: Calendar },
   { href: "/dashboard/availability", label: "Availability", icon: ClipboardList },
   { href: "/dashboard/team", label: "Team", icon: Users },
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 export function DashboardNav({
@@ -42,6 +41,7 @@ export function DashboardNav({
   chatUnreadCount = 0,
   logoUrl = null,
   orgName,
+  orgRole = null,
 }: {
   ownProfile: Profile | null;
   activeProfile: Profile | null;
@@ -53,11 +53,19 @@ export function DashboardNav({
   logoUrl?: string | null;
   /** Club display name — used as alt text and wordmark fallback. */
   orgName?: string;
+  /** Org role — when set, shows the Club admin nav link. */
+  orgRole?: "owner" | "director" | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navItems = [
+    ...baseNavItems,
+    ...(orgRole ? [{ href: "/dashboard/club", label: "Club", icon: Building2 }] : []),
+    { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  ];
 
   const profile = ownProfile;
   const initials =
