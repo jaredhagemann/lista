@@ -50,6 +50,9 @@ export default async function ClubLayout({
 
   const org = membership.organizations as Org;
 
+  // Free-tier orgs don't have access to the club portal — send them to the upgrade page
+  if (org.plan !== "club") redirect("/dashboard/settings?tab=plan");
+
   const clubOrg = {
     orgId: org.id,
     orgName: org.org_name_public ?? org.name,

@@ -1,16 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
 import { AccountSettings } from "@/components/settings/account-settings";
+import { PlanTabClient } from "@/components/settings/plan-tab-client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
@@ -134,44 +132,7 @@ export default async function SettingsPage({
           <AccountSettings />
         </TabsContent>
         <TabsContent value="plan" className="space-y-6">
-          {orgPlan ? (
-            <div className="space-y-4">
-              <div className="rounded-lg border p-6 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Current plan</span>
-                  <span className="font-semibold capitalize">{orgPlan.plan ?? "Free"}</span>
-                </div>
-                {orgPlan.subscriptionStatus && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Status</span>
-                    <Badge
-                      variant={orgPlan.subscriptionStatus === "active" ? "outline" : "secondary"}
-                      className={orgPlan.subscriptionStatus === "active" ? "text-green-600 border-green-200 bg-green-50" : undefined}
-                    >
-                      {orgPlan.subscriptionStatus}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-              {orgPlan.orgRole === "owner" && (
-                <Button asChild variant="outline">
-                  <Link href="/dashboard/club/billing">Manage billing</Link>
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-lg border p-6 space-y-4">
-              <div className="space-y-1">
-                <p className="font-semibold">Free plan</p>
-                <p className="text-sm text-muted-foreground">
-                  Upgrade to Club to unlock white-label branding, custom subdomains, and multi-team management.
-                </p>
-              </div>
-              <Button asChild>
-                <Link href="/dashboard/club/billing">Upgrade to Club</Link>
-              </Button>
-            </div>
-          )}
+          <PlanTabClient orgPlan={orgPlan} />
         </TabsContent>
       </Tabs>
     </div>
