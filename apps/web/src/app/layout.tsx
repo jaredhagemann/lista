@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
-import { AppNameContext } from "@/context/app-name-context";
+import { AppNameProvider } from "@/context/app-name-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,9 +49,9 @@ export default async function RootLayout({
         )}
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AppNameContext value={appName}>
+        <AppNameProvider value={appName}>
           {children}
-        </AppNameContext>
+        </AppNameProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `
