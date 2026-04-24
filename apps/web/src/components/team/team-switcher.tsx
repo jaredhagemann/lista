@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronsUpDown, PlusCircle } from "lucide-react";
 import { setActiveTeam } from "@/app/actions/team";
@@ -36,6 +36,15 @@ export function TeamSwitcher({
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [ownedClubOrgs, setOwnedClubOrgs] = useState<{ id: string; name: string; orgNamePublic: string | null }[]>([]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    fetch("/api/club/orgs")
+      .then((r) => r.ok ? r.json() : [])
+      .then(setOwnedClubOrgs)
+      .catch(() => setOwnedClubOrgs([]));
+  }, [createOpen]);
 
   // Deduplicate by team_id — each team appears once in the dropdown even if
   // both the parent and a managed profile are members.
@@ -133,6 +142,7 @@ export function TeamSwitcher({
             <DialogTitle>Create a team</DialogTitle>
           </DialogHeader>
           <CreateTeamForm
+            ownedClubOrgs={ownedClubOrgs}
             onSuccess={() => {
               setCreateOpen(false);
               router.push("/dashboard");
