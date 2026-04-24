@@ -4,7 +4,8 @@ import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 /**
  * POST /api/club/teams
  *
- * Creates a new team within the caller's active organization.
+ * Creates a new team within an existing organization and automatically
+ * enrolls all current org owners and directors as team members (role: director).
  * Restricted to org owners and directors.
  *
  * Body: { orgId: string; teamName: string; season?: string }
@@ -42,30 +43,62 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
   }
 
-  // Verify caller is an org owner or director
-  const { data: membership } = await admin
+  // Fetch all org members (owners + directors) in one query — we need the
+  // full list both for the authorization check and for auto-enrollment.
+  const { data: orgMembers } = await admin
     .from("organization_members")
-    .select("role")
+    .select("profile_id, role")
     .eq("organization_id", orgId)
-    .eq("profile_id", profile.id)
-    .maybeSingle();
+    .in("role", ["owner", "director"]);
 
-  if (!membership || !["owner", "director"].includes(membership.role)) {
+  const callerMember = (orgMembers ?? []).find((m) => m.profile_id === profile.id);
+  if (!callerMember) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  // Create the team; owner_id set to the caller's profile
-  const { error } = await admin.from("teams").insert({
-    id: crypto.randomUUID(),
+  const teamId = crypto.randomUUID();
+
+  // Create the team
+  const { error: teamError } = await admin.from("teams").insert({
+    id: teamId,
     organization_id: orgId,
     owner_id: profile.id,
     name: teamName.trim(),
     season: season?.trim() || null,
   });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (teamError) {
+    return NextResponse.json({ error: teamError.message }, { status: 500 });
   }
+
+  // Auto-enroll all org owners and directors as team members.
+  // This gives them a roster row, team notifications, and chat access,
+  // and ensures server-side role checks (which query team_members directly)
+  // pass without requiring a separate org membership lookup.
+  const memberRows = (orgMembers ?? []).map((m) => ({
+    id: crypto.randomUUID(),
+    team_id: teamId,
+    profile_id: m.profile_id,
+    role: "director" as const,
+  }));
+
+  if (memberRows.length > 0) {
+    const { error: memberError } = await admin
+      .from("team_members")
+      .insert(memberRows);
+
+    if (memberError) {
+      // Non-fatal: team was created successfully; log but don't fail the request.
+      // Members can be added manually via the club portal.
+      console.error("Failed to auto-enroll org members:", memberError.message);
+    }
+  }
+
+  // Switch the creating user to the new team
+  await admin
+    .from("profiles")
+    .update({ active_team_id: teamId })
+    .eq("id", profile.id);
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }
