@@ -197,6 +197,13 @@ export function PlanTabClient({ orgPlan }: { orgPlan: OrgPlan | null }) {
             You need to create a team before upgrading.
           </p>
         )}
+        <p className="text-xs text-muted-foreground text-center">
+          Don&apos;t have an access code?{" "}
+          <a href="mailto:support@lista.team" className="underline underline-offset-2 hover:text-foreground transition-colors">
+            Reach out to support@lista.team
+          </a>{" "}
+          for more information.
+        </p>
       </div>
     </div>
   );
