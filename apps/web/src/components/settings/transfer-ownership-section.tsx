@@ -61,11 +61,11 @@ export function TransferOwnershipSection({ teamId, eligibleAdmins }: TransferOwn
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Transfer team ownership to another coach or manager. You will retain your current role but will no longer have owner privileges.
+          Transfer team ownership to another coach, manager, or director. You will retain your current role but will no longer have owner privileges.
         </p>
         {eligibleAdmins.length === 0 ? (
           <p className="text-sm text-muted-foreground italic">
-            No other coaches or managers are available to transfer ownership to.
+            No other coaches, managers, or directors are available to transfer ownership to.
           </p>
         ) : (
           <Button variant="outline" onClick={() => setOpen(true)}>
@@ -79,7 +79,7 @@ export function TransferOwnershipSection({ teamId, eligibleAdmins }: TransferOwn
           <DialogHeader>
             <DialogTitle>Transfer Team Ownership</DialogTitle>
             <DialogDescription>
-              Select a coach or manager to become the new team owner. This action cannot be undone without their cooperation.
+              Select a coach, manager, or director to become the new team owner. This action cannot be undone without their cooperation.
             </DialogDescription>
           </DialogHeader>
 

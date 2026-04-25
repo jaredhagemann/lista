@@ -98,7 +98,7 @@ export async function removeTeamMember(memberId: string, teamId: string) {
 
   if (
     !callerMembership ||
-    !["coach", "manager"].includes(callerMembership.role)
+    !["coach", "manager", "director"].includes(callerMembership.role)
   ) {
     return { error: "Not authorized" };
   }

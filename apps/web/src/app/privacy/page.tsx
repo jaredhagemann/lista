@@ -49,7 +49,7 @@ export default function PrivacyPage() {
           Lista is a team communication platform. Your name, profile photo, role, jersey number,
           and position are visible to other members of teams you belong to. Chat messages you send
           are visible to the participants of that channel. Your email address is visible to team
-          admins (coaches and managers) and to users who manage your profile.
+          admins (coaches, managers, and directors) and to users who manage your profile.
         </p>
       </section>
 
