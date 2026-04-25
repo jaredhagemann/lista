@@ -49,16 +49,38 @@ export async function POST(request: Request) {
 
   const admin = adminClient();
 
-  // Verify caller is a team admin OR a profile manager for the managed profile
+  // Verify caller is a team admin OR an org director/owner OR a profile manager
   const { data: membership } = await admin
     .from("team_members")
     .select("role")
     .eq("team_id", teamId)
     .eq("profile_id", user.id)
-    .single();
+    .maybeSingle();
 
-  const isTeamAdmin =
-    membership && ["coach", "manager"].includes(membership.role);
+  let isTeamAdmin =
+    membership !== null && ["coach", "manager", "director"].includes(membership.role);
+
+  // Directors may have implicit access via organization_members without an
+  // explicit team_members row — check the org if the team row didn't match.
+  if (!isTeamAdmin) {
+    const { data: team } = await admin
+      .from("teams")
+      .select("organization_id")
+      .eq("id", teamId)
+      .maybeSingle();
+
+    if (team?.organization_id) {
+      const { data: orgMember } = await admin
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", team.organization_id)
+        .eq("profile_id", user.id)
+        .in("role", ["owner", "director"])
+        .maybeSingle();
+
+      if (orgMember) isTeamAdmin = true;
+    }
+  }
 
   if (!isTeamAdmin) {
     // Allow if they manage the specific profile being invited for

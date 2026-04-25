@@ -49,7 +49,7 @@ export async function DELETE(
     .eq("profile_id", user.id)
     .single();
 
-  if (!membership || !["coach", "manager"].includes(membership.role)) {
+  if (!membership || !["coach", "manager", "director"].includes(membership.role)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
