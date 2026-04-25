@@ -25,7 +25,9 @@ export default async function NewMemberPage({
   if (!membership) redirect("/dashboard");
 
   const isAdmin =
-    membership.role === "coach" || membership.role === "manager";
+    membership.role === "coach" ||
+    membership.role === "manager" ||
+    membership.role === "director";
   if (!isAdmin) redirect("/dashboard/team");
 
   return (

@@ -66,7 +66,9 @@ export default async function SettingsPage({
 
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
   const isAdmin =
-    membership?.role === "coach" || membership?.role === "manager";
+    membership?.role === "coach" ||
+    membership?.role === "manager" ||
+    membership?.role === "director";
   const team = membership?.teams as Database["public"]["Tables"]["teams"]["Row"] | undefined;
   const isOwner = !!team && team.owner_id === user.id;
 
@@ -82,7 +84,7 @@ export default async function SettingsPage({
       .from("team_members")
       .select("profile_id, role, profiles(first_name, last_name, auth_user_id)")
       .eq("team_id", team.id)
-      .in("role", ["coach", "manager"])
+      .in("role", ["coach", "manager", "director"])
       .neq("profile_id", user.id);
 
     eligibleAdmins = (adminMembers ?? [])

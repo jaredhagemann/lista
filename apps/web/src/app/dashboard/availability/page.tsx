@@ -16,7 +16,10 @@ export default async function AvailabilityPage() {
   if (!membership || !membership.team_id) redirect("/dashboard");
 
   const teamId = membership.team_id;
-  const isAdmin = membership.role === "coach" || membership.role === "manager";
+  const isAdmin =
+    membership.role === "coach" ||
+    membership.role === "manager" ||
+    membership.role === "director";
 
   const [{ data: eventsRaw }, { data: teamMembersRaw }] = await Promise.all([
     supabase
