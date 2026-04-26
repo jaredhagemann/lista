@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveRequestUser, adminClient } from "@/lib/api-auth";
+import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
 import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
 import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
@@ -37,15 +37,9 @@ export async function POST(
     );
   }
 
-  // Verify caller is a team admin (coach, manager, or director)
-  const { data: membership } = await admin
-    .from("team_members")
-    .select("role")
-    .eq("team_id", invitation.team_id!)
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
-  if (!membership || !["coach", "manager", "director"].includes(membership.role)) {
+  // Verify caller is a team admin (explicit row or org-level director/owner)
+  const isTeamAdmin = await assertTeamAdmin(admin, user.id, invitation.team_id!);
+  if (!isTeamAdmin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 

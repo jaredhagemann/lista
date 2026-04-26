@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveRequestUser, adminClient } from "@/lib/api-auth";
+import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
 import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
 import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import type { Database } from "@/types/database";
@@ -49,38 +49,8 @@ export async function POST(request: Request) {
 
   const admin = adminClient();
 
-  // Verify caller is a team admin OR an org director/owner OR a profile manager
-  const { data: membership } = await admin
-    .from("team_members")
-    .select("role")
-    .eq("team_id", teamId)
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
-  let isTeamAdmin =
-    membership !== null && ["coach", "manager", "director"].includes(membership.role);
-
-  // Directors may have implicit access via organization_members without an
-  // explicit team_members row — check the org if the team row didn't match.
-  if (!isTeamAdmin) {
-    const { data: team } = await admin
-      .from("teams")
-      .select("organization_id")
-      .eq("id", teamId)
-      .maybeSingle();
-
-    if (team?.organization_id) {
-      const { data: orgMember } = await admin
-        .from("organization_members")
-        .select("role")
-        .eq("organization_id", team.organization_id)
-        .eq("profile_id", user.id)
-        .in("role", ["owner", "director"])
-        .maybeSingle();
-
-      if (orgMember) isTeamAdmin = true;
-    }
-  }
+  // Verify caller is a team admin OR a profile manager for the managed profile
+  const isTeamAdmin = await assertTeamAdmin(admin, user.id, teamId);
 
   if (!isTeamAdmin) {
     // Allow if they manage the specific profile being invited for

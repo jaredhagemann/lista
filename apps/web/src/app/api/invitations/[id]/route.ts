@@ -1,28 +1,18 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await resolveRequestUser(request);
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const admin = createAdminClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
+  const admin = adminClient();
 
   const { data: invitation } = await admin
     .from("invitations")
@@ -41,15 +31,9 @@ export async function DELETE(
     );
   }
 
-  // Verify caller is a team admin
-  const { data: membership } = await supabase
-    .from("team_members")
-    .select("role")
-    .eq("team_id", invitation.team_id!)
-    .eq("profile_id", user.id)
-    .single();
-
-  if (!membership || !["coach", "manager", "director"].includes(membership.role)) {
+  // Verify caller is a team admin (explicit row or org-level director/owner)
+  const isTeamAdmin = await assertTeamAdmin(admin, user.id, invitation.team_id!);
+  if (!isTeamAdmin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
