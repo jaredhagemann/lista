@@ -21,11 +21,15 @@ export function InviteSignupForm({
   email,
   firstName,
   lastName,
+  brandName,
+  logoUrl,
 }: {
   inviteId: string;
   email: string;
   firstName: string;
   lastName: string;
+  brandName?: string;
+  logoUrl?: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -91,7 +95,18 @@ export function InviteSignupForm({
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">lista</CardTitle>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt={brandName ?? "Club logo"}
+              className="mx-auto mb-2 h-12 w-auto object-contain"
+            />
+          ) : (
+            <CardTitle className="text-2xl font-bold">
+              {brandName ?? "lista"}
+            </CardTitle>
+          )}
           <CardDescription>Create your account to join the team</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

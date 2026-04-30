@@ -19,9 +19,13 @@ import {
 export function InviteLoginForm({
   inviteId,
   email,
+  brandName,
+  logoUrl,
 }: {
   inviteId: string;
   email: string;
+  brandName?: string;
+  logoUrl?: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -53,7 +57,18 @@ export function InviteLoginForm({
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">lista</CardTitle>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt={brandName ?? "Club logo"}
+              className="mx-auto mb-2 h-12 w-auto object-contain"
+            />
+          ) : (
+            <CardTitle className="text-2xl font-bold">
+              {brandName ?? "lista"}
+            </CardTitle>
+          )}
           <CardDescription>
             Sign in as <strong>{email}</strong> to accept this invitation
           </CardDescription>
