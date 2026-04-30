@@ -1,8 +1,9 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { Toaster } from "@/components/ui/sonner";
+import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import type { Database } from "@/types/database";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -20,6 +21,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const tenant = getTenantFromHeaders(await headers());
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -103,6 +106,19 @@ export default async function DashboardLayout({
     ? allMemberships.filter((m) => m.team_id === activeTeamId)
     : [];
 
+  // Check if the active user is an org owner/director for the active team's org
+  const activeOrgId = (activeMembership?.teams as { organization_id?: string | null } | null)?.organization_id ?? null;
+  let orgRole: "owner" | "director" | null = null;
+  if (activeOrgId) {
+    const { data: orgMembership } = await supabase
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", activeOrgId)
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    orgRole = (orgMembership?.role as "owner" | "director" | null) ?? null;
+  }
+
   // Compute total unread chat count for the nav badge
   // Count messages newer than last_read_at in channels/DMs the user participates in
   let chatUnreadCount = 0;
@@ -144,6 +160,9 @@ export default async function DashboardLayout({
         activeMembership={activeMembership}
         profilesOnActiveTeam={profilesOnActiveTeam}
         chatUnreadCount={chatUnreadCount}
+        logoUrl={tenant?.logoUrl ?? null}
+        orgName={tenant?.isWhiteLabel ? (tenant.orgNamePublic ?? undefined) : undefined}
+        orgRole={orgRole}
       />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {children}

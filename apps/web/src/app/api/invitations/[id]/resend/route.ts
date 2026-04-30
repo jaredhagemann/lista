@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { resolveRequestUser, adminClient } from "@/lib/api-auth";
+import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
 import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
+import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(
@@ -36,18 +37,13 @@ export async function POST(
     );
   }
 
-  // Verify caller is a team admin
-  const { data: membership } = await admin
-    .from("team_members")
-    .select("role")
-    .eq("team_id", invitation.team_id!)
-    .eq("profile_id", user.id)
-    .single();
-
-  if (!membership || !["coach", "manager"].includes(membership.role)) {
+  // Verify caller is a team admin (explicit row or org-level director/owner)
+  const isTeamAdmin = await assertTeamAdmin(admin, user.id, invitation.team_id!);
+  if (!isTeamAdmin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
+  const teamId = invitation.team_id!;
   const teamName =
     (invitation.teams as { name: string } | null)?.name ?? "your team";
   const inviterProfile = invitation.profiles as
@@ -57,19 +53,22 @@ export async function POST(
     [inviterProfile?.first_name, inviterProfile?.last_name]
       .filter(Boolean)
       .join(" ") || "Your coach";
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.NEXT_PUBLIC_VERCEL_URL
-      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-      : "http://localhost:3000");
-  const inviteUrl = `${appUrl}/invite/${id}`;
+
+  // Resolve branding and invite URL from the team's org (not the request host)
+  const [{ brandName, logoUrl }, baseUrl] = await Promise.all([
+    inviteBranding(teamId),
+    inviteBaseUrl(teamId),
+  ]);
+
+  const inviteUrl = `${baseUrl}/invite/${id}`;
 
   let emailSent = false;
   try {
     await sendEmail({
       to: invitation.email,
-      subject: `You've been invited to join ${teamName} on Lista`,
-      html: buildInviteEmailHtml({ teamName, inviterName, role: invitation.role, inviteUrl }),
+      subject: `You've been invited to join ${teamName} on ${brandName ?? "Lista"}`,
+      html: buildInviteEmailHtml({ teamName, inviterName, role: invitation.role, inviteUrl, brandName, logoUrl }),
+      brandName,
     });
     emailSent = true;
   } catch (err) {

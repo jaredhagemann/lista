@@ -57,7 +57,8 @@ export default async function MemberProfilePage({
   if (rawCurrentMembership) {
     isAdmin =
       rawCurrentMembership.role === "coach" ||
-      rawCurrentMembership.role === "manager";
+      rawCurrentMembership.role === "manager" ||
+      rawCurrentMembership.role === "director";
   } else {
     // No direct membership — check access via profile_managers
     const activeMembership = await getActiveMembership(supabase, user.id);

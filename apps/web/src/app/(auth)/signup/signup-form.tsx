@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +16,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export function SignupForm() {
+export function SignupForm({
+  appName = "lista",
+  logoUrl = null,
+}: {
+  appName?: string;
+  logoUrl?: string | null;
+}) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -69,7 +76,19 @@ export function SignupForm() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">lista</CardTitle>
+          {logoUrl ? (
+            <div className="flex justify-center mb-2">
+              <Image
+                src={logoUrl}
+                alt={appName}
+                width={120}
+                height={40}
+                className="h-10 w-auto object-contain"
+              />
+            </div>
+          ) : (
+            <CardTitle className="text-2xl font-bold">{appName}</CardTitle>
+          )}
           <CardDescription>
             {inviteId
               ? "Create your account to join the team"

@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "recipient_not_found" }, { status: 404 });
   }
 
-  if (!["coach", "manager"].includes(recipientMembership.role)) {
+  if (!["coach", "manager", "director"].includes(recipientMembership.role)) {
     return NextResponse.json({ error: "recipient_ineligible" }, { status: 409 });
   }
 

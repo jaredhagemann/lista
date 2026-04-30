@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         .from("team_members")
         .select("profile_id, role, profiles(first_name, last_name, auth_user_id)")
         .eq("team_id", team.id)
-        .in("role", ["coach", "manager"])
+        .in("role", ["coach", "manager", "director"])
         .neq("profile_id", user.id);
 
       if (membersError) {

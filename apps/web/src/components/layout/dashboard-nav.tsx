@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -12,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, ClipboardList, Home, MessageSquare, Settings, Users, LogOut, Menu, X } from "lucide-react";
+import { Calendar, ClipboardList, Home, MessageSquare, Settings, Users, LogOut, Menu, X, Building2 } from "lucide-react";
 import { useState } from "react";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 import { ProfileSwitcher } from "@/components/layout/profile-switcher";
@@ -23,13 +24,12 @@ type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
   teams: Database["public"]["Tables"]["teams"]["Row"];
 };
 
-const navItems = [
+const baseNavItems = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/dashboard/schedule", label: "Schedule", icon: Calendar },
   { href: "/dashboard/availability", label: "Availability", icon: ClipboardList },
   { href: "/dashboard/team", label: "Team", icon: Users },
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 export function DashboardNav({
@@ -39,6 +39,9 @@ export function DashboardNav({
   activeMembership,
   profilesOnActiveTeam,
   chatUnreadCount = 0,
+  logoUrl = null,
+  orgName,
+  orgRole = null,
 }: {
   ownProfile: Profile | null;
   activeProfile: Profile | null;
@@ -46,11 +49,23 @@ export function DashboardNav({
   activeMembership: TeamMember | null;
   profilesOnActiveTeam: TeamMember[];
   chatUnreadCount?: number;
+  /** Club logo URL — shows an <img> instead of the Lista wordmark when set. */
+  logoUrl?: string | null;
+  /** Club display name — used as alt text and wordmark fallback. */
+  orgName?: string;
+  /** Org role — when set, shows the Club admin nav link. */
+  orgRole?: "owner" | "director" | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navItems = [
+    ...baseNavItems,
+    ...(orgRole ? [{ href: "/dashboard/club", label: "Club", icon: Building2 }] : []),
+    { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  ];
 
   const profile = ownProfile;
   const initials =
@@ -74,8 +89,18 @@ export function DashboardNav({
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="text-xl font-bold">
-            lista
+          <Link href="/dashboard" className="flex items-center">
+            {logoUrl ? (
+              <Image
+                src={logoUrl}
+                alt={orgName ?? "Home"}
+                width={120}
+                height={36}
+                className="h-9 w-auto object-contain"
+              />
+            ) : (
+              <span className="text-xl font-bold">{orgName ?? "lista"}</span>
+            )}
           </Link>
 
           {/* Desktop nav */}

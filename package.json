@@ -7,6 +7,7 @@
     "build": "turbo run build --filter=@lista/web",
     "lint": "turbo run lint",
     "test:rls": "supabase db reset --db-url postgresql://postgres:postgres@127.0.0.1:54322/postgres && vitest run --config vitest.config.rls.mts tests/rls",
+    "test:integration": "supabase db reset --db-url postgresql://postgres:postgres@127.0.0.1:54322/postgres && vitest run --config vitest.config.rls.mts tests/",
     "prepare": "husky"
   },
   "devDependencies": {

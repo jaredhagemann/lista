@@ -7,6 +7,7 @@ import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
 import { AccountSettings } from "@/components/settings/account-settings";
+import { PlanTabClient } from "@/components/settings/plan-tab-client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
@@ -26,7 +27,8 @@ export default async function SettingsPage({
   if (!user) redirect("/login");
 
   const { tab } = await searchParams;
-  const defaultTab = tab === "account" || tab === "team" ? tab : "notifications";
+  const defaultTab =
+    tab === "account" || tab === "team" || tab === "plan" ? tab : "notifications";
 
   const [{ data: rawNotifPrefs }, membership] = await Promise.all([
     supabase
@@ -37,9 +39,36 @@ export default async function SettingsPage({
     getActiveMembership(supabase, user.id),
   ]);
 
+  // Resolve active org for the Plan tab
+  const activeTeamId = (membership?.teams as { id?: string } | undefined)?.id;
+  let orgPlan: { id: string; plan: string | null; subscriptionStatus: string | null; orgRole: string | null } | null = null;
+  if (activeTeamId) {
+    const { data: teamOrg } = await supabase
+      .from("teams")
+      .select("organization_id")
+      .eq("id", activeTeamId)
+      .single();
+    if (teamOrg?.organization_id) {
+      const { data: orgMembership } = await supabase
+        .from("organization_members")
+        .select("role, organizations(id, plan, subscription_status)")
+        .eq("organization_id", teamOrg.organization_id)
+        .eq("profile_id", user.id)
+        .maybeSingle();
+      if (orgMembership) {
+        const org = orgMembership.organizations as { id: string; plan: string | null; subscription_status: string | null } | null;
+        orgPlan = org
+          ? { id: org.id, plan: org.plan, subscriptionStatus: org.subscription_status, orgRole: orgMembership.role }
+          : null;
+      }
+    }
+  }
+
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
   const isAdmin =
-    membership?.role === "coach" || membership?.role === "manager";
+    membership?.role === "coach" ||
+    membership?.role === "manager" ||
+    membership?.role === "director";
   const team = membership?.teams as Database["public"]["Tables"]["teams"]["Row"] | undefined;
   const isOwner = !!team && team.owner_id === user.id;
 
@@ -55,7 +84,7 @@ export default async function SettingsPage({
       .from("team_members")
       .select("profile_id, role, profiles(first_name, last_name, auth_user_id)")
       .eq("team_id", team.id)
-      .in("role", ["coach", "manager"])
+      .in("role", ["coach", "manager", "director"])
       .neq("profile_id", user.id);
 
     eligibleAdmins = (adminMembers ?? [])
@@ -81,6 +110,7 @@ export default async function SettingsPage({
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           {membership && <TabsTrigger value="team">Team</TabsTrigger>}
           <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="plan">Plan</TabsTrigger>
         </TabsList>
         <TabsContent value="notifications" className="space-y-8">
           <NotificationPrefsForm profileId={user.id} prefs={notifPrefs} />
@@ -102,6 +132,9 @@ export default async function SettingsPage({
         )}
         <TabsContent value="account" className="space-y-6">
           <AccountSettings />
+        </TabsContent>
+        <TabsContent value="plan" className="space-y-6">
+          <PlanTabClient orgPlan={orgPlan} />
         </TabsContent>
       </Tabs>
     </div>

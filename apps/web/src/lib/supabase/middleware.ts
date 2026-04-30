@@ -1,9 +1,23 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function updateSession(request: NextRequest) {
+/**
+ * Refreshes the Supabase session and handles auth redirects.
+ *
+ * @param requestHeaders - Pre-built headers to forward to the downstream
+ *   request (e.g. x-tenant-* injected by middleware). When provided, these
+ *   replace the raw request headers in both NextResponse.next() calls so that
+ *   Server Components can read them via headers(). If omitted, the original
+ *   request headers are forwarded unchanged.
+ */
+export async function updateSession(
+  request: NextRequest,
+  requestHeaders?: Headers
+) {
+  const forwardedHeaders = requestHeaders ?? new Headers(request.headers);
+
   let supabaseResponse = NextResponse.next({
-    request,
+    request: { headers: forwardedHeaders },
   });
 
   const supabase = createServerClient(
@@ -19,7 +33,7 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({
-            request,
+            request: { headers: forwardedHeaders },
           });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)

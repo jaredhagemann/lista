@@ -98,7 +98,7 @@ export async function removeTeamMember(memberId: string, teamId: string) {
 
   if (
     !callerMembership ||
-    !["coach", "manager"].includes(callerMembership.role)
+    !["coach", "manager", "director"].includes(callerMembership.role)
   ) {
     return { error: "Not authorized" };
   }
@@ -215,12 +215,11 @@ export async function transferOwnership(teamId: string, newOwnerProfileId: strin
   // owner_id always references an auth-backed profile whose id equals the auth user's id.
   const { data: teamRow } = await supabase
     .from("teams")
-    .select("owner_id")
+    .select("owner_id, organization_id")
     .eq("id", teamId)
     .single();
 
   if (!teamRow) return { error: "Team not found" };
-  if (teamRow.owner_id !== user.id) return { error: "Not authorized" };
 
   const admin = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -228,7 +227,22 @@ export async function transferOwnership(teamId: string, newOwnerProfileId: strin
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Verify recipient is a current coach or manager with a real auth account
+  // Allow the team owner OR an org director/owner to transfer ownership
+  const isTeamOwner = teamRow.owner_id === user.id;
+  let isOrgAdmin = false;
+  if (!isTeamOwner && teamRow.organization_id) {
+    const { data: orgMembership } = await admin
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", teamRow.organization_id)
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    isOrgAdmin = ["owner", "director"].includes(orgMembership?.role ?? "");
+  }
+
+  if (!isTeamOwner && !isOrgAdmin) return { error: "Not authorized" };
+
+  // Verify recipient is a current coach, manager, or director with a real auth account
   const { data: recipientMembership } = await admin
     .from("team_members")
     .select("role, profiles(auth_user_id)")
@@ -237,8 +251,8 @@ export async function transferOwnership(teamId: string, newOwnerProfileId: strin
     .maybeSingle();
 
   if (!recipientMembership) return { error: "Recipient is not a team member" };
-  if (!["coach", "manager"].includes(recipientMembership.role)) {
-    return { error: "Ownership can only be transferred to a coach or manager" };
+  if (!["coach", "manager", "director"].includes(recipientMembership.role)) {
+    return { error: "Ownership can only be transferred to a coach, manager, or director" };
   }
   const recipientProfile = recipientMembership.profiles as { auth_user_id: string | null } | null;
   if (!recipientProfile?.auth_user_id) {

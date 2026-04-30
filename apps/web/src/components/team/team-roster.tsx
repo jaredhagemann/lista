@@ -62,7 +62,7 @@ export function TeamRoster({
       return a.jersey_number - b.jersey_number;
     });
 
-  const nonPlayerRoleOrder = { coach: 0, manager: 1 };
+  const nonPlayerRoleOrder = { director: 0, coach: 1, manager: 2 };
   const nonPlayers = members
     .filter((m) => m.role !== "player")
     .sort(

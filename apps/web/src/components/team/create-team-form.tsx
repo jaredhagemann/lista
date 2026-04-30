@@ -14,20 +14,59 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { toast } from "sonner";
 
-export function CreateTeamForm({ onSuccess }: { onSuccess?: () => void } = {}) {
+type ClubOrg = { id: string; name: string; orgNamePublic: string | null };
+
+const NEW_ORG_VALUE = "__new__";
+
+export function CreateTeamForm({
+  onSuccess,
+  ownedClubOrgs = [],
+}: {
+  onSuccess?: () => void;
+  ownedClubOrgs?: ClubOrg[];
+} = {}) {
   const [teamName, setTeamName] = useState("");
   const [season, setSeason] = useState("");
   const [orgName, setOrgName] = useState("");
+  const [selectedOrgId, setSelectedOrgId] = useState(NEW_ORG_VALUE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  const hasClubOrgs = ownedClubOrgs.length > 0;
+  const addingToExistingOrg = hasClubOrgs && selectedOrgId !== NEW_ORG_VALUE;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    if (addingToExistingOrg) {
+      // Add team to an existing club org via the club API
+      try {
+        const res = await fetch("/api/club/teams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgId: selectedOrgId, teamName: teamName.trim(), season: season.trim() }),
+        });
+        if (!res.ok) {
+          const { error: msg } = await res.json();
+          setError(msg ?? "Failed to create team");
+          return;
+        }
+        toast.success("Team created");
+        onSuccess?.();
+        router.push("/dashboard");
+        router.refresh();
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Create a new standalone team (new org)
     const err = await executeCreateTeam({
       teamName,
       season,
@@ -52,15 +91,50 @@ export function CreateTeamForm({ onSuccess }: { onSuccess?: () => void } = {}) {
             {error}
           </div>
         )}
-        <div className="space-y-2">
-          <Label htmlFor="orgName">Club / organization name</Label>
-          <Input
-            id="orgName"
-            placeholder="e.g. Westside FC"
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-          />
-        </div>
+
+        {/* Organization selection — only shown for club owners with existing orgs */}
+        {hasClubOrgs ? (
+          <div className="space-y-2">
+            <Label htmlFor="orgSelect">Organization</Label>
+            <select
+              id="orgSelect"
+              value={selectedOrgId}
+              onChange={(e) => setSelectedOrgId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {ownedClubOrgs.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.orgNamePublic ?? org.name}
+                </option>
+              ))}
+              <option value={NEW_ORG_VALUE}>New organization</option>
+            </select>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="orgName">Club / organization name</Label>
+            <Input
+              id="orgName"
+              placeholder="e.g. Westside FC"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+            />
+          </div>
+        )}
+
+        {/* When "New organization" is chosen from the picker, show the name field */}
+        {hasClubOrgs && !addingToExistingOrg && (
+          <div className="space-y-2">
+            <Label htmlFor="orgName">Organization name</Label>
+            <Input
+              id="orgName"
+              placeholder="e.g. Westside FC"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+            />
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="teamName">Team name</Label>
           <Input

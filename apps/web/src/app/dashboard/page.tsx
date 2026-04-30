@@ -23,7 +23,9 @@ export default async function DashboardPage() {
     | { id: string; name: string; season: string | null }
     | undefined;
   const isAdmin =
-    membership?.role === "coach" || membership?.role === "manager";
+    membership?.role === "coach" ||
+    membership?.role === "manager" ||
+    membership?.role === "director";
 
   if (!team) {
     return (

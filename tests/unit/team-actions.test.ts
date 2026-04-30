@@ -257,7 +257,7 @@ describe("transferOwnership", () => {
       })
     );
     const result = await transferOwnership(TEAM_ID, RECIPIENT_ID);
-    expect(result).toEqual({ error: "Ownership can only be transferred to a coach or manager" });
+    expect(result).toEqual({ error: "Ownership can only be transferred to a coach, manager, or director" });
   });
 
   it("returns error when recipient is a managed profile (no auth account)", async () => {

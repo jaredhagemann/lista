@@ -5,6 +5,7 @@ import {
   addTeamMember,
   cleanupTestData,
   adminClient,
+  trackIds,
 } from "./helpers";
 
 describe("teams RLS", () => {
@@ -34,16 +35,54 @@ describe("teams RLS", () => {
     expect(data).toHaveLength(0);
   });
 
-  it("authenticated user can INSERT a team", async () => {
+  it("non-org-member cannot directly INSERT a team into an existing org", async () => {
+    // Team creation inside an existing org must go through create_club_team().
+    // A random authenticated client should not be able to bypass this by
+    // inserting directly into the teams table.
     const { client } = await createTestUser();
 
     const orgId = crypto.randomUUID();
-    await client.from("organizations").insert({ id: orgId, name: "Org" });
+    await adminClient
+      .from("organizations")
+      .insert({ id: orgId, name: "Org", slug: `org-${orgId.slice(0, 8)}` });
 
     const { error } = await client
       .from("teams")
       .insert({ organization_id: orgId, name: "New Team" });
+
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501");
+  });
+
+  it("org director can create a team via create_club_team() RPC", async () => {
+    const { user: owner } = await createTestUser();
+    const { orgId } = await createTestTeam(owner.id);
+
+    // Register owner in organization_members so create_club_team() can validate
+    await adminClient
+      .from("organization_members")
+      .insert({ organization_id: orgId, profile_id: owner.id, role: "owner" });
+
+    // Director signs in and calls the RPC (authenticated path)
+    const { client: dirClient, user: director } = await createTestUser();
+    await adminClient
+      .from("organization_members")
+      .insert({ organization_id: orgId, profile_id: director.id, role: "director" });
+
+    const { data: newTeamId, error } = await dirClient.rpc("create_club_team", {
+      org_id: orgId,
+      team_name: "U10 Red",
+      season: "Fall 2026",
+    });
+
     expect(error).toBeNull();
+    expect(typeof newTeamId).toBe("string");
+    trackIds({ teamId: newTeamId as string });
+
+    // Director should be able to see the new team (they were enrolled as member)
+    const { data } = await dirClient.from("teams").select().eq("id", newTeamId as string);
+    expect(data).toHaveLength(1);
+    expect(data![0].name).toBe("U10 Red");
   });
 
   it("team admin can UPDATE their team", async () => {
@@ -239,29 +278,35 @@ describe("teams RLS", () => {
     expect(data2![0].team_photo_url).toBeNull();
   });
 
-  it("REGRESSION: full team creation flow with client-side UUIDs works", async () => {
+  it("full team creation flow via create_team() RPC creates a visible team", async () => {
+    // The client-side direct-insert path (org + team + member) was replaced by
+    // the create_team() service-role RPC called from /api/teams. This test
+    // verifies the new path: RPC creates org + team + membership atomically,
+    // and the owner can immediately SELECT the team.
     const { client, user } = await createTestUser();
 
-    // Replicate the fixed create-team-form flow
-    const orgId = crypto.randomUUID();
-    const { error: orgError } = await client
-      .from("organizations")
-      .insert({ id: orgId, name: "My Club" });
-    expect(orgError).toBeNull();
+    const { data: teamId, error: rpcError } = await adminClient.rpc("create_team", {
+      owner_profile_id: user.id,
+      team_name: "U12 Blue",
+      season: "Spring 2026",
+      org_name: "My Club",
+    });
+    expect(rpcError).toBeNull();
+    expect(typeof teamId).toBe("string");
 
-    const teamId = crypto.randomUUID();
-    const { error: teamError } = await client
+    // Resolve and track the org created by the RPC for cleanup
+    const { data: teamRow } = await adminClient
       .from("teams")
-      .insert({ id: teamId, organization_id: orgId, name: "U12 Blue", season: "Spring 2026" });
-    expect(teamError).toBeNull();
+      .select("organization_id")
+      .eq("id", teamId as string)
+      .single();
+    trackIds({ teamId: teamId as string, orgId: teamRow!.organization_id! });
 
-    const { error: memberError } = await client
-      .from("team_members")
-      .insert({ team_id: teamId, profile_id: user.id, role: "coach" });
-    expect(memberError).toBeNull();
-
-    // Now the user should be able to see the team
-    const { data, error } = await client.from("teams").select().eq("id", teamId);
+    // Owner (now a team member via the RPC) should be able to SELECT the team
+    const { data, error } = await client
+      .from("teams")
+      .select()
+      .eq("id", teamId as string);
     expect(error).toBeNull();
     expect(data).toHaveLength(1);
     expect(data![0].name).toBe("U12 Blue");

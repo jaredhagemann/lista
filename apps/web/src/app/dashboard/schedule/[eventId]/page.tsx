@@ -56,7 +56,10 @@ export default async function EventDetailPage({
   }
 
   const membership = activeMembership.teams as unknown as MembershipWithTeam;
-  const isAdmin = activeMembership.role === "coach" || activeMembership.role === "manager";
+  const isAdmin =
+    activeMembership.role === "coach" ||
+    activeMembership.role === "manager" ||
+    activeMembership.role === "director";
   const creatorProfile = event.profiles as { first_name: string; last_name: string } | null;
   const creatorName = creatorProfile
     ? [creatorProfile.first_name, creatorProfile.last_name].filter(Boolean).join(" ")

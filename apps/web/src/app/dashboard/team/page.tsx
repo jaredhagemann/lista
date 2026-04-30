@@ -21,7 +21,10 @@ export default async function TeamPage() {
   if (!membership) redirect("/dashboard");
 
   const team = membership.teams as Database["public"]["Tables"]["teams"]["Row"];
-  const isAdmin = membership.role === "coach" || membership.role === "manager";
+  const isAdmin =
+    membership.role === "coach" ||
+    membership.role === "manager" ||
+    membership.role === "director";
 
   const [{ data: rawMembers }, { data: rawPendingInvites }] =
     await Promise.all([

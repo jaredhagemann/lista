@@ -42,7 +42,7 @@ export async function removeProfileManager(managersRowId: string) {
       .from("team_members")
       .select("id, team_id")
       .eq("profile_id", user.id)
-      .in("role", ["coach", "manager"])
+      .in("role", ["coach", "manager", "director"])
       .then(async ({ data: adminMemberships }) => {
         if (!adminMemberships?.length) return false;
         const { data: managedMemberships } = await admin
@@ -99,7 +99,7 @@ export async function updateProfileManager(
       .from("team_members")
       .select("id, team_id")
       .eq("profile_id", user.id)
-      .in("role", ["coach", "manager"])
+      .in("role", ["coach", "manager", "director"])
       .then(async ({ data: adminMemberships }) => {
         if (!adminMemberships?.length) return false;
         const { data: managedMemberships } = await admin

@@ -36,6 +36,7 @@ async function globalSetup() {
   const { error: orgError } = await admin.from("organizations").insert({
     id: orgId,
     name: "E2E Test Org",
+    slug: `e2e-test-org-${orgId.slice(0, 8)}`,
   });
   if (orgError) throw new Error(`Failed to create org: ${orgError.message}`);
 

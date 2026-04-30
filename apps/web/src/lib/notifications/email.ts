@@ -1,23 +1,17 @@
-import { Resend } from "resend";
-
-let resend: Resend | null = null;
-
-function getResend() {
-  if (!resend) {
-    resend = new Resend(process.env.RESEND_API_KEY);
-  }
-  return resend;
-}
+import { getResend } from "@/lib/resend";
 
 interface SendEmailParams {
   to: string;
   subject: string;
   html: string;
+  /** When provided, replaces "lista" as the from-name for white-label tenants. */
+  brandName?: string;
 }
 
-export async function sendEmail({ to, subject, html }: SendEmailParams) {
+export async function sendEmail({ to, subject, html, brandName }: SendEmailParams) {
+  const fromName = brandName ?? "lista";
   const { data, error } = await getResend().emails.send({
-    from: "lista <notifications@lista.team>",
+    from: `${fromName} <notifications@lista.team>`,
     to,
     subject,
     html,
@@ -31,6 +25,33 @@ export async function sendEmail({ to, subject, html }: SendEmailParams) {
   return data;
 }
 
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Renders the email header block: club logo image when available, club name text
+ * when only a brandName is given, or the default "lista" wordmark.
+ */
+function emailHeader(brandName?: string, logoUrl?: string): string {
+  if (logoUrl) {
+    const alt = brandName ?? "lista";
+    return `<img src="${logoUrl}" alt="${alt}" style="max-height: 40px; max-width: 180px; object-fit: contain;" />`;
+  }
+  const name = brandName ?? "lista";
+  return `<span style="font-size: 22px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">${name}</span>`;
+}
+
+/**
+ * Renders the email footer paragraph.
+ * On white-label tenants (brandName provided), omits any mention of Lista.
+ */
+function emailFooter(teamName: string, brandName?: string): string {
+  const platform = brandName ?? "Lista";
+  return `You received this email because you're a member of ${teamName} on ${platform}.<br>
+                    You can manage your notification preferences in your account settings.`;
+}
+
+// ── Email builders ────────────────────────────────────────────────────────────
+
 export function buildEventEmailHtml({
   eventTitle,
   eventType,
@@ -41,6 +62,8 @@ export function buildEventEmailHtml({
   action,
   arrivalTime,
   eventUrl,
+  brandName,
+  logoUrl,
 }: {
   eventTitle: string;
   eventType: string;
@@ -51,6 +74,8 @@ export function buildEventEmailHtml({
   action: "created" | "updated" | "cancelled" | "reminder";
   arrivalTime?: number | null;
   eventUrl?: string;
+  brandName?: string;
+  logoUrl?: string;
 }) {
   const start = new Date(startTime);
   const end = new Date(endTime);
@@ -103,7 +128,7 @@ export function buildEventEmailHtml({
               <!-- Logo / brand -->
               <tr>
                 <td align="center" style="padding-bottom: 24px;">
-                  <span style="font-size: 22px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">lista</span>
+                  ${emailHeader(brandName, logoUrl)}
                 </td>
               </tr>
 
@@ -142,8 +167,7 @@ export function buildEventEmailHtml({
               <tr>
                 <td align="center" style="padding-top: 24px;">
                   <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-                    You received this email because you're a member of ${teamName} on Lista.<br>
-                    You can manage your notification preferences in your account settings.
+                    ${emailFooter(teamName, brandName)}
                   </p>
                 </td>
               </tr>
@@ -167,10 +191,14 @@ export function buildSeriesUpdateEmailHtml({
   eventTitle,
   teamName,
   changes,
+  brandName,
+  logoUrl,
 }: {
   eventTitle: string;
   teamName: string;
   changes: FieldChange[];
+  brandName?: string;
+  logoUrl?: string;
 }) {
   const changeRows = changes
     .map(
@@ -196,7 +224,7 @@ export function buildSeriesUpdateEmailHtml({
               <!-- Logo / brand -->
               <tr>
                 <td align="center" style="padding-bottom: 24px;">
-                  <span style="font-size: 22px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">lista</span>
+                  ${emailHeader(brandName, logoUrl)}
                 </td>
               </tr>
 
@@ -240,8 +268,7 @@ export function buildSeriesUpdateEmailHtml({
               <tr>
                 <td align="center" style="padding-top: 24px;">
                   <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-                    You received this email because you're a member of ${teamName} on Lista.<br>
-                    You can manage your notification preferences in your account settings.
+                    ${emailFooter(teamName, brandName)}
                   </p>
                 </td>
               </tr>
@@ -258,10 +285,15 @@ export function buildSeriesUpdateEmailHtml({
 export function buildConfirmationEmailHtml({
   confirmUrl,
   firstName,
+  brandName,
+  logoUrl,
 }: {
   confirmUrl: string;
   firstName?: string;
+  brandName?: string;
+  logoUrl?: string;
 }) {
+  const platform = brandName ?? "Lista";
   const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
   return `
     <!DOCTYPE html>
@@ -276,7 +308,7 @@ export function buildConfirmationEmailHtml({
               <!-- Logo / brand -->
               <tr>
                 <td align="center" style="padding-bottom: 24px;">
-                  <span style="font-size: 22px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">lista</span>
+                  ${emailHeader(brandName, logoUrl)}
                 </td>
               </tr>
 
@@ -294,7 +326,7 @@ export function buildConfirmationEmailHtml({
                     ${greeting}
                   </p>
                   <p style="margin: 0 0 32px; font-size: 15px; color: #374151; line-height: 1.6;">
-                    Thanks for signing up for Lista! Click the button below to confirm your email address and activate your account.
+                    Thanks for signing up for ${platform}! Click the button below to confirm your email address and activate your account.
                   </p>
 
                   <!-- CTA button -->
@@ -322,7 +354,7 @@ export function buildConfirmationEmailHtml({
               <tr>
                 <td align="center" style="padding-top: 24px;">
                   <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-                    You received this email because you created an account on Lista.<br>
+                    You received this email because you created an account on ${platform}.<br>
                     If you didn't sign up, you can safely ignore this email.
                   </p>
                 </td>
@@ -342,11 +374,15 @@ export function buildInviteEmailHtml({
   inviterName,
   role,
   inviteUrl,
+  brandName,
+  logoUrl,
 }: {
   teamName: string;
   inviterName: string;
   role: string;
   inviteUrl: string;
+  brandName?: string;
+  logoUrl?: string;
 }) {
   return `
     <!DOCTYPE html>
@@ -361,7 +397,7 @@ export function buildInviteEmailHtml({
               <!-- Logo / brand -->
               <tr>
                 <td align="center" style="padding-bottom: 24px;">
-                  <span style="font-size: 22px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">lista</span>
+                  ${emailHeader(brandName, logoUrl)}
                 </td>
               </tr>
 
@@ -371,7 +407,7 @@ export function buildInviteEmailHtml({
 
                   <!-- Heading -->
                   <h1 style="margin: 0 0 16px; font-size: 22px; font-weight: 700; color: #111827; line-height: 1.3;">
-                    You've been invited to join a team on Lista!
+                    You've been invited to join a team on ${brandName ?? "Lista"}!
                   </h1>
 
                   <!-- Role badge -->
@@ -381,7 +417,7 @@ export function buildInviteEmailHtml({
 
                   <!-- Body copy -->
                   <p style="margin: 0 0 24px; font-size: 15px; color: #374151; line-height: 1.6;">
-                    <strong>${inviterName}</strong> is using Lista to organize <strong>${teamName}</strong> and simplify communication.
+                    <strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong>.
                     Accept your invite and activate your account to do things like:
                   </p>
 
@@ -423,7 +459,7 @@ export function buildInviteEmailHtml({
               <tr>
                 <td align="center" style="padding-top: 24px;">
                   <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-                    You received this email because someone invited you to a team on Lista.<br>
+                    You received this email because someone invited you to a team${brandName ? ` on ${brandName}` : " on Lista"}.<br>
                     If you weren't expecting this, you can safely ignore it.
                   </p>
                 </td>

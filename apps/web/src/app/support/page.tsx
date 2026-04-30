@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Support — Lista",
+  title: "Support",
 };
 
 const faqs = [
@@ -9,7 +9,7 @@ const faqs = [
   },
   {
     q: "How do I join a team?",
-    a: "Ask your coach or team manager to send you an invitation link. Tapping the link will guide you through creating an account (or signing in) and joining the team automatically.",
+    a: "Ask your coach, team manager, or club director to send you an invitation link. Tapping the link will guide you through creating an account (or signing in) and joining the team automatically.",
   },
   {
     q: "How do I add a player I manage (e.g., my child)?",
@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     q: "How do I transfer team ownership?",
-    a: "Go to Settings → Team → Transfer Ownership. You can hand off ownership to any coach or manager on the team who has an account.",
+    a: "Go to Settings → Team → Transfer Ownership. You can hand off ownership to any coach, manager, or director on the team who has an account.",
   },
   {
     q: "How do I contact support?",

@@ -84,7 +84,7 @@ test.beforeAll(async () => {
 
   // Create org
   orgId = crypto.randomUUID();
-  await admin.from("organizations").insert({ id: orgId, name: `AccDel Org ${ts}` });
+  await admin.from("organizations").insert({ id: orgId, name: `AccDel Org ${ts}`, slug: `accdel-org-${ts}` });
 
   // Create teams
   sharedTeamId = crypto.randomUUID();

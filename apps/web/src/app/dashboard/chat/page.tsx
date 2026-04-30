@@ -25,7 +25,10 @@ export default async function ChatPage() {
   if (!membership) redirect("/dashboard");
 
   const teamId = membership.team_id!;
-  const isAdmin = membership.role === "coach" || membership.role === "manager";
+  const isAdmin =
+    membership.role === "coach" ||
+    membership.role === "manager" ||
+    membership.role === "director";
 
   // The auth user always sends as themselves (Option A)
   const currentUserId = user.id;
