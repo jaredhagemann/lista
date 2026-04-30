@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { invalidateTenantCache } from "@/lib/supabase/tenant";
 
+// Subdomains reserved for Lista infrastructure — never assignable to a club org.
+const RESERVED_SUBDOMAINS = new Set([
+  "www", "app", "api", "mail", "admin", "blog", "help", "status",
+  "static", "assets", "cdn", "staging", "dev", "test", "demo",
+]);
+
 /**
  * PATCH /api/club/settings
  *
@@ -73,12 +79,28 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  // Fetch current org so we can invalidate the old subdomain cache key too
+  // Fetch current org — needed for cache invalidation and plan/subdomain validation
   const { data: currentOrg } = await admin
     .from("organizations")
-    .select("subdomain")
+    .select("subdomain, plan")
     .eq("id", orgId)
     .single();
+
+  // Only club-plan orgs may claim a subdomain
+  if (subdomain !== undefined && subdomain !== null && subdomain !== "") {
+    if (currentOrg?.plan !== "club") {
+      return NextResponse.json(
+        { error: "subdomain_requires_club_plan" },
+        { status: 403 }
+      );
+    }
+    if (RESERVED_SUBDOMAINS.has(subdomain.toLowerCase())) {
+      return NextResponse.json(
+        { error: "subdomain_reserved" },
+        { status: 409 }
+      );
+    }
+  }
 
   // Build the update payload from only the fields that were provided
   const updates: Record<string, string | null> = {};

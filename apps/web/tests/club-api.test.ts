@@ -249,7 +249,7 @@ describe("PATCH /api/club/settings — input validation", () => {
     Object.keys(mocks.tableData).forEach((k) => delete mocks.tableData[k]);
     mocks.tableData.profiles = PROFILE;
     mocks.tableData.organization_members = { role: "owner" };
-    mocks.tableData.organizations = { subdomain: null };
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
     const res = await PATCH(makeSettingsRequest({ orgId: "org-1" }));
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -279,7 +279,7 @@ describe("PATCH /api/club/settings — authorization", () => {
 
   it("returns 403 when a director tries to update branding color", async () => {
     mocks.tableData.organization_members = { role: "director" };
-    mocks.tableData.organizations = { subdomain: null };
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", brandColor: "#ff0000" })
     );
@@ -288,11 +288,90 @@ describe("PATCH /api/club/settings — authorization", () => {
 
   it("returns 403 when a director tries to update subdomain", async () => {
     mocks.tableData.organization_members = { role: "director" };
-    mocks.tableData.organizations = { subdomain: null };
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", subdomain: "myclub" })
     );
     expect(res.status).toBe(403);
+  });
+});
+
+// ── PATCH /api/club/settings — subdomain validation ───────────────────────────
+
+describe("PATCH /api/club/settings — subdomain validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.keys(mocks.tableData).forEach((k) => delete mocks.tableData[k]);
+    mocks.mockResolveRequestUser.mockResolvedValue(AUTHED_USER);
+    mocks.tableData.profiles = PROFILE;
+    mocks.tableData.organization_members = { role: "owner" };
+  });
+
+  it("returns 403 when a free-plan org tries to set a subdomain", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "free" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "myclub" })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("subdomain_requires_club_plan");
+  });
+
+  it("returns 403 when org has no plan set", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: null };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "myclub" })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("subdomain_requires_club_plan");
+  });
+
+  it("returns 409 for a reserved subdomain: 'www'", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "www" })
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("subdomain_reserved");
+  });
+
+  it("returns 409 for a reserved subdomain: 'api'", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "api" })
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("subdomain_reserved");
+  });
+
+  it("returns 409 for reserved subdomains regardless of case", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "ADMIN" })
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("subdomain_reserved");
+  });
+
+  it("allows clearing the subdomain (empty string) regardless of plan", async () => {
+    mocks.tableData.organizations = { subdomain: "myclub", plan: "free" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "" })
+    );
+    // Clearing is always permitted — no plan or reserved-word check applies
+    expect(res.status).toBe(200);
+  });
+
+  it("allows a valid subdomain for a club-plan org", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "westside" })
+    );
+    expect(res.status).toBe(200);
   });
 });
 
@@ -303,7 +382,7 @@ describe("PATCH /api/club/settings — success", () => {
     Object.keys(mocks.updateErrors).forEach((k) => delete mocks.updateErrors[k]);
     mocks.mockResolveRequestUser.mockResolvedValue(AUTHED_USER);
     mocks.tableData.profiles = PROFILE;
-    mocks.tableData.organizations = { subdomain: null };
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
   });
 
   it("returns 200 when an owner updates branding color", async () => {
