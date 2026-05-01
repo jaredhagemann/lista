@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { AppNameProvider } from "@/context/app-name-context";
+import { ProgressBar } from "@/components/layout/progress-bar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,6 +50,7 @@ export default async function RootLayout({
         )}
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <ProgressBar color={tenant?.isWhiteLabel ? tenant.brandColorSecondary : null} />
         <AppNameProvider value={appName}>
           {children}
         </AppNameProvider>
