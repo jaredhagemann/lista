@@ -25,8 +25,6 @@ const RESERVED_SUBDOMAINS = new Set([
  *     brandColorSecondary?: string,
  *     subdomain?: string,
  *   }
- *
- * Sprint 5 extends this route with logo/favicon upload and full org settings.
  */
 export async function PATCH(request: Request) {
   const user = await resolveRequestUser(request);
@@ -82,19 +80,33 @@ export async function PATCH(request: Request) {
   // Fetch current org — needed for cache invalidation and plan/subdomain validation
   const { data: currentOrg } = await admin
     .from("organizations")
-    .select("subdomain, plan")
+    .select("subdomain, subdomain_status, plan")
     .eq("id", orgId)
     .single();
 
+  // Normalise to lowercase so reserved-word checks are case-insensitive and
+  // the stored value always satisfies DNS label rules.
+  const normalisedSubdomain =
+    subdomain !== undefined && subdomain !== null
+      ? subdomain.toLowerCase()
+      : subdomain;
+
   // Only club-plan orgs may claim a subdomain
-  if (subdomain !== undefined && subdomain !== null && subdomain !== "") {
+  if (normalisedSubdomain !== undefined && normalisedSubdomain !== null && normalisedSubdomain !== "") {
     if (currentOrg?.plan !== "club") {
       return NextResponse.json(
         { error: "subdomain_requires_club_plan" },
         { status: 403 }
       );
     }
-    if (RESERVED_SUBDOMAINS.has(subdomain.toLowerCase())) {
+    // DNS label rules: lowercase alphanumeric, hyphens in the middle only, max 63 chars
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(normalisedSubdomain) || normalisedSubdomain.length > 63) {
+      return NextResponse.json(
+        { error: "subdomain_invalid_format" },
+        { status: 400 }
+      );
+    }
+    if (RESERVED_SUBDOMAINS.has(normalisedSubdomain)) {
       return NextResponse.json(
         { error: "subdomain_reserved" },
         { status: 409 }
@@ -102,13 +114,29 @@ export async function PATCH(request: Request) {
     }
   }
 
-  // Build the update payload from only the fields that were provided
+  // Build the update payload from only the fields that were provided.
+  //
+  // Subdomain changes require special handling (spec §1.10):
+  //   • Setting a new value  → mark 'active', clear quarantine timestamp
+  //   • Clearing (empty str) → quarantine rather than hard-delete, so old links
+  //     and cache entries cannot be immediately hijacked by another org
   const updates: Record<string, string | null> = {};
   if (orgName !== undefined) updates.name = orgName || null;
   if (orgNamePublic !== undefined) updates.org_name_public = orgNamePublic || null;
   if (brandColor !== undefined) updates.brand_color = brandColor || null;
   if (brandColorSecondary !== undefined) updates.brand_color_secondary = brandColorSecondary || null;
-  if (subdomain !== undefined) updates.subdomain = subdomain || null;
+  if (normalisedSubdomain !== undefined) {
+    if (normalisedSubdomain) {
+      // New value — activate
+      updates.subdomain = normalisedSubdomain;
+      updates.subdomain_status = "active";
+      updates.subdomain_quarantined_at = null;
+    } else if (currentOrg?.subdomain) {
+      // Clearing an existing subdomain — quarantine, keep the value on the row
+      updates.subdomain_status = "quarantined";
+      updates.subdomain_quarantined_at = new Date().toISOString();
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "no fields to update" }, { status: 400 });
@@ -120,6 +148,10 @@ export async function PATCH(request: Request) {
     .eq("id", orgId);
 
   if (error) {
+    // Unique constraint violation on subdomain column
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "subdomain_taken" }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -133,9 +165,9 @@ export async function PATCH(request: Request) {
       invalidateTenantCache(`${currentOrg.subdomain}.${BASE_DOMAIN}`)
     );
   }
-  if (subdomain && subdomain !== currentOrg?.subdomain) {
+  if (normalisedSubdomain && normalisedSubdomain !== currentOrg?.subdomain) {
     invalidations.push(
-      invalidateTenantCache(`${subdomain}.${BASE_DOMAIN}`)
+      invalidateTenantCache(`${normalisedSubdomain}.${BASE_DOMAIN}`)
     );
   }
 

@@ -549,6 +549,8 @@ export type Database = {
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subdomain: string | null
+          subdomain_quarantined_at: string | null
+          subdomain_status: string | null
           subscription_status: string | null
         }
         Insert: {
@@ -567,6 +569,8 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subdomain?: string | null
+          subdomain_quarantined_at?: string | null
+          subdomain_status?: string | null
           subscription_status?: string | null
         }
         Update: {
@@ -585,6 +589,8 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subdomain?: string | null
+          subdomain_quarantined_at?: string | null
+          subdomain_status?: string | null
           subscription_status?: string | null
         }
         Relationships: [

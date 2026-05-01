@@ -86,6 +86,7 @@ export async function resolveTenant(
       .from("organizations")
       .select("*")
       .eq("subdomain", subdomain)
+      .eq("subdomain_status", "active")
       .maybeSingle();
     org = data;
   } else {
