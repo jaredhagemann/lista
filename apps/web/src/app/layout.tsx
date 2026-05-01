@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
-import { Suspense } from "react";
 import "./globals.css";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { AppNameProvider } from "@/context/app-name-context";
@@ -51,9 +50,7 @@ export default async function RootLayout({
         )}
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Suspense>
-          <ProgressBar color={tenant?.isWhiteLabel ? tenant.brandColorSecondary : null} />
-        </Suspense>
+        <ProgressBar color={tenant?.isWhiteLabel ? tenant.brandColorSecondary : null} />
         <AppNameProvider value={appName}>
           {children}
         </AppNameProvider>
