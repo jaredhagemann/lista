@@ -165,9 +165,6 @@ importers:
       next:
         specifier: 16.1.6
         version: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      next-nprogress-bar:
-        specifier: ^2.4.7
-        version: 2.4.7
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -6410,9 +6407,6 @@ packages:
   neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
 
-  next-nprogress-bar@2.4.7:
-    resolution: {integrity: sha512-OeveNQYFBhQhZ+RgrDnvHNUEQfHCmipymmD4AfAVE9pFV4jeWi7/nNK5f0lIk7ODRrtjyyr/n2YpkRbs5kUoMg==}
-
   next-themes@0.4.6:
     resolution: {integrity: sha512-pZvgD5L0IEvX5/9GWyHMf3m8BKiVQwsCMHfoFosXtXBMnaS0ZnIJ9ST4b4NqLVKDEm8QBxoNNGNaBv2JNF6XNA==}
     peerDependencies:
@@ -6483,9 +6477,6 @@ packages:
   npm-run-path@6.0.0:
     resolution: {integrity: sha512-9qny7Z9DsQU8Ou39ERsPU4OZQlSTP47ShQzuKZ6PRXpYLtIFgl/DEBYEXKlvcEa+9tHVcK8CF81Y2V72qaZhWA==}
     engines: {node: '>=18'}
-
-  nprogress-v2@1.1.10:
-    resolution: {integrity: sha512-MypWLNIPIM07SS0bAc/oac0vhVFz9vAHm7d1sj//Pnf3J03LQ3CuWrlDteIu6exq0fIvkDJ6tUDRWLaifsIt5w==}
 
   nullthrows@1.1.1:
     resolution: {integrity: sha512-2vPPEi+Z7WqML2jZYddDIfy5Dqb0r2fze2zTxNNknZaFpVHU3mFB3R+DWeJWGVx0ecvttSGlJTI+WG+8Z4cDWw==}
@@ -15826,10 +15817,6 @@ snapshots:
 
   neo-async@2.6.2: {}
 
-  next-nprogress-bar@2.4.7:
-    dependencies:
-      nprogress-v2: 1.1.10
-
   next-themes@0.4.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       react: 19.2.3
@@ -15897,8 +15884,6 @@ snapshots:
     dependencies:
       path-key: 4.0.0
       unicorn-magic: 0.3.0
-
-  nprogress-v2@1.1.10: {}
 
   nullthrows@1.1.1: {}
 
