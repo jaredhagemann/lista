@@ -51,6 +51,7 @@ export default async function ClubBrandingPage() {
     <ClubBrandingClient
       org={{
         id: org.id,
+        plan: org.plan,
         orgNamePublic: org.org_name_public,
         brandColor: org.brand_color,
         brandColorSecondary: org.brand_color_secondary,
