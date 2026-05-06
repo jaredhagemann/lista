@@ -5,6 +5,7 @@ values ('org-images', 'org-images', true)
 on conflict (id) do nothing;
 
 -- Only org owners may upload files into their org's folder (<orgId>/...).
+-- profiles.id = auth.uid() directly (no separate auth_user_id join needed).
 create policy "Org owners can upload org images"
   on storage.objects for insert
   to authenticated
@@ -13,9 +14,8 @@ create policy "Org owners can upload org images"
     and exists (
       select 1
       from organization_members om
-      join profiles p on p.id = om.profile_id
       where om.organization_id = split_part(name, '/', 1)::uuid
-        and p.auth_user_id = auth.uid()
+        and om.profile_id = auth.uid()
         and om.role = 'owner'
     )
   );
@@ -28,9 +28,8 @@ create policy "Org owners can update org images"
     and exists (
       select 1
       from organization_members om
-      join profiles p on p.id = om.profile_id
       where om.organization_id = split_part(name, '/', 1)::uuid
-        and p.auth_user_id = auth.uid()
+        and om.profile_id = auth.uid()
         and om.role = 'owner'
     )
   );
@@ -43,9 +42,8 @@ create policy "Org owners can delete org images"
     and exists (
       select 1
       from organization_members om
-      join profiles p on p.id = om.profile_id
       where om.organization_id = split_part(name, '/', 1)::uuid
-        and p.auth_user_id = auth.uid()
+        and om.profile_id = auth.uid()
         and om.role = 'owner'
     )
   );
