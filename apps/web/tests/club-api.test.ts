@@ -294,6 +294,24 @@ describe("PATCH /api/club/settings — authorization", () => {
     );
     expect(res.status).toBe(403);
   });
+
+  it("returns 403 when a director tries to update logoUrl", async () => {
+    mocks.tableData.organization_members = { role: "director" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", logoUrl: "https://example.com/logo.png" })
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 when a director tries to update faviconUrl", async () => {
+    mocks.tableData.organization_members = { role: "director" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", faviconUrl: "https://example.com/favicon.png" })
+    );
+    expect(res.status).toBe(403);
+  });
 });
 
 // ── PATCH /api/club/settings — subdomain validation ───────────────────────────
@@ -389,6 +407,30 @@ describe("PATCH /api/club/settings — success", () => {
     mocks.tableData.organization_members = { role: "owner" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", brandColor: "#ff0000" })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("returns 200 when an owner sets logoUrl and faviconUrl", async () => {
+    mocks.tableData.organization_members = { role: "owner" };
+    const res = await PATCH(
+      makeSettingsRequest({
+        orgId: "org-1",
+        logoUrl: "https://example.com/logo.png",
+        faviconUrl: "https://example.com/favicon.png",
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("returns 200 when an owner clears logoUrl and faviconUrl", async () => {
+    mocks.tableData.organization_members = { role: "owner" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", logoUrl: null, faviconUrl: null })
     );
     expect(res.status).toBe(200);
     const body = await res.json();

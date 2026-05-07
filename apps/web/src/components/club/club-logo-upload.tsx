@@ -69,13 +69,12 @@ export function ClubLogoUpload({
 
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const logoPath = `${orgId}/logo-${crypto.randomUUID()}.${ext}`;
-      const faviconPath = `${orgId}/favicon-${crypto.randomUUID()}.png`;
+      const logoPath = `${orgId}/logo`;
+      const faviconPath = `${orgId}/favicon`;
 
       const { error: logoError } = await supabase.storage
         .from("org-images")
-        .upload(logoPath, file, { upsert: true });
+        .upload(logoPath, file, { upsert: true, contentType: file.type });
       if (logoError) {
         toast.error(logoError.message);
         return;

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +32,7 @@ export function ClubBrandingClient({
   );
   const [subdomain, setSubdomain] = useState(org.subdomain ?? "");
   const [logoUrl, setLogoUrl] = useState(org.logoUrl);
+  const [faviconUrl, setFaviconUrl] = useState(org.faviconUrl);
   const [saving, setSaving] = useState(false);
 
   const isClub = org.plan === "club";
@@ -78,11 +80,17 @@ export function ClubBrandingClient({
       return;
     }
     setLogoUrl(newLogoUrl);
+    setFaviconUrl(newFaviconUrl);
     toast.success("Logo saved");
     router.refresh();
   }
 
   async function handleLogoRemove() {
+    const supabase = createClient();
+    await supabase.storage
+      .from("org-images")
+      .remove([`${org.id}/logo`, `${org.id}/favicon`]);
+
     const res = await fetch("/api/club/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -98,6 +106,7 @@ export function ClubBrandingClient({
       return;
     }
     setLogoUrl(null);
+    setFaviconUrl(null);
     toast.success("Logo removed");
     router.refresh();
   }
