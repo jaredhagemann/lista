@@ -99,7 +99,11 @@ export function ClubLogoUpload({
         .from("org-images")
         .getPublicUrl(faviconPath);
 
-      onUpload(logoData.publicUrl, faviconData.publicUrl);
+      // Append a timestamp so each upload busts the browser and CDN cache.
+      // The storage path is stable (upsert works), but the stored URL is unique
+      // per upload so the old image is never served from cache.
+      const bust = Date.now();
+      onUpload(`${logoData.publicUrl}?t=${bust}`, `${faviconData.publicUrl}?t=${bust}`);
     } catch {
       toast.error("Upload failed");
     } finally {
