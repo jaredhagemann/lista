@@ -82,7 +82,7 @@ export function ClubBrandingClient({
     setLogoUrl(newLogoUrl);
     setFaviconUrl(newFaviconUrl);
     toast.success("Logo saved");
-    router.refresh();
+    window.location.reload();
   }
 
   async function handleLogoRemove() {
@@ -108,7 +108,7 @@ export function ClubBrandingClient({
     setLogoUrl(null);
     setFaviconUrl(null);
     toast.success("Logo removed");
-    router.refresh();
+    window.location.reload();
   }
 
   return (
