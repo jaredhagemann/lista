@@ -33,7 +33,7 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json();
-  const { orgId, orgName, orgNamePublic, brandColor, brandColorSecondary, subdomain } =
+  const { orgId, orgName, orgNamePublic, brandColor, brandColorSecondary, subdomain, logoUrl, faviconUrl } =
     body as {
       orgId?: string;
       orgName?: string;
@@ -41,6 +41,8 @@ export async function PATCH(request: Request) {
       brandColor?: string;
       brandColorSecondary?: string;
       subdomain?: string;
+      logoUrl?: string | null;
+      faviconUrl?: string | null;
     };
 
   if (!orgId) {
@@ -71,9 +73,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  // Branding/subdomain fields are owner-only
+  // Branding/subdomain/logo fields are owner-only
   const isOwner = membership.role === "owner";
-  if (!isOwner && (brandColor !== undefined || brandColorSecondary !== undefined || subdomain !== undefined)) {
+  if (
+    !isOwner &&
+    (brandColor !== undefined ||
+      brandColorSecondary !== undefined ||
+      subdomain !== undefined ||
+      logoUrl !== undefined ||
+      faviconUrl !== undefined)
+  ) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -125,6 +134,8 @@ export async function PATCH(request: Request) {
   if (orgNamePublic !== undefined) updates.org_name_public = orgNamePublic || null;
   if (brandColor !== undefined) updates.brand_color = brandColor || null;
   if (brandColorSecondary !== undefined) updates.brand_color_secondary = brandColorSecondary || null;
+  if (logoUrl !== undefined) updates.logo_url = logoUrl ?? null;
+  if (faviconUrl !== undefined) updates.favicon_url = faviconUrl ?? null;
   if (normalisedSubdomain !== undefined) {
     if (normalisedSubdomain) {
       // New value — activate

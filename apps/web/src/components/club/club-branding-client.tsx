@@ -3,15 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ClubLogoUpload } from "@/components/club/club-logo-upload";
 
 export function ClubBrandingClient({
   org,
 }: {
   org: {
     id: string;
+    plan: string;
     orgNamePublic: string | null;
     brandColor: string | null;
     brandColorSecondary: string | null;
@@ -28,7 +31,11 @@ export function ClubBrandingClient({
     org.brandColorSecondary ?? "#ffffff"
   );
   const [subdomain, setSubdomain] = useState(org.subdomain ?? "");
+  const [logoUrl, setLogoUrl] = useState(org.logoUrl);
+  const [faviconUrl, setFaviconUrl] = useState(org.faviconUrl);
   const [saving, setSaving] = useState(false);
+
+  const isClub = org.plan === "club";
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -57,9 +64,72 @@ export function ClubBrandingClient({
     }
   }
 
+  async function handleLogoUpload(newLogoUrl: string, newFaviconUrl: string) {
+    const res = await fetch("/api/club/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orgId: org.id,
+        logoUrl: newLogoUrl,
+        faviconUrl: newFaviconUrl,
+      }),
+    });
+    if (!res.ok) {
+      const { error } = await res.json();
+      toast.error(error ?? "Failed to save logo");
+      return;
+    }
+    setLogoUrl(newLogoUrl);
+    setFaviconUrl(newFaviconUrl);
+    toast.success("Logo saved");
+    window.location.reload();
+  }
+
+  async function handleLogoRemove() {
+    const supabase = createClient();
+    await supabase.storage
+      .from("org-images")
+      .remove([`${org.id}/logo`, `${org.id}/favicon`]);
+
+    const res = await fetch("/api/club/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orgId: org.id,
+        logoUrl: null,
+        faviconUrl: null,
+      }),
+    });
+    if (!res.ok) {
+      const { error } = await res.json();
+      toast.error(error ?? "Failed to remove logo");
+      return;
+    }
+    setLogoUrl(null);
+    setFaviconUrl(null);
+    toast.success("Logo removed");
+    window.location.reload();
+  }
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold">Branding</h1>
+
+      {isClub && (
+        <div className="space-y-2">
+          <Label>Club logo</Label>
+          <ClubLogoUpload
+            orgId={org.id}
+            currentLogoUrl={logoUrl}
+            onUpload={handleLogoUpload}
+            onRemove={handleLogoRemove}
+          />
+          <p className="text-xs text-muted-foreground">
+            Replaces the text name in the top navigation. A square crop is
+            automatically saved as the browser tab icon.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSave} className="space-y-6 max-w-md">
         <div className="space-y-2">
@@ -75,22 +145,28 @@ export function ClubBrandingClient({
           </p>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="subdomain">Subdomain</Label>
-          <div className="flex items-center gap-1">
-            <Input
-              id="subdomain"
-              value={subdomain}
-              onChange={(e) => setSubdomain(e.target.value.replace(/[^a-z0-9-]/g, ""))}
-              placeholder="riverside-fc"
-              className="flex-1"
-            />
-            <span className="text-sm text-muted-foreground whitespace-nowrap">.lista.team</span>
+        {isClub && (
+          <div className="space-y-2">
+            <Label htmlFor="subdomain">Subdomain</Label>
+            <div className="flex items-center gap-1">
+              <Input
+                id="subdomain"
+                value={subdomain}
+                onChange={(e) =>
+                  setSubdomain(e.target.value.replace(/[^a-z0-9-]/g, ""))
+                }
+                placeholder="riverside-fc"
+                className="flex-1"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                .lista.team
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lowercase letters, numbers, and hyphens only.
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Lowercase letters, numbers, and hyphens only.
-          </p>
-        </div>
+        )}
 
         <div className="space-y-3">
           <Label>Brand colors</Label>
@@ -117,36 +193,6 @@ export function ClubBrandingClient({
             </div>
           </div>
         </div>
-
-        {(org.logoUrl || org.faviconUrl) && (
-          <div className="space-y-2">
-            <Label>Current assets</Label>
-            <div className="flex items-center gap-4">
-              {org.logoUrl && (
-                <div className="text-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={org.logoUrl}
-                    alt="Club logo"
-                    className="h-12 w-auto rounded border object-contain"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">Logo</p>
-                </div>
-              )}
-              {org.faviconUrl && (
-                <div className="text-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={org.faviconUrl}
-                    alt="Favicon"
-                    className="h-8 w-8 rounded border object-contain"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">Favicon</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         <Button type="submit" disabled={saving}>
           {saving ? "Saving…" : "Save branding"}
