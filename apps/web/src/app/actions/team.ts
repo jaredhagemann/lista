@@ -1,6 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -10,9 +10,26 @@ import { ACTIVE_PROFILE_COOKIE } from "./constants";
 import { getActiveProfileId } from "@/lib/get-active-membership";
 import { sendTeamDeletionNotifications } from "@/lib/notifications/team-deletion";
 
+const BASE_DOMAIN = "lista.team";
+
+function activeProfileCookieOptions(overrides: { maxAge?: number } = {}) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    domain:
+      process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" &&
+      process.env.NODE_ENV === "production"
+        ? `.${BASE_DOMAIN}`
+        : undefined,
+    ...overrides,
+  };
+}
+
 export async function clearActiveProfile() {
   const cookieStore = await cookies();
-  cookieStore.delete(ACTIVE_PROFILE_COOKIE);
+  cookieStore.set(ACTIVE_PROFILE_COOKIE, "", activeProfileCookieOptions({ maxAge: 0 }));
 }
 
 export async function setActiveTeam(teamId: string) {
@@ -65,18 +82,56 @@ export async function setActiveTeam(teamId: string) {
   // Update the active_profile_id cookie
   const cookieStore = await cookies();
   if (chosenProfileId === user.id) {
-    cookieStore.delete(ACTIVE_PROFILE_COOKIE);
+    cookieStore.set(ACTIVE_PROFILE_COOKIE, "", activeProfileCookieOptions({ maxAge: 0 }));
   } else {
-    cookieStore.set(ACTIVE_PROFILE_COOKIE, chosenProfileId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-    });
+    cookieStore.set(ACTIVE_PROFILE_COOKIE, chosenProfileId, activeProfileCookieOptions());
   }
 
   revalidatePath("/dashboard", "layout");
-  return { success: true };
+
+  // Subdomain routing is enabled by default; set SUBDOMAIN_ROUTING_ENABLED=false to suppress
+  // it in environments (e.g. staging) where *.lista.team subdomains are not available.
+  // Also suppress when TENANT_OVERRIDE_HOSTNAME is set — that var simulates a subdomain for
+  // UI testing only; the user is not actually on a lista.team URL, so routing must be a no-op.
+  if (process.env.SUBDOMAIN_ROUTING_ENABLED === "false" || process.env.TENANT_OVERRIDE_HOSTNAME) {
+    return { success: true as const };
+  }
+
+  // Determine if a cross-domain redirect is needed.
+  // Read the current hostname from the incoming request headers.
+  const headerStore = await headers();
+  const host = (headerStore.get("host") ?? "").split(":")[0];
+  const currentSubdomain = host.endsWith(`.${BASE_DOMAIN}`) && host !== `www.${BASE_DOMAIN}`
+    ? host.slice(0, -(`.${BASE_DOMAIN}`.length))
+    : null;
+
+  // Look up the target team's org subdomain.
+  const { data: teamRow } = await supabase
+    .from("teams")
+    .select("organization_id")
+    .eq("id", teamId)
+    .single();
+
+  let targetSubdomain: string | null = null;
+  if (teamRow?.organization_id) {
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("subdomain, subdomain_status, plan")
+      .eq("id", teamRow.organization_id)
+      .maybeSingle();
+    if (orgRow?.plan === "club" && orgRow?.subdomain_status === "active" && orgRow?.subdomain) {
+      targetSubdomain = orgRow.subdomain;
+    }
+  }
+
+  if (targetSubdomain && currentSubdomain !== targetSubdomain) {
+    return { success: true as const, redirectUrl: `https://${targetSubdomain}.${BASE_DOMAIN}/dashboard` };
+  }
+  if (!targetSubdomain && currentSubdomain) {
+    return { success: true as const, redirectUrl: `https://${BASE_DOMAIN}/dashboard` };
+  }
+
+  return { success: true as const };
 }
 
 export async function removeTeamMember(memberId: string, teamId: string) {

@@ -109,14 +109,39 @@ export default async function DashboardLayout({
   // Check if the active user is an org owner/director for the active team's org
   const activeOrgId = (activeMembership?.teams as { organization_id?: string | null } | null)?.organization_id ?? null;
   let orgRole: "owner" | "director" | null = null;
+  let activeOrgSubdomain: string | null = null;
   if (activeOrgId) {
-    const { data: orgMembership } = await supabase
-      .from("organization_members")
-      .select("role")
-      .eq("organization_id", activeOrgId)
-      .eq("profile_id", user.id)
-      .maybeSingle();
+    const [{ data: orgMembership }, { data: orgData }] = await Promise.all([
+      supabase
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", activeOrgId)
+        .eq("profile_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("organizations")
+        .select("subdomain, subdomain_status, plan")
+        .eq("id", activeOrgId)
+        .maybeSingle(),
+    ]);
     orgRole = (orgMembership?.role as "owner" | "director" | null) ?? null;
+    if (orgData?.plan === "club" && orgData?.subdomain_status === "active" && orgData?.subdomain) {
+      activeOrgSubdomain = orgData.subdomain;
+    }
+  }
+
+  // Enforce that club-team users always land on their org's subdomain and
+  // free-team users always land on the main domain.
+  // Disabled when SUBDOMAIN_ROUTING_ENABLED=false (e.g. staging on vercel.app URLs) or when
+  // TENANT_OVERRIDE_HOSTNAME is set (UI-only simulation — user is not actually on lista.team).
+  if (process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" && !process.env.TENANT_OVERRIDE_HOSTNAME) {
+    const currentSubdomain = tenant?.subdomain ?? null;
+    if (activeOrgSubdomain && currentSubdomain !== activeOrgSubdomain) {
+      redirect(`https://${activeOrgSubdomain}.lista.team/dashboard`);
+    }
+    if (!activeOrgSubdomain && currentSubdomain) {
+      redirect(`https://lista.team/dashboard`);
+    }
   }
 
   // Compute total unread chat count for the nav badge

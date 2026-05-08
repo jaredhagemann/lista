@@ -16,7 +16,14 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, {
+                ...options,
+                domain:
+                  process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" &&
+                  process.env.NODE_ENV === "production"
+                    ? ".lista.team"
+                    : undefined,
+              })
             );
           } catch {
             // The `setAll` method was called from a Server Component.

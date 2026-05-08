@@ -36,7 +36,18 @@ export async function updateSession(
             request: { headers: forwardedHeaders },
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              // Scope to .lista.team only when subdomain routing is active.
+              // Vercel sets NODE_ENV=production on all deployments (including staging),
+              // so NODE_ENV alone is not a reliable signal — SUBDOMAIN_ROUTING_ENABLED
+              // is the explicit opt-in that distinguishes production from staging.
+              domain:
+                process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" &&
+                process.env.NODE_ENV === "production"
+                  ? ".lista.team"
+                  : undefined,
+            })
           );
         },
       },
