@@ -36,7 +36,11 @@ export async function updateSession(
             request: { headers: forwardedHeaders },
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              domain:
+                process.env.NODE_ENV === "production" ? ".lista.team" : undefined,
+            })
           );
         },
       },

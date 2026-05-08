@@ -55,9 +55,13 @@ export function TeamSwitcher({
   async function handleSwitch(teamId: string) {
     if (teamId === activeMembership?.team_id) return;
     setSwitching(true);
-    await setActiveTeam(teamId);
-    router.push("/dashboard");
-    setSwitching(false);
+    const result = await setActiveTeam(teamId);
+    if (result && "redirectUrl" in result && result.redirectUrl) {
+      window.location.assign(result.redirectUrl);
+    } else {
+      router.push("/dashboard");
+      setSwitching(false);
+    }
   }
 
   const currentTeam = activeMembership?.teams;
