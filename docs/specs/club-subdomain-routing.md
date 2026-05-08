@@ -121,6 +121,15 @@ This runs on every `/dashboard` load, catching any path that bypasses the team s
 
 ---
 
+## Environment variable
+
+`SUBDOMAIN_ROUTING_ENABLED` — server-side only (no `NEXT_PUBLIC_` prefix).
+
+- **Not set / any value other than `"false"`**: routing is active (production default).
+- **`"false"`**: routing is suppressed — `setActiveTeam` returns `{ success: true }` with no `redirectUrl` and the dashboard layout skips the passive redirect. Set this on staging/preview deployments running on non-`lista.team` URLs (e.g. Vercel preview URLs) to prevent redirects to the production subdomain.
+
+Documented in `env.example`.
+
 ## No new migrations
 
 All reads are against existing columns: `organizations.subdomain`, `organizations.subdomain_status`, `organizations.plan`.

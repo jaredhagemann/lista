@@ -132,12 +132,15 @@ export default async function DashboardLayout({
 
   // Enforce that club-team users always land on their org's subdomain and
   // free-team users always land on the main domain.
-  const currentSubdomain = tenant?.subdomain ?? null;
-  if (activeOrgSubdomain && currentSubdomain !== activeOrgSubdomain) {
-    redirect(`https://${activeOrgSubdomain}.lista.team/dashboard`);
-  }
-  if (!activeOrgSubdomain && currentSubdomain) {
-    redirect(`https://lista.team/dashboard`);
+  // Disabled when SUBDOMAIN_ROUTING_ENABLED=false (e.g. staging on vercel.app URLs).
+  if (process.env.SUBDOMAIN_ROUTING_ENABLED !== "false") {
+    const currentSubdomain = tenant?.subdomain ?? null;
+    if (activeOrgSubdomain && currentSubdomain !== activeOrgSubdomain) {
+      redirect(`https://${activeOrgSubdomain}.lista.team/dashboard`);
+    }
+    if (!activeOrgSubdomain && currentSubdomain) {
+      redirect(`https://lista.team/dashboard`);
+    }
   }
 
   // Compute total unread chat count for the nav badge

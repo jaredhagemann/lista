@@ -126,6 +126,25 @@ beforeEach(() => {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe("setActiveTeam — subdomain routing disabled", () => {
+  it("returns no redirectUrl when SUBDOMAIN_ROUTING_ENABLED=false, even for a club team", async () => {
+    vi.stubEnv("SUBDOMAIN_ROUTING_ENABLED", "false");
+    mocks.setHost("lista.team");
+    mocks.tableData.teams = { organization_id: mocks.ORG_ID };
+    mocks.tableData.organizations = {
+      plan: "club",
+      subdomain_status: "active",
+      subdomain: "riverside",
+    };
+
+    const result = await setActiveTeam(mocks.TEAM_ID);
+
+    expect(result).toEqual({ success: true });
+    expect(result).not.toHaveProperty("redirectUrl");
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("setActiveTeam — redirect logic", () => {
   it("returns redirectUrl to subdomain when switching to a club team from main domain", async () => {
     mocks.setHost("lista.team");

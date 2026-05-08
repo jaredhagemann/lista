@@ -85,6 +85,12 @@ export async function setActiveTeam(teamId: string) {
 
   revalidatePath("/dashboard", "layout");
 
+  // Subdomain routing is enabled by default; set SUBDOMAIN_ROUTING_ENABLED=false to suppress
+  // it in environments (e.g. staging) where *.lista.team subdomains are not available.
+  if (process.env.SUBDOMAIN_ROUTING_ENABLED === "false") {
+    return { success: true as const };
+  }
+
   // Determine if a cross-domain redirect is needed.
   // Read the current hostname from the incoming request headers.
   const headerStore = await headers();
