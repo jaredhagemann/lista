@@ -143,6 +143,24 @@ describe("setActiveTeam — subdomain routing disabled", () => {
     expect(result).not.toHaveProperty("redirectUrl");
     vi.unstubAllEnvs();
   });
+
+  it("returns no redirectUrl when TENANT_OVERRIDE_HOSTNAME is set (UI-testing mode)", async () => {
+    vi.stubEnv("TENANT_OVERRIDE_HOSTNAME", "riverside.lista.team");
+    // Real host is localhost — the override var only simulates the subdomain for UI purposes
+    mocks.setHost("localhost");
+    mocks.tableData.teams = { organization_id: mocks.ORG_ID };
+    mocks.tableData.organizations = {
+      plan: "club",
+      subdomain_status: "active",
+      subdomain: "riverside",
+    };
+
+    const result = await setActiveTeam(mocks.TEAM_ID);
+
+    expect(result).toEqual({ success: true });
+    expect(result).not.toHaveProperty("redirectUrl");
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("setActiveTeam — redirect logic", () => {

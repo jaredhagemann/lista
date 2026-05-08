@@ -87,7 +87,9 @@ export async function setActiveTeam(teamId: string) {
 
   // Subdomain routing is enabled by default; set SUBDOMAIN_ROUTING_ENABLED=false to suppress
   // it in environments (e.g. staging) where *.lista.team subdomains are not available.
-  if (process.env.SUBDOMAIN_ROUTING_ENABLED === "false") {
+  // Also suppress when TENANT_OVERRIDE_HOSTNAME is set — that var simulates a subdomain for
+  // UI testing only; the user is not actually on a lista.team URL, so routing must be a no-op.
+  if (process.env.SUBDOMAIN_ROUTING_ENABLED === "false" || process.env.TENANT_OVERRIDE_HOSTNAME) {
     return { success: true as const };
   }
 

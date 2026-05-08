@@ -132,8 +132,9 @@ export default async function DashboardLayout({
 
   // Enforce that club-team users always land on their org's subdomain and
   // free-team users always land on the main domain.
-  // Disabled when SUBDOMAIN_ROUTING_ENABLED=false (e.g. staging on vercel.app URLs).
-  if (process.env.SUBDOMAIN_ROUTING_ENABLED !== "false") {
+  // Disabled when SUBDOMAIN_ROUTING_ENABLED=false (e.g. staging on vercel.app URLs) or when
+  // TENANT_OVERRIDE_HOSTNAME is set (UI-only simulation — user is not actually on lista.team).
+  if (process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" && !process.env.TENANT_OVERRIDE_HOSTNAME) {
     const currentSubdomain = tenant?.subdomain ?? null;
     if (activeOrgSubdomain && currentSubdomain !== activeOrgSubdomain) {
       redirect(`https://${activeOrgSubdomain}.lista.team/dashboard`);
