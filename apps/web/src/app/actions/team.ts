@@ -18,7 +18,11 @@ function activeProfileCookieOptions(overrides: { maxAge?: number } = {}) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
-    domain: process.env.NODE_ENV === "production" ? `.${BASE_DOMAIN}` : undefined,
+    domain:
+      process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" &&
+      process.env.NODE_ENV === "production"
+        ? `.${BASE_DOMAIN}`
+        : undefined,
     ...overrides,
   };
 }

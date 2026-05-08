@@ -19,6 +19,7 @@ export async function createClient() {
               cookieStore.set(name, value, {
                 ...options,
                 domain:
+                  process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" &&
                   process.env.NODE_ENV === "production"
                     ? ".lista.team"
                     : undefined,
