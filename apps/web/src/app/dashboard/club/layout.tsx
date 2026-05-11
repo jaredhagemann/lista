@@ -63,7 +63,7 @@ export default async function ClubLayout({
 
   return (
     <ClubOrgProvider value={clubOrg}>
-      <div className="flex gap-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
         <ClubSidebar />
         <div className="flex-1 min-w-0">{children}</div>
       </div>

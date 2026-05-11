@@ -35,11 +35,11 @@ export function ClubSidebar() {
       : baseNavItems;
 
   return (
-    <aside className="w-48 shrink-0">
-      <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+    <aside className="w-full sm:w-48 sm:shrink-0">
+      <p className="hidden sm:block mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
         {orgName}
       </p>
-      <nav className="space-y-0.5">
+      <nav className="flex flex-row gap-1 overflow-x-auto sm:flex-col sm:gap-0.5">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.exact
@@ -49,7 +49,7 @@ export function ClubSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
                 isActive
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
