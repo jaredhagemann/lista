@@ -20,6 +20,13 @@ export const invitationLimiter = new Ratelimit({
   prefix: "rl:invitation",
 });
 
+// 200 bulk invitations per hour per user (separate from single-invite limit)
+export const bulkInvitationLimiter = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(200, "1 h"),
+  prefix: "rl:bulk-invitation",
+});
+
 // 30 notification sends per hour per user
 export const notificationLimiter = new Ratelimit({
   redis,

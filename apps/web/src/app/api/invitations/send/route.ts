@@ -69,8 +69,38 @@ export async function POST(request: Request) {
     }
   }
 
-  // Generate invitation ID client-side to avoid SELECT RLS issue
+  // Generate UUID first — the invite URL is knowable before the row exists
   const invitationId = crypto.randomUUID();
+
+  // Resolve branding and invite URL from the team's org (not the request host)
+  const [{ data: inviterProfile }, { brandName, logoUrl }, baseUrl, { data: team }] =
+    await Promise.all([
+      admin.from("profiles").select("first_name, last_name").eq("id", user.id).single(),
+      inviteBranding(teamId),
+      inviteBaseUrl(teamId),
+      admin.from("teams").select("name").eq("id", teamId).single(),
+    ]);
+
+  const teamName = team?.name ?? "your team";
+  const inviterName =
+    [inviterProfile?.first_name, inviterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ") || "Your coach";
+  const inviteUrl = `${baseUrl}/invite/${invitationId}`;
+
+  // Attempt send before insert so email_status is determined at insert time
+  let emailSent = false;
+  try {
+    await sendEmail({
+      to: email,
+      subject: `You've been invited to join ${teamName} on ${brandName ?? "Lista"}`,
+      html: buildInviteEmailHtml({ teamName, inviterName, role, inviteUrl, brandName, logoUrl }),
+      brandName,
+    });
+    emailSent = true;
+  } catch (err) {
+    console.error("Failed to send invite email:", err);
+  }
 
   const { error: insertError } = await admin.from("invitations").insert({
     id: invitationId,
@@ -84,49 +114,11 @@ export async function POST(request: Request) {
     managed_profile_id: managedProfileId || null,
     relationship: relationship || null,
     invited_by: user.id,
+    email_status: emailSent ? "sent" : "failed",
   });
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
-  }
-
-  // Resolve branding and invite URL from the team's org (not the request host)
-  const [{ data: inviterProfile }, { brandName, logoUrl }, baseUrl] =
-    await Promise.all([
-      admin
-        .from("profiles")
-        .select("first_name, last_name")
-        .eq("id", user.id)
-        .single(),
-      inviteBranding(teamId),
-      inviteBaseUrl(teamId),
-    ]);
-
-  // Fetch team name (already needed for email; org lookup happens inside helpers above)
-  const { data: team } = await admin
-    .from("teams")
-    .select("name")
-    .eq("id", teamId)
-    .single();
-
-  const teamName = team?.name ?? "your team";
-  const inviterName =
-    [inviterProfile?.first_name, inviterProfile?.last_name]
-      .filter(Boolean)
-      .join(" ") || "Your coach";
-  const inviteUrl = `${baseUrl}/invite/${invitationId}`;
-
-  let emailSent = false;
-  try {
-    await sendEmail({
-      to: email,
-      subject: `You've been invited to join ${teamName} on ${brandName ?? "Lista"}`,
-      html: buildInviteEmailHtml({ teamName, inviterName, role, inviteUrl, brandName, logoUrl }),
-      brandName,
-    });
-    emailSent = true;
-  } catch (err) {
-    console.error("Failed to send invite email:", err);
   }
 
   return NextResponse.json({ success: true, emailSent, inviteUrl });

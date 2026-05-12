@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Clock, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, Clock, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
 
@@ -202,10 +202,17 @@ export function TeamRoster({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="gap-1">
-            <Clock className="h-3 w-3" />
-            Invited
-          </Badge>
+          {invite.email_status === "failed" ? (
+            <Badge variant="outline" className="gap-1 border-destructive text-destructive">
+              <AlertCircle className="h-3 w-3" />
+              Failed
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="gap-1">
+              <Clock className="h-3 w-3" />
+              Pending
+            </Badge>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" disabled={busy}>

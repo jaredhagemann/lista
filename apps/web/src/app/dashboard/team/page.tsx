@@ -88,7 +88,7 @@ export default async function TeamPage() {
           )}
           <h1 className="text-2xl font-bold">{team.name}</h1>
         </div>
-        {isAdmin && <AddMemberButton />}
+        {isAdmin && <AddMemberButton teamId={team.id} />}
       </div>
 
       {team.team_photo_url && (

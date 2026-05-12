@@ -75,5 +75,13 @@ export async function POST(
     console.error("Failed to resend invite email:", err);
   }
 
+  // Best-effort status update — if this fails, email_status stays at its prior value
+  try {
+    await admin
+      .from("invitations")
+      .update({ email_status: emailSent ? "sent" : "failed" })
+      .eq("id", id);
+  } catch {}
+
   return NextResponse.json({ success: true, emailSent });
 }
