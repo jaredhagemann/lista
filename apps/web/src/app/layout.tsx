@@ -5,6 +5,7 @@ import "./globals.css";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { AppNameProvider } from "@/context/app-name-context";
 import { ProgressBar } from "@/components/layout/progress-bar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,7 +53,7 @@ export default async function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ProgressBar color={tenant?.isWhiteLabel ? tenant.brandColorSecondary : null} />
         <AppNameProvider value={appName}>
-          {children}
+          <TooltipProvider>{children}</TooltipProvider>
         </AppNameProvider>
         <script
           dangerouslySetInnerHTML={{

@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { MultiTeamCell } from "@/components/club/multi-team-cell";
 
 export const metadata = { title: "Club Members" };
 
@@ -105,7 +106,7 @@ export default async function ClubMembersPage({
 
   const { data: memberRows } = await membersQuery;
 
-  type MemberRow = {
+  type RawRow = {
     team_id: string;
     role: string;
     jersey_number: number | null;
@@ -113,21 +114,60 @@ export default async function ClubMembersPage({
     teams: { name: string } | null;
   };
 
-  let members = (memberRows ?? []) as MemberRow[];
+  const rows = (memberRows ?? []) as RawRow[];
 
-  // Name filter
-  if (q) {
-    const lower = q.toLowerCase();
-    members = members.filter((m) => {
-      const name = [m.profiles?.first_name, m.profiles?.last_name]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return name.includes(lower);
-    });
+  // ── Group by person ───────────────────────────────────────────────────────────
+
+  type GroupedMember = {
+    profileId: string;
+    name: string;
+    birthday: string | null;
+    roles: string[];        // distinct roles across all memberships
+    teamNames: string[];    // all team names, deduplicated
+    jerseyNumbers: number[];// distinct jersey numbers (player memberships only)
+    isPlayer: boolean;
+  };
+
+  const grouped = new Map<string, GroupedMember>();
+
+  for (const row of rows) {
+    const profileId = row.profiles?.id ?? `anon-${row.team_id}`;
+    const teamName = (row.teams as { name: string } | null)?.name ?? null;
+
+    const existing = grouped.get(profileId);
+    if (existing) {
+      if (!existing.roles.includes(row.role)) existing.roles.push(row.role);
+      if (teamName && !existing.teamNames.includes(teamName)) existing.teamNames.push(teamName);
+      if (row.role === "player") {
+        existing.isPlayer = true;
+        if (row.jersey_number != null && !existing.jerseyNumbers.includes(row.jersey_number)) {
+          existing.jerseyNumbers.push(row.jersey_number);
+        }
+      }
+    } else {
+      grouped.set(profileId, {
+        profileId,
+        name: [row.profiles?.first_name, row.profiles?.last_name].filter(Boolean).join(" ") || "—",
+        birthday: row.profiles?.birthday ?? null,
+        roles: [row.role],
+        teamNames: teamName ? [teamName] : [],
+        jerseyNumbers: row.role === "player" && row.jersey_number != null ? [row.jersey_number] : [],
+        isPlayer: row.role === "player",
+      });
+    }
   }
 
-  // Sort
+  let members = Array.from(grouped.values());
+
+  // ── Name filter ───────────────────────────────────────────────────────────────
+
+  if (q) {
+    const lower = q.toLowerCase();
+    members = members.filter((m) => m.name.toLowerCase().includes(lower));
+  }
+
+  // ── Sort ──────────────────────────────────────────────────────────────────────
+
   const asc = currentDir === "asc";
   members = [...members].sort((a, b) => {
     let va: string | number | null;
@@ -135,24 +175,25 @@ export default async function ClubMembersPage({
 
     switch (currentSort) {
       case "birthday":
-        va = a.profiles?.birthday ?? null;
-        vb = b.profiles?.birthday ?? null;
+        va = a.birthday;
+        vb = b.birthday;
         break;
       case "jersey":
-        va = a.jersey_number ?? null;
-        vb = b.jersey_number ?? null;
+        va = a.jerseyNumbers.length > 0 ? Math.min(...a.jerseyNumbers) : null;
+        vb = b.jerseyNumbers.length > 0 ? Math.min(...b.jerseyNumbers) : null;
         break;
       case "team":
-        va = (a.teams as { name: string } | null)?.name ?? null;
-        vb = (b.teams as { name: string } | null)?.name ?? null;
+        // Sort by number of teams (fewer first asc), then alphabetically by first team name
+        va = a.teamNames.length === 1 ? a.teamNames[0] : `\u{10FFFF}${a.teamNames.sort().join(",")}`;
+        vb = b.teamNames.length === 1 ? b.teamNames[0] : `\u{10FFFF}${b.teamNames.sort().join(",")}`;
         break;
       case "role":
-        va = a.role;
-        vb = b.role;
+        va = [...a.roles].sort().join(",");
+        vb = [...b.roles].sort().join(",");
         break;
       default: // "name"
-        va = [a.profiles?.last_name, a.profiles?.first_name].filter(Boolean).join(" ").toLowerCase();
-        vb = [b.profiles?.last_name, b.profiles?.first_name].filter(Boolean).join(" ").toLowerCase();
+        va = a.name.toLowerCase();
+        vb = b.name.toLowerCase();
     }
 
     if (va === null && vb === null) return 0;
@@ -239,28 +280,33 @@ export default async function ClubMembersPage({
                 </TableCell>
               </TableRow>
             ) : (
-              members.map((m, i) => {
-                const name = [m.profiles?.first_name, m.profiles?.last_name]
-                  .filter(Boolean)
-                  .join(" ") || "—";
-                const isPlayer = m.role === "player";
-                const birthday = isPlayer && m.profiles?.birthday
-                  ? new Date(m.profiles.birthday).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              members.map((m) => {
+                const birthday = m.isPlayer && m.birthday
+                  ? new Date(m.birthday).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                  : null;
+                const jerseyDisplay = m.isPlayer && m.jerseyNumbers.length > 0
+                  ? m.jerseyNumbers.sort((a, b) => a - b).map((n) => `#${n}`).join(", ")
                   : null;
                 return (
-                  <TableRow key={`${m.team_id}-${m.profiles?.id ?? i}`}>
-                    <TableCell className="font-medium">{name}</TableCell>
+                  <TableRow key={m.profileId}>
+                    <TableCell className="font-medium">{m.name}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {birthday ?? "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {isPlayer && m.jersey_number != null ? `#${m.jersey_number}` : "—"}
+                      {jerseyDisplay ?? "—"}
                     </TableCell>
-                    <TableCell>{(m.teams as { name: string } | null)?.name ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">
-                        {ROLE_LABELS[m.role] ?? m.role}
-                      </Badge>
+                      <MultiTeamCell teams={m.teamNames} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {m.roles.map((r) => (
+                          <Badge key={r} variant="secondary">
+                            {ROLE_LABELS[r] ?? r}
+                          </Badge>
+                        ))}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
