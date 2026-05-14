@@ -210,7 +210,7 @@ export function BulkInviteModal({ teamId, open, onOpenChange }: BulkInviteModalP
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className={`max-h-[90vh] overflow-y-auto ${step === "upload" ? "max-w-lg" : "w-fit max-w-[90vw]"}`}>
+      <DialogContent className={`max-h-[90vh] overflow-y-auto ${step === "upload" ? "max-w-lg" : "w-fit max-w-[90vw] sm:w-fit sm:max-w-[90vw]"}`}>
         <DialogHeader>
           <DialogTitle>Bulk invite</DialogTitle>
         </DialogHeader>
