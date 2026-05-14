@@ -68,7 +68,7 @@ export default async function ClubMembersPage({
   let membersQuery = supabase
     .from("team_members")
     .select(
-      "team_id, role, profiles(id, first_name, last_name, email), teams(name)"
+      "team_id, role, jersey_number, profiles(id, first_name, last_name, birthday), teams(name)"
     )
     .in("team_id", teamIds.length ? teamIds : [""]);
 
@@ -80,13 +80,14 @@ export default async function ClubMembersPage({
   type MemberRow = {
     team_id: string;
     role: string;
-    profiles: { id: string; first_name: string | null; last_name: string | null; email: string | null } | null;
+    jersey_number: number | null;
+    profiles: { id: string; first_name: string | null; last_name: string | null; birthday: string | null } | null;
     teams: { name: string } | null;
   };
 
   let members = (memberRows ?? []) as MemberRow[];
 
-  // Client-side name filter (simple, avoids complex ilike on joined field)
+  // Client-side name filter
   if (q) {
     const lower = q.toLowerCase();
     members = members.filter((m) => {
@@ -94,7 +95,7 @@ export default async function ClubMembersPage({
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      return name.includes(lower) || m.profiles?.email?.toLowerCase().includes(lower);
+      return name.includes(lower);
     });
   }
 
@@ -105,7 +106,7 @@ export default async function ClubMembersPage({
       <form className="flex flex-wrap gap-2">
         <Input
           name="q"
-          placeholder="Search by name or email…"
+          placeholder="Search by name…"
           defaultValue={q ?? ""}
           className="max-w-xs"
         />
@@ -146,7 +147,8 @@ export default async function ClubMembersPage({
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead>Birth Date</TableHead>
+              <TableHead>Jersey #</TableHead>
               <TableHead>Team</TableHead>
               <TableHead>Role</TableHead>
             </TableRow>
@@ -154,7 +156,7 @@ export default async function ClubMembersPage({
           <TableBody>
             {members.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   No members found.
                 </TableCell>
               </TableRow>
@@ -163,11 +165,18 @@ export default async function ClubMembersPage({
                 const name = [m.profiles?.first_name, m.profiles?.last_name]
                   .filter(Boolean)
                   .join(" ") || "—";
+                const isPlayer = m.role === "player";
+                const birthday = isPlayer && m.profiles?.birthday
+                  ? new Date(m.profiles.birthday).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                  : null;
                 return (
                   <TableRow key={`${m.team_id}-${m.profiles?.id ?? i}`}>
                     <TableCell className="font-medium">{name}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {m.profiles?.email ?? "—"}
+                      {birthday ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {isPlayer && m.jersey_number != null ? `#${m.jersey_number}` : "—"}
                     </TableCell>
                     <TableCell>{(m.teams as { name: string } | null)?.name ?? "—"}</TableCell>
                     <TableCell>
