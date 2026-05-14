@@ -87,16 +87,42 @@ const VALID_ROW = {
   role: "player",
 };
 
-function setupDefaultMocks() {
+// Builds a thenable chainable query mock that resolves to { data, error: null }.
+// Supports both `await chain` and `await chain.single()`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeChain(data: unknown): any {
+  const p = Promise.resolve({ data, error: null });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c: any = { then: (res: any, rej: any) => p.then(res, rej), single: () => p };
+  for (const m of ["select", "eq", "is", "in", "ilike", "limit"]) c[m] = () => c;
+  return c;
+}
+
+// Routes from(table) calls by table name so the route's Promise.all queries all resolve.
+// pendingInvites and teamMembers default to [] (no duplicates) so the happy path proceeds.
+function setupDefaultMocks({
+  pendingInvites = [] as unknown[],
+  teamMembers = [] as unknown[],
+  managerLinks = [] as unknown[],
+} = {}) {
   mocks.mockResolveRequestUser.mockResolvedValue(AUTHED_USER);
   mocks.mockBulkLimiterLimit.mockResolvedValue({ success: true });
   mocks.mockAssertTeamAdmin.mockResolvedValue(true);
   mocks.mockSendEmail.mockResolvedValue(undefined);
   mocks.mockInsert.mockResolvedValue({ error: null });
-  // profiles + teams single() calls
-  mocks.mockSingle.mockResolvedValue({
-    data: { first_name: "Coach", last_name: "User", name: "Test Team" },
-    error: null,
+
+  mocks.mockFrom.mockImplementation((table: string) => {
+    switch (table) {
+      case "profiles":         return makeChain({ first_name: "Coach", last_name: "User" });
+      case "teams":            return makeChain({ name: "Test Team" });
+      case "team_members":     return makeChain(teamMembers);
+      case "profile_managers": return makeChain(managerLinks);
+      case "invitations": {
+        const sel = makeChain(pendingInvites);
+        return { select: () => sel, insert: mocks.mockInsert };
+      }
+      default: return makeChain(null);
+    }
   });
 }
 
@@ -274,6 +300,85 @@ describe("POST /api/invitations/bulk-send — server-side validation", () => {
     const body = await res.json();
     expect(body.sent).toBe(2);
     expect(mocks.mockInsert).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── DB-backed duplicate detection ─────────────────────────────────────────────
+
+describe("POST /api/invitations/bulk-send — duplicate detection (DB)", () => {
+  type PendingInvite = { email: string; first_name: string; last_name: string; birthday: string | null };
+  type TeamMember = { profile_id: string; profiles: { email: string; first_name: string; last_name: string; birthday: string | null } };
+  type ManagerLink = { managed_id: string; profiles: { email: string | null } | null };
+
+  function setup(opts: {
+    pendingInvites?: PendingInvite[];
+    teamMembers?: TeamMember[];
+    managerLinks?: ManagerLink[];
+  } = {}) {
+    setupDefaultMocks(opts);
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it("skips a row matching a pending invitation and reports it in already_exists_rows", async () => {
+    setup({ pendingInvites: [{ email: "jane@example.com", first_name: "Jane", last_name: "Smith", birthday: null }] });
+    const body = await (await POST(makeRequest({ teamId: TEAM_ID, rows: [VALID_ROW] }))).json();
+    expect(body.sent).toBe(0);
+    expect(body.already_exists).toBe(1);
+    expect(body.already_exists_rows).toEqual([{ email: "jane@example.com", first_name: "Jane", last_name: "Smith" }]);
+    expect(mocks.mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("skips a row matching an existing team member (profile email + name)", async () => {
+    setup({
+      teamMembers: [{
+        profile_id: "p1",
+        profiles: { email: "jane@example.com", first_name: "Jane", last_name: "Smith", birthday: null },
+      }],
+    });
+    const body = await (await POST(makeRequest({ teamId: TEAM_ID, rows: [VALID_ROW] }))).json();
+    expect(body.sent).toBe(0);
+    expect(body.already_exists).toBe(1);
+    expect(mocks.mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("skips a row via manager email: invite email = parent email, player name matches", async () => {
+    const PARENT_ROW = { ...VALID_ROW, email: "parent@example.com" };
+    setup({
+      teamMembers: [{
+        profile_id: "player-1",
+        profiles: { email: "player@example.com", first_name: "Jane", last_name: "Smith", birthday: null },
+      }],
+      managerLinks: [{ managed_id: "player-1", profiles: { email: "parent@example.com" } }],
+    });
+    const body = await (await POST(makeRequest({ teamId: TEAM_ID, rows: [PARENT_ROW] }))).json();
+    expect(body.sent).toBe(0);
+    expect(body.already_exists).toBe(1);
+    expect(mocks.mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("does not skip when email matches a pending invite but name differs", async () => {
+    setup({ pendingInvites: [{ email: "jane@example.com", first_name: "Different", last_name: "Person", birthday: null }] });
+    const body = await (await POST(makeRequest({ teamId: TEAM_ID, rows: [VALID_ROW] }))).json();
+    expect(body.sent).toBe(1);
+    expect(body.already_exists).toBe(0);
+    expect(mocks.mockInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips when invite birthday matches the pending invite birthday", async () => {
+    const rowWithBirthday = { ...VALID_ROW, birthday: "2010-05-01" };
+    setup({ pendingInvites: [{ email: "jane@example.com", first_name: "Jane", last_name: "Smith", birthday: "2010-05-01" }] });
+    const body = await (await POST(makeRequest({ teamId: TEAM_ID, rows: [rowWithBirthday] }))).json();
+    expect(body.sent).toBe(0);
+    expect(body.already_exists).toBe(1);
+  });
+
+  it("does not skip when birthdays differ (same email + name)", async () => {
+    const rowWithBirthday = { ...VALID_ROW, birthday: "2010-05-01" };
+    setup({ pendingInvites: [{ email: "jane@example.com", first_name: "Jane", last_name: "Smith", birthday: "2011-06-15" }] });
+    const body = await (await POST(makeRequest({ teamId: TEAM_ID, rows: [rowWithBirthday] }))).json();
+    expect(body.sent).toBe(1);
+    expect(body.already_exists).toBe(0);
   });
 });
 
