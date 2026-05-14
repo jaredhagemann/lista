@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
 export const metadata = { title: "Club Members" };
 
@@ -22,10 +23,34 @@ const ROLE_LABELS: Record<string, string> = {
   director: "Director",
 };
 
+type SortKey = "name" | "birthday" | "jersey" | "team" | "role";
+
+function sortHref(
+  col: SortKey,
+  currentSort: SortKey,
+  currentDir: string,
+  filters: { q?: string; team?: string; role?: string }
+) {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.team) params.set("team", filters.team);
+  if (filters.role) params.set("role", filters.role);
+  params.set("sort", col);
+  params.set("dir", currentSort === col && currentDir === "asc" ? "desc" : "asc");
+  return `?${params}`;
+}
+
+function SortIcon({ col, currentSort, currentDir }: { col: SortKey; currentSort: SortKey; currentDir: string }) {
+  if (col !== currentSort) return <ChevronsUpDown className="h-3 w-3 opacity-40" />;
+  return currentDir === "asc"
+    ? <ChevronUp className="h-3 w-3" />
+    : <ChevronDown className="h-3 w-3" />;
+}
+
 export default async function ClubMembersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; team?: string; role?: string }>;
+  searchParams: Promise<{ q?: string; team?: string; role?: string; sort?: string; dir?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -52,7 +77,10 @@ export default async function ClubMembersPage({
   const orgId = team?.organization_id;
   if (!orgId) redirect("/dashboard");
 
-  const { q, team: teamFilter, role: roleFilter } = await searchParams;
+  const { q, team: teamFilter, role: roleFilter, sort, dir } = await searchParams;
+  const currentSort: SortKey = (sort as SortKey) ?? "name";
+  const currentDir = dir === "desc" ? "desc" : "asc";
+  const filters = { q, team: teamFilter, role: roleFilter };
 
   // Fetch all teams in org (for filter UI)
   const { data: teams } = await supabase
@@ -75,7 +103,7 @@ export default async function ClubMembersPage({
   if (teamFilter) membersQuery = membersQuery.eq("team_id", teamFilter);
   if (roleFilter) membersQuery = membersQuery.eq("role", roleFilter);
 
-  const { data: memberRows } = await membersQuery.order("role");
+  const { data: memberRows } = await membersQuery;
 
   type MemberRow = {
     team_id: string;
@@ -87,7 +115,7 @@ export default async function ClubMembersPage({
 
   let members = (memberRows ?? []) as MemberRow[];
 
-  // Client-side name filter
+  // Name filter
   if (q) {
     const lower = q.toLowerCase();
     members = members.filter((m) => {
@@ -98,6 +126,42 @@ export default async function ClubMembersPage({
       return name.includes(lower);
     });
   }
+
+  // Sort
+  const asc = currentDir === "asc";
+  members = [...members].sort((a, b) => {
+    let va: string | number | null;
+    let vb: string | number | null;
+
+    switch (currentSort) {
+      case "birthday":
+        va = a.profiles?.birthday ?? null;
+        vb = b.profiles?.birthday ?? null;
+        break;
+      case "jersey":
+        va = a.jersey_number ?? null;
+        vb = b.jersey_number ?? null;
+        break;
+      case "team":
+        va = (a.teams as { name: string } | null)?.name ?? null;
+        vb = (b.teams as { name: string } | null)?.name ?? null;
+        break;
+      case "role":
+        va = a.role;
+        vb = b.role;
+        break;
+      default: // "name"
+        va = [a.profiles?.last_name, a.profiles?.first_name].filter(Boolean).join(" ").toLowerCase();
+        vb = [b.profiles?.last_name, b.profiles?.first_name].filter(Boolean).join(" ").toLowerCase();
+    }
+
+    if (va === null && vb === null) return 0;
+    if (va === null) return asc ? 1 : -1;
+    if (vb === null) return asc ? -1 : 1;
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  });
 
   return (
     <div className="space-y-6">
@@ -146,11 +210,25 @@ export default async function ClubMembersPage({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Birth Date</TableHead>
-              <TableHead>Jersey #</TableHead>
-              <TableHead>Team</TableHead>
-              <TableHead>Role</TableHead>
+              {(
+                [
+                  { col: "name", label: "Name" },
+                  { col: "birthday", label: "Birth Date" },
+                  { col: "jersey", label: "Jersey #" },
+                  { col: "team", label: "Team" },
+                  { col: "role", label: "Role" },
+                ] as { col: SortKey; label: string }[]
+              ).map(({ col, label }) => (
+                <TableHead key={col}>
+                  <a
+                    href={sortHref(col, currentSort, currentDir, filters)}
+                    className="flex items-center gap-1 hover:text-foreground select-none"
+                  >
+                    {label}
+                    <SortIcon col={col} currentSort={currentSort} currentDir={currentDir} />
+                  </a>
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
