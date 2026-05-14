@@ -94,9 +94,9 @@ export function DashboardNav({
               <Image
                 src={logoUrl}
                 alt={orgName ?? "Home"}
-                width={120}
-                height={36}
-                className="h-9 w-auto object-contain"
+                width={160}
+                height={48}
+                className="h-12 w-auto object-contain"
               />
             ) : (
               <span className="text-xl font-bold">{orgName ?? "lista"}</span>

@@ -100,7 +100,7 @@ export function InviteSignupForm({
             <img
               src={logoUrl}
               alt={brandName ?? "Club logo"}
-              className="mx-auto mb-2 h-12 w-auto object-contain"
+              className="mx-auto mb-2 h-16 w-auto object-contain"
             />
           ) : (
             <CardTitle className="text-2xl font-bold">
