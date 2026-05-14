@@ -60,9 +60,9 @@ export function LoginForm({
               <Image
                 src={logoUrl}
                 alt={appName}
-                width={160}
-                height={64}
-                className="h-16 w-auto object-contain"
+                width={200}
+                height={80}
+                className="h-20 w-auto object-contain"
               />
             </div>
           ) : (
