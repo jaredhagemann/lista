@@ -27,7 +27,7 @@ type SendResult = {
   sent: number;
   skipped: number;
   failed: number;
-  results: { email: string; status: "sent" | "failed"; error?: string }[];
+  results: { id?: string; email: string; status: "sent" | "failed"; error?: string }[];
 };
 
 const TEMPLATE_CSV =
@@ -116,6 +116,7 @@ export function BulkInviteModal({ teamId, open, onOpenChange }: BulkInviteModalP
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [retryStates, setRetryStates] = useState<Record<string, "loading" | "sent" | "failed">>({});
 
   const hasBirthday = rows.some((r) => r.birthday);
 
@@ -129,7 +130,19 @@ export function BulkInviteModal({ teamId, open, onOpenChange }: BulkInviteModalP
     setRows([]);
     setResult(null);
     setFileError(null);
+    setRetryStates({});
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleRetry(invitationId: string) {
+    setRetryStates((prev) => ({ ...prev, [invitationId]: "loading" }));
+    try {
+      const res = await fetch(`/api/invitations/${invitationId}/resend`, { method: "POST" });
+      const data = await res.json();
+      setRetryStates((prev) => ({ ...prev, [invitationId]: data.emailSent ? "sent" : "failed" }));
+    } catch {
+      setRetryStates((prev) => ({ ...prev, [invitationId]: "failed" }));
+    }
   }
 
   function handleClose(open: boolean) {
@@ -314,15 +327,40 @@ export function BulkInviteModal({ teamId, open, onOpenChange }: BulkInviteModalP
               )}
             </div>
             {result.failed > 0 && (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <p className="text-sm font-medium">Failed:</p>
                 {result.results
                   .filter((r) => r.status === "failed")
-                  .map((r, i) => (
-                    <p key={i} className="text-sm text-destructive">
-                      {r.email}{r.error ? ` — ${r.error}` : ""}
-                    </p>
-                  ))}
+                  .map((r, i) => {
+                    const retryState = r.id ? retryStates[r.id] : undefined;
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-3 rounded-md border p-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{r.email}</p>
+                          {r.error && (
+                            <p className="text-xs text-muted-foreground">{r.error}</p>
+                          )}
+                        </div>
+                        {r.id && retryState !== "sent" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0"
+                            onClick={() => handleRetry(r.id!)}
+                            disabled={retryState === "loading"}
+                          >
+                            {retryState === "loading" ? "Retrying…" : "Retry"}
+                          </Button>
+                        )}
+                        {retryState === "sent" && (
+                          <Badge variant="outline" className="shrink-0 gap-1 border-green-500 text-green-600">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Sent
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             )}
             <div className="flex justify-end">

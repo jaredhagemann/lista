@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       .join(" ") || "Your coach";
 
   // For each valid row: send first, then insert with determined email_status
-  type RowResult = { email: string; status: "sent" | "failed"; error?: string };
+  type RowResult = { id?: string; email: string; status: "sent" | "failed"; error?: string };
   const results: RowResult[] = [];
 
   for (const row of validRows) {
@@ -112,7 +112,12 @@ export async function POST(request: Request) {
     if (insertError) {
       results.push({ email: row.email, status: "failed", error: insertError.message });
     } else {
-      results.push({ email: row.email, status: emailSent ? "sent" : "failed" });
+      results.push({
+        id: invitationId,
+        email: row.email,
+        status: emailSent ? "sent" : "failed",
+        error: emailSent ? undefined : "Email delivery failed",
+      });
     }
   }
 
