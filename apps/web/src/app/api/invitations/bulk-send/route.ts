@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       .is("accepted_at", null),
     admin
       .from("team_members")
-      .select("profiles(email, first_name, last_name, birthday)")
+      .select("profile_id, profiles(email, first_name, last_name, birthday)")
       .eq("team_id", teamId),
   ]);
 
@@ -79,13 +79,51 @@ export async function POST(request: Request) {
     ...((teamMemberProfiles ?? []).map((m) => m.profiles as ExistingPerson | null).filter(Boolean) as ExistingPerson[]),
   ];
 
+  // Build a profile_id → profile map so manager links can resolve player data
+  const memberProfileMap = new Map<string, ExistingPerson>(
+    (teamMemberProfiles ?? [])
+      .filter((m) => m.profile_id && m.profiles)
+      .map((m) => [m.profile_id as string, m.profiles as ExistingPerson])
+  );
+  const memberProfileIds = Array.from(memberProfileMap.keys());
+
+  // Fetch managers of existing team members (second round-trip; depends on member IDs above)
+  const { data: managerLinks } = memberProfileIds.length > 0
+    ? await admin
+        .from("profile_managers")
+        .select("managed_id, profiles!profile_managers_manager_id_fkey(email)")
+        .in("managed_id", memberProfileIds)
+    : { data: [] as { managed_id: string; profiles: { email: string | null } | null }[] };
+
+  // manager email (lowercase) → managed player profiles on this team
+  const managerEmailToPlayers = new Map<string, ExistingPerson[]>();
+  for (const link of managerLinks ?? []) {
+    const mgr = link.profiles as { email: string | null } | null;
+    if (!mgr?.email) continue;
+    const key = mgr.email.toLowerCase();
+    const player = memberProfileMap.get(link.managed_id);
+    if (!player) continue;
+    if (!managerEmailToPlayers.has(key)) managerEmailToPlayers.set(key, []);
+    managerEmailToPlayers.get(key)!.push(player);
+  }
+
   function isExistingDuplicate(row: BulkInputRow): boolean {
-    return existingPeople.some((p) => {
+    const rowEmail = row.email.trim().toLowerCase();
+    const rowFn = row.first_name.trim().toLowerCase();
+    const rowLn = row.last_name.trim().toLowerCase();
+
+    if (existingPeople.some((p) => {
       if (!p.email || !p.first_name) return false;
-      const emailMatch = p.email.toLowerCase() === row.email.trim().toLowerCase();
-      const fnMatch = p.first_name.toLowerCase() === row.first_name.trim().toLowerCase();
-      const lnMatch = (p.last_name ?? "").toLowerCase() === row.last_name.trim().toLowerCase();
-      if (!emailMatch || !fnMatch || !lnMatch) return false;
+      if (p.email.toLowerCase() !== rowEmail) return false;
+      if (p.first_name.toLowerCase() !== rowFn) return false;
+      if ((p.last_name ?? "").toLowerCase() !== rowLn) return false;
+      return row.birthday ? p.birthday === row.birthday : true;
+    })) return true;
+
+    // Also match via manager email: invite email = parent email, player name/birthday matches
+    return (managerEmailToPlayers.get(rowEmail) ?? []).some((p) => {
+      if ((p.first_name ?? "").toLowerCase() !== rowFn) return false;
+      if ((p.last_name ?? "").toLowerCase() !== rowLn) return false;
       return row.birthday ? p.birthday === row.birthday : true;
     });
   }

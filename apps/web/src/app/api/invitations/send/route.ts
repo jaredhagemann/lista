@@ -69,8 +69,10 @@ export async function POST(request: Request) {
     }
   }
 
-  // Check for an existing pending invitation or team member with the same details
-  const [{ data: dupInvites }, { data: dupMembers }] = await Promise.all([
+  // Check for an existing pending invitation or team member with the same details.
+  // Uses email only (no name filter) for the profiles query so the same results
+  // can serve both the direct-player check and the manager-email check.
+  const [{ data: dupInvites }, { data: emailProfiles }] = await Promise.all([
     admin
       .from("invitations")
       .select("birthday")
@@ -81,31 +83,63 @@ export async function POST(request: Request) {
       .ilike("last_name", lastName ?? ""),
     admin
       .from("profiles")
-      .select("id, birthday")
-      .ilike("email", email)
-      .ilike("first_name", firstName ?? "")
-      .ilike("last_name", lastName ?? ""),
+      .select("id, first_name, last_name, birthday")
+      .ilike("email", email),
   ]);
 
   const pendingDuplicate = (dupInvites ?? []).some(
     (inv) => birthday ? inv.birthday === birthday : true
   );
 
-  let memberDuplicate = false;
-  const matchingProfileIds = (dupMembers ?? [])
-    .filter((p) => birthday ? p.birthday === birthday : true)
+  // Profiles whose email AND name/birthday match — potential direct player duplicates
+  const directMatchIds = (emailProfiles ?? [])
+    .filter((p) =>
+      (p.first_name ?? "").toLowerCase() === (firstName ?? "").toLowerCase() &&
+      (p.last_name ?? "").toLowerCase() === (lastName ?? "").toLowerCase() &&
+      (birthday ? p.birthday === birthday : true)
+    )
     .map((p) => p.id);
-  if (matchingProfileIds.length > 0) {
-    const { data: memberRows } = await admin
-      .from("team_members")
+
+  const allEmailProfileIds = (emailProfiles ?? []).map((p) => p.id);
+
+  // Run direct member check and manager-link traversal in parallel
+  const [directMemberResult, managerLinksResult] = await Promise.all([
+    directMatchIds.length > 0
+      ? admin.from("team_members").select("id").eq("team_id", teamId).in("profile_id", directMatchIds).limit(1)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    allEmailProfileIds.length > 0
+      ? admin.from("profile_managers").select("managed_id").in("manager_id", allEmailProfileIds)
+      : Promise.resolve({ data: [] as { managed_id: string }[] }),
+  ]);
+
+  const memberDuplicate = (directMemberResult.data?.length ?? 0) > 0;
+
+  // Check whether the invite email belongs to a manager of an existing team member
+  // whose name and birthday also match — catches invites sent via a parent's email.
+  let managedMemberDuplicate = false;
+  const managedIds = (managerLinksResult.data ?? []).map((r) => r.managed_id);
+  if (!memberDuplicate && managedIds.length > 0) {
+    let playerQuery = admin
+      .from("profiles")
       .select("id")
-      .eq("team_id", teamId)
-      .in("profile_id", matchingProfileIds)
-      .limit(1);
-    memberDuplicate = (memberRows?.length ?? 0) > 0;
+      .in("id", managedIds)
+      .ilike("first_name", firstName ?? "")
+      .ilike("last_name", lastName ?? "");
+    if (birthday) playerQuery = playerQuery.eq("birthday", birthday);
+    const { data: matchingManagedPlayers } = await playerQuery;
+    const matchingIds = (matchingManagedPlayers ?? []).map((p) => p.id);
+    if (matchingIds.length > 0) {
+      const { data: managedMemberRows } = await admin
+        .from("team_members")
+        .select("id")
+        .eq("team_id", teamId)
+        .in("profile_id", matchingIds)
+        .limit(1);
+      managedMemberDuplicate = (managedMemberRows?.length ?? 0) > 0;
+    }
   }
 
-  if (pendingDuplicate || memberDuplicate) {
+  if (pendingDuplicate || memberDuplicate || managedMemberDuplicate) {
     return NextResponse.json(
       { error: "This person already has a pending invitation or is already a member of this team." },
       { status: 409 }
