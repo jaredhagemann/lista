@@ -26,6 +26,8 @@ type Step = "upload" | "preview" | "result";
 type SendResult = {
   sent: number;
   skipped: number;
+  already_exists: number;
+  already_exists_rows: { email: string; first_name: string; last_name: string }[];
   failed: number;
   results: { id?: string; email: string; status: "sent" | "failed"; error?: string }[];
 };
@@ -322,10 +324,24 @@ export function BulkInviteModal({ teamId, open, onOpenChange }: BulkInviteModalP
               {result.skipped > 0 && (
                 <span className="text-muted-foreground">{result.skipped} skipped</span>
               )}
+              {result.already_exists > 0 && (
+                <span className="text-muted-foreground">{result.already_exists} already in team</span>
+              )}
               {result.failed > 0 && (
                 <span className="text-destructive font-medium">{result.failed} failed</span>
               )}
             </div>
+            {result.already_exists_rows?.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Already in team or pending:</p>
+                {result.already_exists_rows.map((r, i) => (
+                  <div key={i} className="rounded-md border p-2">
+                    <p className="text-sm">{r.first_name} {r.last_name}</p>
+                    <p className="text-xs text-muted-foreground">{r.email}</p>
+                  </div>
+                ))}
+              </div>
+            )}
             {result.failed > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">Failed:</p>

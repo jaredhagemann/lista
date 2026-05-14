@@ -54,12 +54,41 @@ export async function POST(request: Request) {
     { brandName, logoUrl },
     baseUrl,
     { data: team },
+    { data: pendingInvites },
+    { data: teamMemberProfiles },
   ] = await Promise.all([
     admin.from("profiles").select("first_name, last_name").eq("id", user.id).single(),
     inviteBranding(teamId),
     inviteBaseUrl(teamId),
     admin.from("teams").select("name").eq("id", teamId).single(),
+    admin
+      .from("invitations")
+      .select("email, first_name, last_name, birthday")
+      .eq("team_id", teamId)
+      .is("accepted_at", null),
+    admin
+      .from("team_members")
+      .select("profiles(email, first_name, last_name, birthday)")
+      .eq("team_id", teamId),
   ]);
+
+  type ExistingPerson = { email: string | null; first_name: string | null; last_name: string | null; birthday: string | null };
+
+  const existingPeople: ExistingPerson[] = [
+    ...(pendingInvites ?? []),
+    ...((teamMemberProfiles ?? []).map((m) => m.profiles as ExistingPerson | null).filter(Boolean) as ExistingPerson[]),
+  ];
+
+  function isExistingDuplicate(row: BulkInputRow): boolean {
+    return existingPeople.some((p) => {
+      if (!p.email || !p.first_name) return false;
+      const emailMatch = p.email.toLowerCase() === row.email.trim().toLowerCase();
+      const fnMatch = p.first_name.toLowerCase() === row.first_name.trim().toLowerCase();
+      const lnMatch = (p.last_name ?? "").toLowerCase() === row.last_name.trim().toLowerCase();
+      if (!emailMatch || !fnMatch || !lnMatch) return false;
+      return row.birthday ? p.birthday === row.birthday : true;
+    });
+  }
 
   const teamName = team?.name ?? "your team";
   const inviterName =
@@ -69,9 +98,15 @@ export async function POST(request: Request) {
 
   // For each valid row: send first, then insert with determined email_status
   type RowResult = { id?: string; email: string; status: "sent" | "failed"; error?: string };
+  type AlreadyExistsRow = { email: string; first_name: string; last_name: string };
   const results: RowResult[] = [];
+  const alreadyExistsRows: AlreadyExistsRow[] = [];
 
   for (const row of validRows) {
+    if (isExistingDuplicate(row)) {
+      alreadyExistsRows.push({ email: row.email, first_name: row.first_name, last_name: row.last_name });
+      continue;
+    }
     const invitationId = crypto.randomUUID();
     const inviteUrl = `${baseUrl}/invite/${invitationId}`;
     const role = row.role.toLowerCase() as InvitationRole;
@@ -128,6 +163,8 @@ export async function POST(request: Request) {
     success: true,
     sent,
     skipped: skippedCount + serverErrorCount,
+    already_exists: alreadyExistsRows.length,
+    already_exists_rows: alreadyExistsRows,
     failed,
     results,
   });

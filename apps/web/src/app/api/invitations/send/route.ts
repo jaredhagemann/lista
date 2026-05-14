@@ -69,6 +69,49 @@ export async function POST(request: Request) {
     }
   }
 
+  // Check for an existing pending invitation or team member with the same details
+  const [{ data: dupInvites }, { data: dupMembers }] = await Promise.all([
+    admin
+      .from("invitations")
+      .select("birthday")
+      .eq("team_id", teamId)
+      .is("accepted_at", null)
+      .ilike("email", email)
+      .ilike("first_name", firstName ?? "")
+      .ilike("last_name", lastName ?? ""),
+    admin
+      .from("profiles")
+      .select("id, birthday")
+      .ilike("email", email)
+      .ilike("first_name", firstName ?? "")
+      .ilike("last_name", lastName ?? ""),
+  ]);
+
+  const pendingDuplicate = (dupInvites ?? []).some(
+    (inv) => birthday ? inv.birthday === birthday : true
+  );
+
+  let memberDuplicate = false;
+  const matchingProfileIds = (dupMembers ?? [])
+    .filter((p) => birthday ? p.birthday === birthday : true)
+    .map((p) => p.id);
+  if (matchingProfileIds.length > 0) {
+    const { data: memberRows } = await admin
+      .from("team_members")
+      .select("id")
+      .eq("team_id", teamId)
+      .in("profile_id", matchingProfileIds)
+      .limit(1);
+    memberDuplicate = (memberRows?.length ?? 0) > 0;
+  }
+
+  if (pendingDuplicate || memberDuplicate) {
+    return NextResponse.json(
+      { error: "This person already has a pending invitation or is already a member of this team." },
+      { status: 409 }
+    );
+  }
+
   // Generate UUID first — the invite URL is knowable before the row exists
   const invitationId = crypto.randomUUID();
 
