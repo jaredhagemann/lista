@@ -81,9 +81,9 @@ export function SignupForm({
               <Image
                 src={logoUrl}
                 alt={appName}
-                width={120}
-                height={40}
-                className="h-10 w-auto object-contain"
+                width={200}
+                height={80}
+                className="h-20 w-auto object-contain"
               />
             </div>
           ) : (
