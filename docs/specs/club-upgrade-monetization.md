@@ -166,7 +166,7 @@ The `defaultPm` ID is passed explicitly to `subscriptions.create` (see conversio
 
 ### Trial Expiration (Day 91 Cron)
 
-A daily cron job (`/api/cron/trial-expiration`) queries orgs where `trial_ends_at < now()` and `subscription_status = 'trialing'`.
+A daily cron job (`/api/cron/trial-expiration`) queries orgs where `trial_ends_at < now()` and `subscription_status = 'trialing'`. Register it in `vercel.json` alongside the existing reminders cron — same daily schedule (`0 12 * * *`) and same `CRON_SECRET` auth pattern.
 
 **Idempotency guard:** The query already filters on `subscription_status = 'trialing'`, which is the primary guard — once the subscription is created and the webhook fires, `subscription_status` flips to `'active'` and the org is excluded from future runs. However, the webhook may arrive after the next cron run. To close this window:
 
@@ -182,7 +182,7 @@ A daily cron job (`/api/cron/trial-expiration`) queries orgs where `trial_ends_a
 
 **Downgrade path (no payment method):**
 
-Set `plan → 'free'`, `subscription_status → null`, `team_limit → 1`. `trial_ends_at` is left as-is (permanent record).
+Set `plan → 'free'`, `subscription_status → NULL`, `team_limit → 1`. `trial_ends_at` is left as-is (permanent record). `NULL` is the correct value here — there was never a Stripe subscription, so `'canceled'` would be semantically wrong. The feature gating check (`subscription_status IN ('trialing', 'active', 'past_due')`) correctly excludes `NULL`, so free orgs with no subscription history are gated out regardless of how they got there.
 
 ---
 
@@ -197,7 +197,13 @@ Two Stripe products, each with a monthly recurring price:
 | Club Small | `STRIPE_CLUB_SMALL_PRICE_ID` | $99/month |
 | Club Large | `STRIPE_CLUB_LARGE_PRICE_ID` | $299/month |
 
-The existing `STRIPE_CLUB_PRICE_ID` is retired once JOGA FC is migrated to the new price ID.
+The existing `STRIPE_CLUB_PRICE_ID` is retired: remove all code references to it as part of this feature. The env var itself can remain in place (harmless) but must be removed from `env.example` and replaced with the two new vars. JOGA FC's Stripe subscription (if any) is unaffected — the migration backfills them to `club_large` at the DB level only.
+
+Add to `env.example`:
+```
+STRIPE_CLUB_SMALL_PRICE_ID=
+STRIPE_CLUB_LARGE_PRICE_ID=
+```
 
 ### API Routes
 
@@ -208,6 +214,7 @@ The existing `STRIPE_CLUB_PRICE_ID` is retired once JOGA FC is migrated to the n
 | `POST /api/billing/create-checkout` | *(existing, updated)* Creates a subscription checkout session for direct upgrades and re-upgrades after cancellation; body: `{ orgId, plan }` |
 | `POST /api/billing/change-plan` | Upgrades Small → Large (immediate subscription item update) or initiates Large → Small deferred downgrade (Subscription Schedule); body: `{ orgId, plan }` |
 | `POST /api/billing/cancel` | Sets `cancel_at_period_end = true` on the Stripe subscription; body: `{ orgId }` |
+| `POST /api/billing/reactivate` | Clears `cancel_at_period_end` on the Stripe subscription (reverses a pending cancellation); body: `{ orgId }` |
 | `POST /api/billing/portal` | *(existing)* Opens Stripe Customer Portal (payment method + history + cancel only — plan switching disabled) |
 | `POST /api/billing/webhook` | *(existing, extended)* Handles Stripe events |
 | `GET /api/billing/status` | *(existing, extended)* Returns plan, trial status, days remaining, pending plan change |
@@ -225,6 +232,7 @@ Every billing mutation is rejected with 403 unless the caller is the org owner. 
 | `POST /api/billing/create-checkout` | Owner | `free`, or `club_*` with `canceled` | any / null | — |
 | `POST /api/billing/change-plan` | Owner | `club_small` or `club_large` | `trialing` or `active` | `stripe_subscription_id IS NOT NULL` when `subscription_status = 'active'` |
 | `POST /api/billing/cancel` | Owner | `club_small` or `club_large` | `active` | `stripe_subscription_id IS NOT NULL`; `subscription_cancel_at IS NULL`; `pending_plan IS NULL` |
+| `POST /api/billing/reactivate` | Owner | `club_small` or `club_large` | `active` | `stripe_subscription_id IS NOT NULL`; `subscription_cancel_at IS NOT NULL` |
 | `POST /api/billing/portal` | Owner | `club_small` or `club_large` | not `canceled` | `stripe_subscription_id IS NOT NULL` |
 | `GET /api/billing/status` | Owner or director | any | any | — |
 | `POST /api/cron/trial-expiration` | Cron (`CRON_SECRET`) | — | — | — |
@@ -390,7 +398,7 @@ Cancellation is two-phase in Stripe:
 1. **Phase 1 — Pending cancellation:** User clicks "Cancel plan" (or cancels via the Stripe portal). This sets `cancel_at_period_end = true` on the Stripe subscription. Stripe fires `customer.subscription.updated`; the webhook writes `subscription_cancel_at`. Access remains fully active. `subscription_status` stays `'active'`.
 2. **Phase 2 — Final deletion:** At period end, Stripe fires `customer.subscription.deleted`. The webhook sets `plan = 'free'`, `team_limit = 1`, `subscription_status = 'canceled'`, `subscription_cancel_at = NULL`, and quarantines the subdomain.
 
-**Reactivation:** If the user reactivates before period end, Stripe fires `customer.subscription.updated` with `cancel_at_period_end = false`. The webhook clears `subscription_cancel_at`; UI returns to the normal active state.
+**Reactivation:** The "Reactivate" button on the billing page calls `POST /api/billing/reactivate`. The route calls `stripe.subscriptions.update(stripe_subscription_id, { cancel_at_period_end: false })`. Stripe fires `customer.subscription.updated` with `cancel_at_period_end = false`; the webhook clears `subscription_cancel_at` and the UI returns to the normal active state. The route itself makes no DB write — the webhook is the sole writer for this transition.
 
 Data is never deleted.
 

@@ -1,2 +1,3 @@
+#!/bin/sh
 pnpm exec lint-staged
 pnpm --filter @lista/web exec tsc --noEmit
