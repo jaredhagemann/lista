@@ -1,4 +1,5 @@
 import { adminClient } from "@/lib/api-auth";
+import { isClubPlan } from "@/lib/plan";
 
 /**
  * Resolves the correct base URL for invite links based on the team's org.
@@ -22,7 +23,7 @@ export async function inviteBaseUrl(teamId: string): Promise<string> {
       .eq("id", team.organization_id)
       .single();
 
-    if (org?.plan === "club") {
+    if (org && isClubPlan(org.plan)) {
       if (org.custom_domain) return `https://${org.custom_domain}`;
       if (org.subdomain) return `https://${org.subdomain}.lista.team`;
     }
@@ -53,7 +54,7 @@ export async function inviteBranding(
       .eq("id", team.organization_id)
       .single();
 
-    if (org?.plan === "club") {
+    if (org && isClubPlan(org.plan)) {
       return {
         brandName: org.org_name_public ?? undefined,
         logoUrl: org.logo_url ?? undefined,

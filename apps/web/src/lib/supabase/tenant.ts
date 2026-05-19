@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getRedis } from "@/lib/supabase/redis";
+import { isClubPlan, type OrgPlan } from "@/lib/plan";
 import type { Database } from "@/types/database";
 import type { ReadonlyHeaders } from "next/dist/server/web/spec-extension/adapters/headers";
 
@@ -8,14 +9,14 @@ import type { ReadonlyHeaders } from "next/dist/server/web/spec-extension/adapte
 export type TenantContext = {
   organizationId: string;
   slug: string;
-  plan: "free" | "club";
+  plan: OrgPlan;
   brandColor: string | null;
   brandColorSecondary: string | null;
   logoUrl: string | null;
   faviconUrl: string | null;
   orgNamePublic: string | null;
   subdomain: string | null;
-  isWhiteLabel: boolean; // plan === 'club'
+  isWhiteLabel: boolean; // isClubPlan(plan) — both club tiers are white-label
 };
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -108,14 +109,14 @@ export async function resolveTenant(
   const tenant: TenantContext = {
     organizationId: org.id,
     slug: org.slug,
-    plan: org.plan as "free" | "club",
+    plan: (org.plan as OrgPlan) ?? "free",
     brandColor: org.brand_color ?? null,
     brandColorSecondary: org.brand_color_secondary ?? null,
     logoUrl: org.logo_url ?? null,
     faviconUrl: org.favicon_url ?? null,
     orgNamePublic: org.org_name_public ?? null,
     subdomain: org.subdomain ?? null,
-    isWhiteLabel: org.plan === "club",
+    isWhiteLabel: isClubPlan(org.plan),
   };
 
   await r.set(cacheKey(hostname), tenant, { ex: CACHE_TTL_SECONDS });
@@ -140,7 +141,7 @@ export function getTenantFromHeaders(
   return {
     organizationId: id,
     slug: headers.get("x-tenant-slug") ?? "",
-    plan: (headers.get("x-tenant-plan") as "free" | "club") ?? "free",
+    plan: (headers.get("x-tenant-plan") as OrgPlan) ?? "free",
     brandColor: headers.get("x-tenant-brand-color"),
     brandColorSecondary: headers.get("x-tenant-brand-color-secondary"),
     logoUrl: headers.get("x-tenant-logo-url"),

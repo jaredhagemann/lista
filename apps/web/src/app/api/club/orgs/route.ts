@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
+import { isClubPlan } from "@/lib/plan";
 
 /**
  * GET /api/club/orgs
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
 
   const clubOrgs = (memberships ?? [])
     .map((m) => m.organizations as { id: string; name: string; org_name_public: string | null; plan: string | null } | null)
-    .filter((org): org is NonNullable<typeof org> => org !== null && org.plan === "club")
+    .filter((org): org is NonNullable<typeof org> => org !== null && isClubPlan(org.plan))
     .map((org) => ({ id: org.id, name: org.name, orgNamePublic: org.org_name_public }));
 
   return NextResponse.json(clubOrgs);

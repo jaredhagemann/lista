@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { Toaster } from "@/components/ui/sonner";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
+import { isClubPlan } from "@/lib/plan";
 import type { Database } from "@/types/database";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -125,7 +126,7 @@ export default async function DashboardLayout({
         .maybeSingle(),
     ]);
     orgRole = (orgMembership?.role as "owner" | "director" | null) ?? null;
-    if (orgData?.plan === "club" && orgData?.subdomain_status === "active" && orgData?.subdomain) {
+    if (isClubPlan(orgData?.plan) && orgData?.subdomain_status === "active" && orgData?.subdomain) {
       activeOrgSubdomain = orgData.subdomain;
     }
   }

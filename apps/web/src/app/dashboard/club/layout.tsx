@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ClubOrgProvider } from "@/context/club-org-context";
 import { ClubSidebar } from "@/components/club/club-sidebar";
+import { hasClubAccess } from "@/lib/plan";
 import type { Database } from "@/types/database";
 
 type Org = Database["public"]["Tables"]["organizations"]["Row"];
@@ -50,8 +51,13 @@ export default async function ClubLayout({
 
   const org = membership.organizations as Org;
 
-  // Free-tier orgs don't have access to the club portal — send them to the upgrade page
-  if (org.plan !== "club") redirect("/dashboard/settings?tab=plan");
+  // Compound access gate (spec → Feature Gating): the org must be on a club
+  // tier AND have an access-granting subscription_status. Free orgs, stale
+  // `trialing` writes on a free plan, and canceled club orgs are all sent to
+  // the upgrade page. `past_due` keeps access so a failed payment can be fixed.
+  if (!hasClubAccess(org.plan, org.subscription_status)) {
+    redirect("/dashboard/settings?tab=plan");
+  }
 
   const clubOrg = {
     orgId: org.id,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { invalidateTenantCache } from "@/lib/supabase/tenant";
+import { isClubPlan } from "@/lib/plan";
 
 // Subdomains reserved for Lista infrastructure — never assignable to a club org.
 const RESERVED_SUBDOMAINS = new Set([
@@ -100,9 +101,9 @@ export async function PATCH(request: Request) {
       ? subdomain.toLowerCase()
       : subdomain;
 
-  // Only club-plan orgs may claim a subdomain
+  // Only club-tier orgs (club_small or club_large) may claim a subdomain
   if (normalisedSubdomain !== undefined && normalisedSubdomain !== null && normalisedSubdomain !== "") {
-    if (currentOrg?.plan !== "club") {
+    if (!isClubPlan(currentOrg?.plan)) {
       return NextResponse.json(
         { error: "subdomain_requires_club_plan" },
         { status: 403 }

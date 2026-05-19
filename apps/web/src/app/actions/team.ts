@@ -9,6 +9,7 @@ import type { Database } from "@/types/database";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
 import { getActiveProfileId } from "@/lib/get-active-membership";
 import { sendTeamDeletionNotifications } from "@/lib/notifications/team-deletion";
+import { isClubPlan } from "@/lib/plan";
 
 const BASE_DOMAIN = "lista.team";
 
@@ -119,7 +120,7 @@ export async function setActiveTeam(teamId: string) {
       .select("subdomain, subdomain_status, plan")
       .eq("id", teamRow.organization_id)
       .maybeSingle();
-    if (orgRow?.plan === "club" && orgRow?.subdomain_status === "active" && orgRow?.subdomain) {
+    if (isClubPlan(orgRow?.plan) && orgRow?.subdomain_status === "active" && orgRow?.subdomain) {
       targetSubdomain = orgRow.subdomain;
     }
   }
