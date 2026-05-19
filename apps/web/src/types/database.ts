@@ -547,14 +547,23 @@ export type Database = {
           logo_url: string | null
           name: string
           org_name_public: string | null
+          pending_plan: string | null
+          pending_plan_at: string | null
           plan: string
           slug: string
           stripe_customer_id: string | null
+          stripe_schedule_id: string | null
           stripe_subscription_id: string | null
           subdomain: string | null
           subdomain_quarantined_at: string | null
           subdomain_status: string | null
+          subscription_cancel_at: string | null
           subscription_status: string | null
+          team_limit: number | null
+          trial_ends_at: string | null
+          trial_reminder_1d_sent_at: string | null
+          trial_reminder_30d_sent_at: string | null
+          trial_reminder_7d_sent_at: string | null
         }
         Insert: {
           brand_color?: string | null
@@ -567,14 +576,23 @@ export type Database = {
           logo_url?: string | null
           name: string
           org_name_public?: string | null
+          pending_plan?: string | null
+          pending_plan_at?: string | null
           plan?: string
           slug: string
           stripe_customer_id?: string | null
+          stripe_schedule_id?: string | null
           stripe_subscription_id?: string | null
           subdomain?: string | null
           subdomain_quarantined_at?: string | null
           subdomain_status?: string | null
+          subscription_cancel_at?: string | null
           subscription_status?: string | null
+          team_limit?: number | null
+          trial_ends_at?: string | null
+          trial_reminder_1d_sent_at?: string | null
+          trial_reminder_30d_sent_at?: string | null
+          trial_reminder_7d_sent_at?: string | null
         }
         Update: {
           brand_color?: string | null
@@ -587,14 +605,23 @@ export type Database = {
           logo_url?: string | null
           name?: string
           org_name_public?: string | null
+          pending_plan?: string | null
+          pending_plan_at?: string | null
           plan?: string
           slug?: string
           stripe_customer_id?: string | null
+          stripe_schedule_id?: string | null
           stripe_subscription_id?: string | null
           subdomain?: string | null
           subdomain_quarantined_at?: string | null
           subdomain_status?: string | null
+          subscription_cancel_at?: string | null
           subscription_status?: string | null
+          team_limit?: number | null
+          trial_ends_at?: string | null
+          trial_reminder_1d_sent_at?: string | null
+          trial_reminder_30d_sent_at?: string | null
+          trial_reminder_7d_sent_at?: string | null
         }
         Relationships: [
           {
