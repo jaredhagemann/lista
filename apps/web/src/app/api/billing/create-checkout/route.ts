@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { getStripe } from "@/lib/stripe";
+import { priceIdForPlan } from "@/lib/billing";
 
 /**
  * POST /api/billing/create-checkout
@@ -107,9 +108,13 @@ export async function POST(request: Request) {
     {
       customer: customerId,
       mode: "subscription",
+      // The full tiered-checkout rework (accept `{ orgId, plan }` and select the
+      // matching price) lands in the next plan item. Until then this route
+      // mirrors its pre-tier behaviour and defaults to Club Large, which is the
+      // tier the migration backfills legacy `'club'` orgs into.
       line_items: [
         {
-          price: process.env.STRIPE_CLUB_PRICE_ID!,
+          price: priceIdForPlan("club_large"),
           quantity: 1,
         },
       ],
