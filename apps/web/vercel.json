@@ -5,6 +5,10 @@
       "schedule": "0 12 * * *"
     },
     {
+      "path": "/api/cron/trial-expiration",
+      "schedule": "0 12 * * *"
+    },
+    {
       "path": "/api/cron/subdomain-quarantine",
       "schedule": "0 2 * * *"
     }
