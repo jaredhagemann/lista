@@ -98,6 +98,10 @@ const mocks = vi.hoisted(() => {
 
   const invalidateTenantCache = vi.fn().mockResolvedValue(undefined);
 
+  const sendPaymentSucceededEmail = vi.fn().mockResolvedValue(true);
+  const sendPaymentFailedEmail = vi.fn().mockResolvedValue(true);
+  const sendSubscriptionCancelledEmail = vi.fn().mockResolvedValue(true);
+
   return {
     updateCalls,
     tableData,
@@ -107,6 +111,9 @@ const mocks = vi.hoisted(() => {
     setupIntentsRetrieve,
     customersUpdate,
     invalidateTenantCache,
+    sendPaymentSucceededEmail,
+    sendPaymentFailedEmail,
+    sendSubscriptionCancelledEmail,
   };
 });
 
@@ -125,6 +132,12 @@ vi.mock("@/lib/stripe", () => ({
 
 vi.mock("@/lib/supabase/tenant", () => ({
   invalidateTenantCache: mocks.invalidateTenantCache,
+}));
+
+vi.mock("@/lib/notifications/billing-emails", () => ({
+  sendPaymentSucceededEmail: mocks.sendPaymentSucceededEmail,
+  sendPaymentFailedEmail: mocks.sendPaymentFailedEmail,
+  sendSubscriptionCancelledEmail: mocks.sendSubscriptionCancelledEmail,
 }));
 
 // ── Route under test (after mocks) ────────────────────────────────────────────
@@ -902,5 +915,106 @@ describe("POST /api/billing/webhook — invoice events", () => {
     });
     await POST(makeWebhookRequest());
     expect(mocks.updateCalls.length).toBe(0);
+    // No subscription id means we can't resolve an org/owner — the email
+    // helper must not be called.
+    expect(mocks.sendPaymentSucceededEmail).not.toHaveBeenCalled();
+    expect(mocks.sendPaymentFailedEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ── Email fan-out (spec: "Email Notifications" table) ────────────────────────
+//
+// Why every fan-out has its own test:
+//  - The spec mandates a specific email per lifecycle event; missing a wire
+//    here means a real customer never hears that their card was charged or
+//    their subscription was cancelled.
+//  - The fan-out must happen AFTER the DB update so the email's "Manage
+//    billing" deep-link lands on the post-state page (otherwise the page
+//    shows a stale badge).
+//  - The fan-out must use the SAME subscription id as the DB write so the
+//    helper resolves the right org owner (subscription id is the only join
+//    key available in invoice events).
+
+describe("POST /api/billing/webhook — email fan-out", () => {
+  it("fires sendPaymentSucceededEmail with the subscription id after invoice.payment_succeeded", async () => {
+    stubEvent({
+      type: "invoice.payment_succeeded",
+      data: {
+        object: {
+          parent: {
+            type: "subscription_details",
+            subscription_details: { subscription: "sub_paid" },
+          },
+        },
+      },
+    });
+    await POST(makeWebhookRequest());
+    expect(mocks.sendPaymentSucceededEmail).toHaveBeenCalledTimes(1);
+    // Args = (admin, subscriptionId)
+    expect(mocks.sendPaymentSucceededEmail.mock.calls[0][1]).toBe("sub_paid");
+  });
+
+  it("fires sendPaymentFailedEmail with the subscription id after invoice.payment_failed", async () => {
+    stubEvent({
+      type: "invoice.payment_failed",
+      data: {
+        object: {
+          parent: {
+            type: "subscription_details",
+            subscription_details: { subscription: "sub_failed" },
+          },
+        },
+      },
+    });
+    await POST(makeWebhookRequest());
+    expect(mocks.sendPaymentFailedEmail).toHaveBeenCalledTimes(1);
+    expect(mocks.sendPaymentFailedEmail.mock.calls[0][1]).toBe("sub_failed");
+  });
+
+  it("fires sendSubscriptionCancelledEmail with the subscription id after customer.subscription.deleted", async () => {
+    mocks.tableData.organizations = {
+      subdomain: null,
+      subdomain_status: null,
+      custom_domain: null,
+    };
+    stubEvent({
+      type: "customer.subscription.deleted",
+      data: { object: { id: "sub_dead" } },
+    });
+    await POST(makeWebhookRequest());
+    expect(mocks.sendSubscriptionCancelledEmail).toHaveBeenCalledTimes(1);
+    expect(mocks.sendSubscriptionCancelledEmail.mock.calls[0][1]).toBe(
+      "sub_dead",
+    );
+  });
+
+  it("does NOT send a payment-succeeded email when the invoice has no subscription parent", async () => {
+    stubEvent({
+      type: "invoice.payment_succeeded",
+      data: { object: { parent: { type: "self" } } },
+    });
+    await POST(makeWebhookRequest());
+    expect(mocks.sendPaymentSucceededEmail).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire payment / cancellation emails for unrelated event types", async () => {
+    // customer.subscription.updated handles cancel-at-period-end → DB write
+    // mirrors subscription_cancel_at, but no email is sent at that point. The
+    // cancellation email only fires on `customer.subscription.deleted` (final).
+    stubEvent({
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: "sub_existing",
+          cancel_at_period_end: true,
+          cancel_at: 1_780_000_000,
+          items: { data: [{ price: { id: SMALL_PRICE } }] },
+        },
+      },
+    });
+    await POST(makeWebhookRequest());
+    expect(mocks.sendPaymentSucceededEmail).not.toHaveBeenCalled();
+    expect(mocks.sendPaymentFailedEmail).not.toHaveBeenCalled();
+    expect(mocks.sendSubscriptionCancelledEmail).not.toHaveBeenCalled();
   });
 });

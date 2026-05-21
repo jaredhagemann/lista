@@ -2,7 +2,16 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { adminClient } from "@/lib/api-auth";
 import { getStripe } from "@/lib/stripe";
-import { sendEmail } from "@/lib/notifications/email";
+import {
+  sendTrialReminderEmail,
+  sendTrialConvertedEmail,
+  sendTrialDowngradedEmail,
+} from "@/lib/notifications/billing-emails";
+import {
+  TRIAL_REMINDER_30D_SUBJECT,
+  TRIAL_REMINDER_7D_SUBJECT,
+  TRIAL_REMINDER_1D_SUBJECT,
+} from "@/lib/notifications/email";
 import { priceIdForPlan, teamLimitForPlan } from "@/lib/billing";
 import { isClubPlan, type ClubPlan } from "@/lib/plan";
 
@@ -37,19 +46,19 @@ const REMINDERS = [
     daysLower: 29,
     daysUpper: 31,
     sentAtColumn: "trial_reminder_30d_sent_at",
-    subject: "30 days left in your Lista Club trial",
+    subject: TRIAL_REMINDER_30D_SUBJECT,
   },
   {
     daysLower: 6,
     daysUpper: 8,
     sentAtColumn: "trial_reminder_7d_sent_at",
-    subject: "7 days left — add a payment method to keep your club",
+    subject: TRIAL_REMINDER_7D_SUBJECT,
   },
   {
     daysLower: 0,
     daysUpper: 2,
     sentAtColumn: "trial_reminder_1d_sent_at",
-    subject: "Your trial ends tomorrow",
+    subject: TRIAL_REMINDER_1D_SUBJECT,
   },
 ] as const;
 
@@ -115,14 +124,11 @@ async function runReminders(
       if (!ownerEmail) continue;
 
       try {
-        await sendEmail({
+        await sendTrialReminderEmail({
           to: ownerEmail,
+          orgName: org.name,
           subject: reminder.subject,
-          html: buildReminderEmailHtml({
-            orgName: org.name,
-            subject: reminder.subject,
-            trialEndsAt: org.trial_ends_at,
-          }),
+          trialEndsAt: org.trial_ends_at,
         });
 
         // Write the sent-at column ONLY after a successful send so a failed
@@ -197,8 +203,12 @@ async function runExpirations(
     // No customer means no payment method possible — downgrade.
     if (!org.stripe_customer_id) {
       const downErr = await downgrade(admin, org.id);
-      if (downErr) stats.failed++;
-      else stats.downgraded++;
+      if (downErr) {
+        stats.failed++;
+      } else {
+        stats.downgraded++;
+        await sendTrialDowngradedEmail(admin, org.id, org.name);
+      }
       continue;
     }
 
@@ -221,8 +231,12 @@ async function runExpirations(
     // customer.default_source either), so null here truly means "we can't bill".
     if (!defaultPm) {
       const downErr = await downgrade(admin, org.id);
-      if (downErr) stats.failed++;
-      else stats.downgraded++;
+      if (downErr) {
+        stats.failed++;
+      } else {
+        stats.downgraded++;
+        await sendTrialDowngradedEmail(admin, org.id, org.name);
+      }
       continue;
     }
 
@@ -264,6 +278,10 @@ async function runExpirations(
         stats.failed++;
       } else {
         stats.adopted++;
+        // Same tier as the existing sub — we don't re-read the price ID here
+        // because the org's `plan` column is the source of truth for the tier
+        // label (set when the trial was started by start-trial).
+        await sendTrialConvertedEmail(admin, org.id, tierPlan, org.name);
       }
       continue;
     }
@@ -320,6 +338,7 @@ async function runExpirations(
       stats.failed++;
     } else {
       stats.converted++;
+      await sendTrialConvertedEmail(admin, org.id, tierPlan, org.name);
     }
   }
 
@@ -368,44 +387,4 @@ function readDefaultPaymentMethod(
   const pm = customer.invoice_settings?.default_payment_method;
   if (!pm) return null;
   return typeof pm === "string" ? pm : pm.id ?? null;
-}
-
-function buildReminderEmailHtml({
-  orgName,
-  subject,
-  trialEndsAt,
-}: {
-  orgName: string;
-  subject: string;
-  trialEndsAt: string | null;
-}): string {
-  const ends = trialEndsAt
-    ? new Date(trialEndsAt).toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "soon";
-  return `<!DOCTYPE html>
-  <html lang="en">
-  <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-  <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 40px 16px;">
-      <tr><td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 560px;">
-          <tr><td style="background: #ffffff; border-radius: 12px; padding: 40px;">
-            <h1 style="margin: 0 0 16px; font-size: 22px; font-weight: 700; color: #111827;">${subject}</h1>
-            <p style="margin: 0 0 16px; font-size: 15px; color: #374151; line-height: 1.6;">
-              Hi ${orgName},
-            </p>
-            <p style="margin: 0 0 16px; font-size: 15px; color: #374151; line-height: 1.6;">
-              Your Lista Club trial ends on <strong>${ends}</strong>. Add a payment method now to keep your club's features running without interruption.
-            </p>
-          </td></tr>
-        </table>
-      </td></tr>
-    </table>
-  </body>
-  </html>`;
 }

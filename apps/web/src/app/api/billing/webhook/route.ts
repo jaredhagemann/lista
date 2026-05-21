@@ -4,6 +4,11 @@ import { adminClient } from "@/lib/api-auth";
 import { invalidateTenantCache } from "@/lib/supabase/tenant";
 import { getStripe } from "@/lib/stripe";
 import { planFromPriceId, teamLimitForPlan } from "@/lib/billing";
+import {
+  sendPaymentSucceededEmail,
+  sendPaymentFailedEmail,
+  sendSubscriptionCancelledEmail,
+} from "@/lib/notifications/billing-emails";
 
 /**
  * POST /api/billing/webhook
@@ -155,6 +160,11 @@ export async function POST(request: Request) {
         invalidations.push(invalidateTenantCache(currentOrg.custom_domain));
       }
       await Promise.all(invalidations);
+
+      // Spec: "Subscription cancelled" email — fan out after the DB write so
+      // the org row already reflects the Free downgrade by the time the owner
+      // clicks through to the billing page.
+      await sendSubscriptionCancelledEmail(admin, sub.id);
       break;
     }
 
@@ -208,6 +218,10 @@ export async function POST(request: Request) {
         .from("organizations")
         .update({ subscription_status: "active" })
         .eq("stripe_subscription_id", subscriptionId);
+
+      // Spec: "Payment confirmed" email. Fires after the status flip so the
+      // billing page link in the email lands the user on the correct badge.
+      await sendPaymentSucceededEmail(admin, subscriptionId);
       break;
     }
 
@@ -223,6 +237,10 @@ export async function POST(request: Request) {
         .from("organizations")
         .update({ subscription_status: "past_due" })
         .eq("stripe_subscription_id", subscriptionId);
+
+      // Spec: "Action required: payment failed" email. The org is now in
+      // past_due; Stripe will smart-retry the invoice over the next few days.
+      await sendPaymentFailedEmail(admin, subscriptionId);
       break;
     }
 

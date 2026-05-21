@@ -122,7 +122,9 @@ const mocks = vi.hoisted(() => {
   const customersRetrieve = vi.fn();
   const subscriptionsList = vi.fn();
   const subscriptionsCreate = vi.fn();
-  const sendEmail = vi.fn();
+  const sendTrialReminderEmail = vi.fn();
+  const sendTrialConvertedEmail = vi.fn();
+  const sendTrialDowngradedEmail = vi.fn();
 
   return {
     updateCalls,
@@ -133,7 +135,9 @@ const mocks = vi.hoisted(() => {
     customersRetrieve,
     subscriptionsList,
     subscriptionsCreate,
-    sendEmail,
+    sendTrialReminderEmail,
+    sendTrialConvertedEmail,
+    sendTrialDowngradedEmail,
   };
 });
 
@@ -151,8 +155,10 @@ vi.mock("@/lib/stripe", () => ({
   }),
 }));
 
-vi.mock("@/lib/notifications/email", () => ({
-  sendEmail: mocks.sendEmail,
+vi.mock("@/lib/notifications/billing-emails", () => ({
+  sendTrialReminderEmail: mocks.sendTrialReminderEmail,
+  sendTrialConvertedEmail: mocks.sendTrialConvertedEmail,
+  sendTrialDowngradedEmail: mocks.sendTrialDowngradedEmail,
 }));
 
 // ── Route under test (after mocks) ────────────────────────────────────────────
@@ -204,7 +210,9 @@ function resetState() {
   // returns no orgs, Stripe and email are unused unless a test seeds them.
   mocks.selectQueues.organizations = [];
   mocks.selectQueues.organization_members = [];
-  mocks.sendEmail.mockResolvedValue({ id: "msg_default" });
+  mocks.sendTrialReminderEmail.mockResolvedValue(undefined);
+  mocks.sendTrialConvertedEmail.mockResolvedValue(true);
+  mocks.sendTrialDowngradedEmail.mockResolvedValue(true);
 }
 
 beforeEach(() => {
@@ -232,7 +240,9 @@ describe("trial-expiration cron — authentication", () => {
     expect(mocks.mockFrom).not.toHaveBeenCalled();
     expect(mocks.customersRetrieve).not.toHaveBeenCalled();
     expect(mocks.subscriptionsCreate).not.toHaveBeenCalled();
-    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.sendTrialReminderEmail).not.toHaveBeenCalled();
+    expect(mocks.sendTrialConvertedEmail).not.toHaveBeenCalled();
+    expect(mocks.sendTrialDowngradedEmail).not.toHaveBeenCalled();
   });
 
   it("returns 401 on a wrong Bearer secret", async () => {
@@ -357,10 +367,11 @@ describe("trial-expiration cron — reminders", () => {
     expect(res.status).toBe(200);
 
     // Email send with the spec's exact 30-day subject.
-    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
-    const sendArgs = mocks.sendEmail.mock.calls[0][0];
+    expect(mocks.sendTrialReminderEmail).toHaveBeenCalledTimes(1);
+    const sendArgs = mocks.sendTrialReminderEmail.mock.calls[0][0];
     expect(sendArgs.to).toBe("owner@acme.test");
     expect(sendArgs.subject).toBe("30 days left in your Lista Club trial");
+    expect(sendArgs.orgName).toBe("Acme FC");
 
     // Sent-at column written ONLY after a successful send, and only this one
     // (not the 7d or 1d columns).
@@ -397,7 +408,7 @@ describe("trial-expiration cron — reminders", () => {
 
     await POST(makeRequest({ secret: CRON_SECRET }));
 
-    const sendArgs = mocks.sendEmail.mock.calls[0][0];
+    const sendArgs = mocks.sendTrialReminderEmail.mock.calls[0][0];
     expect(sendArgs.subject).toBe(
       "7 days left — add a payment method to keep your club",
     );
@@ -429,7 +440,7 @@ describe("trial-expiration cron — reminders", () => {
 
     await POST(makeRequest({ secret: CRON_SECRET }));
 
-    const sendArgs = mocks.sendEmail.mock.calls[0][0];
+    const sendArgs = mocks.sendTrialReminderEmail.mock.calls[0][0];
     expect(sendArgs.subject).toBe("Your trial ends tomorrow");
     const update = findUpdate("organizations", {
       column: "id",
@@ -456,7 +467,7 @@ describe("trial-expiration cron — reminders", () => {
     mocks.selectQueues.organization_members = [
       { profiles: { email: "owner@fail.test" } },
     ];
-    mocks.sendEmail.mockRejectedValueOnce(new Error("Resend down"));
+    mocks.sendTrialReminderEmail.mockRejectedValueOnce(new Error("Resend down"));
 
     const res = await POST(makeRequest({ secret: CRON_SECRET }));
     expect(res.status).toBe(200);
@@ -487,7 +498,7 @@ describe("trial-expiration cron — reminders", () => {
     mocks.selectQueues.organization_members = [null];
 
     await POST(makeRequest({ secret: CRON_SECRET }));
-    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.sendTrialReminderEmail).not.toHaveBeenCalled();
     expect(findUpdate("organizations", { column: "id", value: "org-no-owner" }))
       .toBeUndefined();
   });
@@ -496,7 +507,7 @@ describe("trial-expiration cron — reminders", () => {
     // All four queues empty: zero orgs, zero email lookups, zero sends.
     mocks.selectQueues.organizations = [[], [], [], []];
     await POST(makeRequest({ secret: CRON_SECRET }));
-    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.sendTrialReminderEmail).not.toHaveBeenCalled();
     expect(
       mocks.selectCalls.filter((c) => c.table === "organization_members"),
     ).toHaveLength(0);
@@ -1060,5 +1071,185 @@ describe("trial-expiration cron — defensive cases", () => {
       findUpdate("organizations", { column: "id", value: "org-adopt" })?.values
         .stripe_subscription_id,
     ).toBe("sub_existing");
+  });
+});
+
+// ── Email fan-out: conversion / downgrade ────────────────────────────────────
+
+describe("trial-expiration cron — email fan-out (conversion / downgrade)", () => {
+  it("sends a 'converted' email with the correct tier after a successful create-path conversion", async () => {
+    mocks.selectQueues.organizations = [
+      [], [], [],
+      [
+        {
+          id: "org-conv",
+          name: "Convert Co",
+          plan: "club_large",
+          stripe_customer_id: "cus_x",
+          stripe_subscription_id: null,
+          trial_ends_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    ];
+    mocks.customersRetrieve.mockResolvedValueOnce({
+      id: "cus_x",
+      deleted: false,
+      invoice_settings: { default_payment_method: "pm_x" },
+    });
+    mocks.subscriptionsList.mockResolvedValueOnce({ data: [] });
+    mocks.subscriptionsCreate.mockResolvedValueOnce({ id: "sub_new" });
+
+    await POST(makeRequest({ secret: CRON_SECRET }));
+
+    // The email send happens AFTER the DB write so the org row already
+    // reflects 'active' state by the time the owner clicks through.
+    expect(mocks.sendTrialConvertedEmail).toHaveBeenCalledTimes(1);
+    const [, orgId, tier, orgName] =
+      mocks.sendTrialConvertedEmail.mock.calls[0];
+    expect(orgId).toBe("org-conv");
+    expect(tier).toBe("club_large");
+    expect(orgName).toBe("Convert Co");
+    // No downgrade in the conversion path.
+    expect(mocks.sendTrialDowngradedEmail).not.toHaveBeenCalled();
+  });
+
+  it("sends a 'converted' email after the adopt-existing-active branch", async () => {
+    mocks.selectQueues.organizations = [
+      [], [], [],
+      [
+        {
+          id: "org-adopt",
+          name: "Adopt Co",
+          plan: "club_small",
+          stripe_customer_id: "cus_y",
+          stripe_subscription_id: null,
+          trial_ends_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    ];
+    mocks.customersRetrieve.mockResolvedValueOnce({
+      id: "cus_y",
+      deleted: false,
+      invoice_settings: { default_payment_method: "pm_y" },
+    });
+    mocks.subscriptionsList.mockResolvedValueOnce({
+      data: [{ id: "sub_existing" }],
+    });
+
+    await POST(makeRequest({ secret: CRON_SECRET }));
+
+    expect(mocks.sendTrialConvertedEmail).toHaveBeenCalledTimes(1);
+    const [, orgId, tier, orgName] =
+      mocks.sendTrialConvertedEmail.mock.calls[0];
+    expect(orgId).toBe("org-adopt");
+    // Tier comes from org.plan, not from the adopted Stripe price — the trial
+    // was started on Small/Large via start-trial, so org.plan is authoritative.
+    expect(tier).toBe("club_small");
+    expect(orgName).toBe("Adopt Co");
+  });
+
+  it("sends a 'downgraded' email when the org has no stripe_customer_id", async () => {
+    mocks.selectQueues.organizations = [
+      [], [], [],
+      [
+        {
+          id: "org-down",
+          name: "Down Co",
+          plan: "club_small",
+          stripe_customer_id: null,
+          stripe_subscription_id: null,
+          trial_ends_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    ];
+
+    await POST(makeRequest({ secret: CRON_SECRET }));
+
+    expect(mocks.sendTrialDowngradedEmail).toHaveBeenCalledTimes(1);
+    const [, orgId, orgName] = mocks.sendTrialDowngradedEmail.mock.calls[0];
+    expect(orgId).toBe("org-down");
+    expect(orgName).toBe("Down Co");
+    expect(mocks.sendTrialConvertedEmail).not.toHaveBeenCalled();
+  });
+
+  it("sends a 'downgraded' email when the customer has no default payment method", async () => {
+    mocks.selectQueues.organizations = [
+      [], [], [],
+      [
+        {
+          id: "org-down-pm",
+          name: "No PM Co",
+          plan: "club_large",
+          stripe_customer_id: "cus_no_pm",
+          stripe_subscription_id: null,
+          trial_ends_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    ];
+    mocks.customersRetrieve.mockResolvedValueOnce({
+      id: "cus_no_pm",
+      deleted: false,
+      invoice_settings: { default_payment_method: null },
+    });
+
+    await POST(makeRequest({ secret: CRON_SECRET }));
+
+    expect(mocks.sendTrialDowngradedEmail).toHaveBeenCalledTimes(1);
+    const [, orgId] = mocks.sendTrialDowngradedEmail.mock.calls[0];
+    expect(orgId).toBe("org-down-pm");
+  });
+
+  it("does NOT send any email when the DB downgrade write itself fails", async () => {
+    // If the DB write failed the org is still in 'trialing' — sending a
+    // "downgraded" email would lie about the visible state.
+    mocks.selectQueues.organizations = [
+      [], [], [],
+      [
+        {
+          id: "org-db-fail",
+          name: "DB Fail",
+          plan: "club_small",
+          stripe_customer_id: null,
+          stripe_subscription_id: null,
+          trial_ends_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    ];
+    mocks.updateErrors.organizations = new Error("constraint violation");
+
+    await POST(makeRequest({ secret: CRON_SECRET }));
+
+    expect(mocks.sendTrialDowngradedEmail).not.toHaveBeenCalled();
+    expect(mocks.sendTrialConvertedEmail).not.toHaveBeenCalled();
+  });
+
+  it("does NOT send a 'converted' email when the DB write after subscriptions.create fails", async () => {
+    // Same invariant in the conversion path: the cron will retry next run, so
+    // the email should not be sent against the not-yet-persisted state.
+    mocks.selectQueues.organizations = [
+      [], [], [],
+      [
+        {
+          id: "org-conv-db-fail",
+          name: "Conv DB Fail",
+          plan: "club_small",
+          stripe_customer_id: "cus_x",
+          stripe_subscription_id: null,
+          trial_ends_at: new Date(NOW.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    ];
+    mocks.customersRetrieve.mockResolvedValueOnce({
+      id: "cus_x",
+      deleted: false,
+      invoice_settings: { default_payment_method: "pm_x" },
+    });
+    mocks.subscriptionsList.mockResolvedValueOnce({ data: [] });
+    mocks.subscriptionsCreate.mockResolvedValueOnce({ id: "sub_new" });
+    mocks.updateErrors.organizations = new Error("DB write failed");
+
+    await POST(makeRequest({ secret: CRON_SECRET }));
+
+    expect(mocks.sendTrialConvertedEmail).not.toHaveBeenCalled();
   });
 });
