@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => {
       eq: () => makeChain(val, count),
       in: () => makeChain(val, count),
       neq: () => makeChain(val, count),
+      is: () => makeChain(val, count),
       single: () => promise,
       maybeSingle: () => promise,
       then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>

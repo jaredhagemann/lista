@@ -61,7 +61,9 @@ export async function POST(request: Request) {
   // in the create_club_team RPC, which must agree. A NULL team_limit
   // (club_large) is unlimited and never blocks. Existing teams above the limit
   // (e.g. after a Large → Small downgrade) stay accessible; only creating an
-  // additional team past the cap is rejected.
+  // additional team past the cap is rejected. Archived teams do NOT count —
+  // spec's over-limit banner advises archiving as a remedy, so archiving must
+  // actually free a slot. The RPC enforces the same active-only count.
   const { data: org } = await admin
     .from("organizations")
     .select("team_limit")
@@ -72,7 +74,8 @@ export async function POST(request: Request) {
     const { count } = await admin
       .from("teams")
       .select("*", { count: "exact", head: true })
-      .eq("organization_id", orgId);
+      .eq("organization_id", orgId)
+      .is("archived_at", null);
 
     if ((count ?? 0) >= org.team_limit) {
       return NextResponse.json(

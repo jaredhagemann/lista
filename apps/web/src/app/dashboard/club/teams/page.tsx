@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { ClubTeamsClient } from "@/components/club/club-teams-client";
+import type { OrgPlan } from "@/lib/plan";
 
 export const metadata = { title: "Club Teams" };
 
@@ -34,6 +35,15 @@ export default async function ClubTeamsPage({
 
   const orgId = team?.organization_id;
   if (!orgId) redirect("/dashboard");
+
+  // Plan + team_limit feed the over-limit banner (spec: "Over-Limit Downgrade").
+  // Banner copy is keyed off the plan tier — Free vs Club Small — so we need
+  // both fields, not just the cap.
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("plan, team_limit")
+    .eq("id", orgId)
+    .single();
 
   const { archived } = await searchParams;
   const showArchived = archived === "1";
@@ -81,6 +91,9 @@ export default async function ClubTeamsPage({
         memberCount: memberCountByTeam[t.id] ?? 0,
       }))}
       showArchived={showArchived}
+      plan={(org?.plan as OrgPlan | null) ?? null}
+      teamLimit={org?.team_limit ?? null}
+      activeTeamCount={activeTeams.length}
     />
   );
 }
