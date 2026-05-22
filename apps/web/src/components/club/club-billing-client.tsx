@@ -14,7 +14,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CreditCard, ExternalLink, FileText, RotateCcw, XCircle } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CreditCard,
+  FileText,
+  RotateCcw,
+  Undo2,
+  XCircle,
+} from "lucide-react";
 import { isClubPlan } from "@/lib/plan";
 
 /**
@@ -61,7 +69,32 @@ export type ClubBillingOrg = {
   subscriptionCancelAt: string | null;
   hasStripeCustomer: boolean;
   hasStripeSubscription: boolean;
+  // Count of non-archived teams in the org. Drives the >10 teams warning on
+  // the Large → Small downgrade confirmation (spec: "If the org currently has
+  // >10 teams, a warning is shown on the confirmation screen before the user
+  // commits"). Mirrors the active-only count used by the team-limit RPC.
+  activeTeamCount: number;
 };
+
+/**
+ * Spec-verbatim warning copy for the Large → Small downgrade confirmation when
+ * the org has more teams than Club Small allows. Returns null when the warning
+ * is not applicable (≤10 active teams). Exported so the helper is unit-testable
+ * without having to drive the full dialog.
+ *
+ * Spec: docs/specs/club-upgrade-monetization.md →
+ *   "Club Large → Club Small (downgrade)" — "If the org currently has >10
+ *   teams, a warning is shown on the confirmation screen before the user
+ *   commits: 'You have X teams. Club Small allows 10. Existing teams will
+ *   remain accessible, but you won't be able to create new ones until you're
+ *   under the limit.'"
+ */
+export function downgradeOverLimitWarning(
+  activeTeamCount: number,
+): string | null {
+  if (activeTeamCount <= 10) return null;
+  return `You have ${activeTeamCount} teams. Club Small allows 10. Existing teams will remain accessible, but you won't be able to create new ones until you're under the limit.`;
+}
 
 const PLAN_LABELS: Record<string, string> = {
   free: "Free",
@@ -107,6 +140,12 @@ export function ClubBillingClient({ org }: { org: ClubBillingOrg }) {
   // active button can show an action-specific spinner label.
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  // Change-plan confirmation. The target plan determines the dialog content
+  // (upgrade vs downgrade) and the POST body. Re-upgrade from the Downgrading
+  // state targets 'club_large' (Branch 4 of /api/billing/change-plan).
+  const [changeTarget, setChangeTarget] = useState<
+    "club_small" | "club_large" | null
+  >(null);
 
   const badgeState = deriveBadgeState(org);
 
@@ -117,6 +156,23 @@ export function ClubBillingClient({ org }: { org: ClubBillingOrg }) {
     isClubPlan(org.plan) &&
     org.subscriptionStatus === "active" &&
     !org.hasStripeSubscription;
+
+  // True when a Large → Small downgrade is already scheduled (Branch 3 of
+  // change-plan). The change-plan section then surfaces a single "Cancel
+  // scheduled downgrade" affordance instead of a downgrade button.
+  const isPendingDowngrade =
+    org.subscriptionStatus === "active" && org.pendingPlan === "club_small";
+
+  // The change-plan section is hidden in states where the change-plan route
+  // would reject anyway: past_due / canceling / canceled, the managed-account
+  // branch (no Stripe sub to update), and on a non-club plan (free orgs use
+  // the Plan tab, not this page). Trial and active-clean both show controls.
+  const canChangePlan =
+    isClubPlan(org.plan) &&
+    !isManagedAccount &&
+    (badgeState === "trial" ||
+      badgeState === "active" ||
+      isPendingDowngrade);
 
   async function postJson(
     url: string,
@@ -195,6 +251,40 @@ export function ClubBillingClient({ org }: { org: ClubBillingOrg }) {
       return;
     }
     toast.success("Your subscription is reactivated.");
+    router.refresh();
+  }
+
+  async function handleChangePlanConfirmed() {
+    if (!changeTarget) return;
+    const target = changeTarget;
+    // Close the dialog before firing so the user sees feedback even on slow
+    // Stripe round-trips; failures restore via toast.
+    setChangeTarget(null);
+    const { ok, data } = await postJson(
+      "/api/billing/change-plan",
+      { orgId: org.id, plan: target },
+      "change-plan",
+    );
+    if (!ok) {
+      const err = (data as { error?: string }).error;
+      toast.error(err ?? "Failed to change plan");
+      return;
+    }
+    // Toast copy varies by the post-state, but the underlying side effect is
+    // always: the next /dashboard/club/billing render reflects the new state
+    // (trial-only paths write plan/team_limit immediately; active paths rely
+    // on the webhook to write plan/team_limit or pending_plan).
+    if (isPendingDowngrade && target === "club_large") {
+      toast.success("Scheduled downgrade cancelled — staying on Club Large.");
+    } else if (target === "club_large") {
+      toast.success("Upgraded to Club Large.");
+    } else if (badgeState === "trial") {
+      toast.success("Switched to Club Small.");
+    } else {
+      toast.success(
+        "Downgrade scheduled — you'll switch to Club Small at the end of your current billing period.",
+      );
+    }
     router.refresh();
   }
 
@@ -410,19 +500,70 @@ export function ClubBillingClient({ org }: { org: ClubBillingOrg }) {
             )}
           </div>
 
-          {org.hasStripeSubscription && (
-            <p className="text-xs text-muted-foreground">
-              Plan changes (between Club Small and Club Large) are handled in
-              the app — visit the{" "}
-              <a
-                className="underline underline-offset-2"
-                href="/dashboard/settings?tab=plan"
+        </div>
+      )}
+
+      {/* Change plan — Small↔Large + cancel-scheduled-downgrade. The whole
+          section is hidden when canChangePlan is false (past_due / canceling /
+          canceled / managed-account / non-club / no-orgPlan). */}
+      {canChangePlan && (
+        <div
+          className="rounded-lg border p-6 space-y-4"
+          data-testid="change-plan-section"
+        >
+          <p className="text-sm font-medium text-muted-foreground">
+            Change plan
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            {/* Pending downgrade → re-upgrade-to-Large cancels the schedule
+                (Branch 4). The button is the only change-plan affordance in
+                this state — Small→Large doesn't apply (already on Large) and
+                Large→Small is already pending. */}
+            {isPendingDowngrade && (
+              <Button
+                onClick={() => setChangeTarget("club_large")}
+                disabled={busy !== null}
+                variant="outline"
               >
-                Plan tab
-              </a>{" "}
-              to switch tiers.
-            </p>
-          )}
+                <Undo2 className="mr-2 h-4 w-4" />
+                {busy === "change-plan"
+                  ? "Cancelling…"
+                  : "Cancel scheduled downgrade"}
+              </Button>
+            )}
+
+            {/* Small → Large upgrade. Trial: DB-only immediate. Active: Stripe
+                item swap with proration. Hidden when already on Large or
+                during a pending downgrade. */}
+            {!isPendingDowngrade && org.plan === "club_small" && (
+              <Button
+                onClick={() => setChangeTarget("club_large")}
+                disabled={busy !== null}
+              >
+                <ArrowUp className="mr-2 h-4 w-4" />
+                {busy === "change-plan"
+                  ? "Changing…"
+                  : "Upgrade to Club Large"}
+              </Button>
+            )}
+
+            {/* Large → Small downgrade. Trial: DB-only immediate. Active:
+                Subscription Schedule deferred to period end. Hidden when
+                already on Small or during a pending downgrade. */}
+            {!isPendingDowngrade && org.plan === "club_large" && (
+              <Button
+                onClick={() => setChangeTarget("club_small")}
+                disabled={busy !== null}
+                variant="outline"
+              >
+                <ArrowDown className="mr-2 h-4 w-4" />
+                {busy === "change-plan"
+                  ? "Changing…"
+                  : "Downgrade to Club Small"}
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -462,6 +603,101 @@ export function ClubBillingClient({ org }: { org: ClubBillingOrg }) {
             >
               <XCircle className="mr-2 h-4 w-4" />
               {busy === "cancel" ? "Canceling…" : "Cancel subscription"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Change-plan confirmation. Dialog content branches on the target
+          plan: upgrade (Small→Large), downgrade (Large→Small with the >10
+          teams warning when applicable), or cancel-scheduled-downgrade
+          (re-upgrade to Large while pending_plan='club_small'). */}
+      <AlertDialog
+        open={changeTarget !== null}
+        onOpenChange={(open) => !open && setChangeTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isPendingDowngrade && changeTarget === "club_large"
+                ? "Cancel scheduled downgrade?"
+                : changeTarget === "club_large"
+                ? "Upgrade to Club Large?"
+                : "Switch to Club Small?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {isPendingDowngrade && changeTarget === "club_large" ? (
+                  <p>
+                    Your subscription will remain on Club Large at the end of
+                    your current billing period.
+                  </p>
+                ) : changeTarget === "club_large" ? (
+                  badgeState === "trial" ? (
+                    <p>
+                      Your trial continues, and you can create unlimited teams
+                      immediately. We&apos;ll switch to Club Large pricing
+                      ($299/month) when your trial converts.
+                    </p>
+                  ) : (
+                    <p>
+                      Your subscription will be upgraded to Club Large
+                      immediately. Stripe will charge a prorated amount for
+                      the rest of this billing period.
+                    </p>
+                  )
+                ) : badgeState === "trial" ? (
+                  <p>
+                    Your trial continues. Club Small allows up to 10 teams
+                    instead of unlimited.
+                  </p>
+                ) : (
+                  <p>
+                    Your plan will switch to Club Small at the end of your
+                    current billing period. You&apos;ll retain Club Large
+                    access until then.
+                  </p>
+                )}
+
+                {/* Spec-mandated >10-teams warning on Large → Small downgrade. */}
+                {changeTarget === "club_small" &&
+                  !isPendingDowngrade &&
+                  (() => {
+                    const warning = downgradeOverLimitWarning(
+                      org.activeTeamCount,
+                    );
+                    if (!warning) return null;
+                    return (
+                      <p
+                        className="text-amber-700"
+                        data-testid="downgrade-overlimit-warning"
+                      >
+                        {warning}
+                      </p>
+                    );
+                  })()}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setChangeTarget(null)}
+              disabled={busy !== null}
+            >
+              Keep current plan
+            </Button>
+            <Button
+              onClick={handleChangePlanConfirmed}
+              disabled={busy !== null}
+            >
+              {busy === "change-plan"
+                ? "Submitting…"
+                : isPendingDowngrade && changeTarget === "club_large"
+                ? "Cancel downgrade"
+                : changeTarget === "club_large"
+                ? "Upgrade to Club Large"
+                : "Switch to Club Small"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

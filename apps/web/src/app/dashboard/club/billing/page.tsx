@@ -75,6 +75,16 @@ export default async function ClubBillingPage() {
   } | null;
   if (!org) redirect("/dashboard");
 
+  // Active (non-archived) team count powers the Large → Small downgrade warning.
+  // Mirrors the active-only count used by the `create_club_team` RPC + the
+  // over-limit banner on /dashboard/club/teams — archiving a team frees a slot
+  // toward the limit, so the warning is computed off the same active subset.
+  const { count: activeTeamCount } = await supabase
+    .from("teams")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .is("archived_at", null);
+
   const billingOrg: ClubBillingOrg = {
     id: org.id,
     plan: org.plan,
@@ -90,6 +100,7 @@ export default async function ClubBillingPage() {
     subscriptionCancelAt: org.subscription_cancel_at,
     hasStripeCustomer: org.stripe_customer_id != null,
     hasStripeSubscription: org.stripe_subscription_id != null,
+    activeTeamCount: activeTeamCount ?? 0,
   };
 
   return <ClubBillingClient org={billingOrg} />;

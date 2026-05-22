@@ -62,6 +62,7 @@ vi.mock("sonner", () => ({
 
 import {
   ClubBillingClient,
+  downgradeOverLimitWarning,
   type ClubBillingOrg,
 } from "@/components/club/club-billing-client";
 
@@ -80,6 +81,7 @@ function baseOrg(overrides: Partial<ClubBillingOrg> = {}): ClubBillingOrg {
     subscriptionCancelAt: null,
     hasStripeCustomer: true,
     hasStripeSubscription: true,
+    activeTeamCount: 0,
     ...overrides,
   };
 }
@@ -697,5 +699,454 @@ describe("ClubBillingClient — current plan label", () => {
       />,
     );
     expect(screen.getByText("Free")).toBeTruthy();
+  });
+});
+
+// ── downgradeOverLimitWarning helper ─────────────────────────────────────────
+//
+// Pinned by spec at docs/specs/club-upgrade-monetization.md →
+// "Club Large → Club Small (downgrade)" — the warning copy is verbatim from the
+// spec so a future spec edit shows up here. The threshold is "more than 10",
+// not "10 or more": Club Small allows exactly 10, so 10 active teams fits and
+// the warning suppresses.
+
+describe("downgradeOverLimitWarning helper", () => {
+  it("returns the exact spec copy when activeTeamCount > 10", () => {
+    expect(downgradeOverLimitWarning(11)).toBe(
+      "You have 11 teams. Club Small allows 10. Existing teams will remain accessible, but you won't be able to create new ones until you're under the limit.",
+    );
+  });
+
+  it("interpolates the actual active-team count", () => {
+    expect(downgradeOverLimitWarning(25)).toContain("You have 25 teams.");
+    expect(downgradeOverLimitWarning(500)).toContain("You have 500 teams.");
+  });
+
+  it("returns null at the 10-team boundary (10 fits Club Small)", () => {
+    expect(downgradeOverLimitWarning(10)).toBeNull();
+  });
+
+  it("returns null below the limit", () => {
+    expect(downgradeOverLimitWarning(0)).toBeNull();
+    expect(downgradeOverLimitWarning(1)).toBeNull();
+    expect(downgradeOverLimitWarning(9)).toBeNull();
+  });
+});
+
+// ── Change Plan — visibility matrix ──────────────────────────────────────────
+//
+// Spec: docs/specs/club-upgrade-monetization.md →
+//   "Club Small → Club Large (upgrade during trial or active subscription)"
+//   "Club Large → Club Small (downgrade)"
+// Both flows are owner-only and live on this page. The Cancel-scheduled-
+// downgrade affordance (Branch 4 of /api/billing/change-plan) appears only
+// when a Large→Small schedule is already in flight.
+
+describe("ClubBillingClient — Change Plan visibility", () => {
+  it("trial on club_small shows 'Upgrade to Club Large'", () => {
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_small",
+          subscriptionStatus: "trialing",
+          trialDaysRemaining: 30,
+          hasStripeSubscription: false,
+        })}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /upgrade to club large/i }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /downgrade to club small/i }),
+    ).toBeNull();
+  });
+
+  it("trial on club_large shows 'Downgrade to Club Small'", () => {
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_large",
+          subscriptionStatus: "trialing",
+          trialDaysRemaining: 30,
+          hasStripeSubscription: false,
+        })}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /upgrade to club large/i }),
+    ).toBeNull();
+  });
+
+  it("active+clean on club_small shows 'Upgrade to Club Large'", () => {
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_small",
+          subscriptionStatus: "active",
+          teamLimit: 10,
+        })}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /upgrade to club large/i }),
+    ).toBeTruthy();
+  });
+
+  it("active+clean on club_large shows 'Downgrade to Club Small'", () => {
+    render(<ClubBillingClient org={baseOrg()} />);
+    expect(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    ).toBeTruthy();
+  });
+
+  it("pending Large→Small shows only 'Cancel scheduled downgrade'", () => {
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          pendingPlan: "club_small",
+          pendingPlanAt: "2026-06-15T12:00:00.000Z",
+        })}
+      />,
+    );
+    // The Branch 4 re-upgrade affordance — cancels the schedule.
+    expect(
+      screen.getByRole("button", { name: /cancel scheduled downgrade/i }),
+    ).toBeTruthy();
+    // Both regular change-plan directions are hidden — the org is already on
+    // Large and the downgrade is already scheduled.
+    expect(
+      screen.queryByRole("button", { name: /upgrade to club large/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /downgrade to club small/i }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["canceling", { subscriptionCancelAt: "2026-06-15T12:00:00.000Z" }],
+    ["past_due", { subscriptionStatus: "past_due" }],
+    ["canceled", { subscriptionStatus: "canceled" }],
+  ])(
+    "hides the change-plan section entirely in %s state",
+    (_label, override) => {
+      render(<ClubBillingClient org={baseOrg(override)} />);
+      expect(screen.queryByTestId("change-plan-section")).toBeNull();
+    },
+  );
+
+  it("hides the change-plan section on a managed account (admin/pilot)", () => {
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_large",
+          subscriptionStatus: "active",
+          hasStripeSubscription: false,
+          hasStripeCustomer: false,
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("change-plan-section")).toBeNull();
+  });
+});
+
+// ── Change Plan — confirmation gate ──────────────────────────────────────────
+
+describe("ClubBillingClient — Change Plan confirmation gate", () => {
+  it("clicking 'Downgrade to Club Small' opens the dialog without firing change-plan", async () => {
+    const { calls } = installFetch({
+      "/api/billing/change-plan": () =>
+        new Response(JSON.stringify({ ok: true, kind: "trial_updated" }), {
+          status: 200,
+        }),
+    });
+
+    render(<ClubBillingClient org={baseOrg()} />);
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+
+    expect(
+      await screen.findByText(/switch to club small\?/i),
+    ).toBeTruthy();
+    // No request — the action is gated behind the dialog's confirm button.
+    expect(
+      calls.find((c) => c.url === "/api/billing/change-plan"),
+    ).toBeUndefined();
+  });
+
+  it("clicking 'Upgrade to Club Large' opens the upgrade dialog", async () => {
+    installFetch({});
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_small",
+          subscriptionStatus: "active",
+          teamLimit: 10,
+        })}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /upgrade to club large/i }),
+    );
+    expect(
+      await screen.findByText(/upgrade to club large\?/i),
+    ).toBeTruthy();
+  });
+});
+
+// ── Change Plan — over-limit warning on Large→Small ──────────────────────────
+//
+// The load-bearing spec test for "Large → Small with >10 teams: warning shown,
+// downgrade allowed". The warning must surface in the confirmation dialog
+// before the user commits; the confirm button must remain enabled (downgrade
+// is never blocked, only flagged).
+
+describe("ClubBillingClient — Large → Small >10 teams warning", () => {
+  it("renders the spec warning in the dialog when activeTeamCount > 10", async () => {
+    installFetch({});
+    render(<ClubBillingClient org={baseOrg({ activeTeamCount: 14 })} />);
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+
+    const warning = await screen.findByTestId("downgrade-overlimit-warning");
+    expect(warning.textContent).toBe(
+      "You have 14 teams. Club Small allows 10. Existing teams will remain accessible, but you won't be able to create new ones until you're under the limit.",
+    );
+  });
+
+  it("renders no warning at the 10-team boundary", async () => {
+    installFetch({});
+    render(<ClubBillingClient org={baseOrg({ activeTeamCount: 10 })} />);
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+    await screen.findByText(/switch to club small\?/i);
+    expect(screen.queryByTestId("downgrade-overlimit-warning")).toBeNull();
+  });
+
+  it("does not block the downgrade — the confirm button is still enabled with >10 teams", async () => {
+    installFetch({
+      "/api/billing/change-plan": () =>
+        new Response(JSON.stringify({ ok: true, kind: "schedule_created" }), {
+          status: 200,
+        }),
+    });
+    render(<ClubBillingClient org={baseOrg({ activeTeamCount: 22 })} />);
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+    const confirmBtn = await screen.findByRole("button", {
+      name: /switch to club small/i,
+    });
+    expect((confirmBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("renders no warning on a trial Large→Small with >10 teams either (spec: trial downgrade is immediate, warning still applies)", async () => {
+    // Trial path: the same spec rule applies — show the warning when the org
+    // is over the Small limit so the user can opt out before the immediate
+    // plan flip.
+    installFetch({});
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_large",
+          subscriptionStatus: "trialing",
+          trialDaysRemaining: 30,
+          hasStripeSubscription: false,
+          activeTeamCount: 12,
+        })}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+    expect(
+      await screen.findByTestId("downgrade-overlimit-warning"),
+    ).toBeTruthy();
+  });
+
+  it("renders no warning on Small → Large (upgrades have no team-limit issue)", async () => {
+    installFetch({});
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_small",
+          subscriptionStatus: "active",
+          teamLimit: 10,
+          activeTeamCount: 9,
+        })}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /upgrade to club large/i }),
+    );
+    await screen.findByText(/upgrade to club large\?/i);
+    expect(screen.queryByTestId("downgrade-overlimit-warning")).toBeNull();
+  });
+});
+
+// ── Change Plan — confirm POSTs change-plan ──────────────────────────────────
+
+describe("ClubBillingClient — Change Plan POST wiring", () => {
+  it("confirming Large→Small POSTs { orgId, plan: 'club_small' } and refreshes", async () => {
+    const { calls } = installFetch({
+      "/api/billing/change-plan": () =>
+        new Response(JSON.stringify({ ok: true, kind: "schedule_created" }), {
+          status: 200,
+        }),
+    });
+
+    render(<ClubBillingClient org={baseOrg({ activeTeamCount: 5 })} />);
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /switch to club small/i }),
+    );
+
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.url === "/api/billing/change-plan"),
+      ).toBeDefined(),
+    );
+    const call = calls.find((c) => c.url === "/api/billing/change-plan")!;
+    expect(JSON.parse(call.init!.body as string)).toEqual({
+      orgId: "org-1",
+      plan: "club_small",
+    });
+    expect(toastSuccess).toHaveBeenCalled();
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it("confirming Small→Large POSTs plan='club_large'", async () => {
+    const { calls } = installFetch({
+      "/api/billing/change-plan": () =>
+        new Response(
+          JSON.stringify({ ok: true, kind: "subscription_updated" }),
+          { status: 200 },
+        ),
+    });
+
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          plan: "club_small",
+          subscriptionStatus: "active",
+          teamLimit: 10,
+        })}
+      />,
+    );
+    const user = userEvent.setup();
+    // Open the dialog via the trigger.
+    await user.click(
+      screen.getByRole("button", { name: /upgrade to club large/i }),
+    );
+    // Radix sets aria-hidden on background content while the dialog is open,
+    // so getByRole now finds only the dialog's confirm button — clicking it
+    // fires the change-plan request.
+    await user.click(
+      await screen.findByRole("button", { name: /upgrade to club large/i }),
+    );
+
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.url === "/api/billing/change-plan"),
+      ).toBeDefined(),
+    );
+    const call = calls.find((c) => c.url === "/api/billing/change-plan")!;
+    expect(JSON.parse(call.init!.body as string)).toEqual({
+      orgId: "org-1",
+      plan: "club_large",
+    });
+  });
+
+  it("Cancel-scheduled-downgrade POSTs plan='club_large' (Branch 4)", async () => {
+    const { calls } = installFetch({
+      "/api/billing/change-plan": () =>
+        new Response(JSON.stringify({ ok: true, kind: "schedule_cancelled" }), {
+          status: 200,
+        }),
+    });
+
+    render(
+      <ClubBillingClient
+        org={baseOrg({
+          pendingPlan: "club_small",
+          pendingPlanAt: "2026-06-15T12:00:00.000Z",
+        })}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /cancel scheduled downgrade/i }),
+    );
+    // Dialog confirm button has the more specific copy "Cancel downgrade".
+    await user.click(
+      await screen.findByRole("button", { name: /^cancel downgrade$/i }),
+    );
+
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.url === "/api/billing/change-plan"),
+      ).toBeDefined(),
+    );
+    const call = calls.find((c) => c.url === "/api/billing/change-plan")!;
+    // Re-upgrade to Large is the spec's signal to cancel the schedule —
+    // the change-plan route's Branch 4 handles this case.
+    expect(JSON.parse(call.init!.body as string)).toEqual({
+      orgId: "org-1",
+      plan: "club_large",
+    });
+    expect(toastSuccess).toHaveBeenCalled();
+  });
+
+  it("surfaces an error toast and does not refresh on change-plan failure", async () => {
+    installFetch({
+      "/api/billing/change-plan": () =>
+        new Response(JSON.stringify({ error: "pending_plan_change" }), {
+          status: 400,
+        }),
+    });
+    render(<ClubBillingClient org={baseOrg()} />);
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /switch to club small/i }),
+    );
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  it("clicking 'Keep current plan' closes the dialog without firing the route", async () => {
+    const { calls } = installFetch({});
+    render(<ClubBillingClient org={baseOrg()} />);
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /downgrade to club small/i }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /keep current plan/i }),
+    );
+    // Wait a tick — if a request fires it would land here.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(
+      calls.find((c) => c.url === "/api/billing/change-plan"),
+    ).toBeUndefined();
   });
 });
