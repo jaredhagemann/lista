@@ -53,7 +53,7 @@ describe("inviteBaseUrl", () => {
   it("returns subdomain URL for a club org with a subdomain", async () => {
     setupDb(
       { organization_id: "org-1" },
-      { plan: "club", subdomain: "jogafc", custom_domain: null },
+      { plan: "club_small", subdomain: "jogafc", custom_domain: null },
     );
     expect(await inviteBaseUrl("team-1")).toBe("https://jogafc.lista.team");
   });
@@ -61,7 +61,7 @@ describe("inviteBaseUrl", () => {
   it("prefers custom_domain over subdomain for a club org", async () => {
     setupDb(
       { organization_id: "org-1" },
-      { plan: "club", subdomain: "jogafc", custom_domain: "app.jogafc.org" },
+      { plan: "club_small", subdomain: "jogafc", custom_domain: "app.jogafc.org" },
     );
     expect(await inviteBaseUrl("team-1")).toBe("https://app.jogafc.org");
   });
@@ -70,7 +70,7 @@ describe("inviteBaseUrl", () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://lista.team";
     setupDb(
       { organization_id: "org-1" },
-      { plan: "club", subdomain: null, custom_domain: null },
+      { plan: "club_small", subdomain: null, custom_domain: null },
     );
     expect(await inviteBaseUrl("team-1")).toBe("https://lista.team");
   });
@@ -102,7 +102,7 @@ describe("inviteBranding", () => {
   it("returns brandName and logoUrl for a club org", async () => {
     setupDb(
       { organization_id: "org-1" },
-      { plan: "club", org_name_public: "Joga FC", logo_url: "https://cdn.example.com/logo.png" },
+      { plan: "club_small", org_name_public: "Joga FC", logo_url: "https://cdn.example.com/logo.png" },
     );
     const result = await inviteBranding("team-1");
     expect(result).toEqual({ brandName: "Joga FC", logoUrl: "https://cdn.example.com/logo.png" });
@@ -111,7 +111,7 @@ describe("inviteBranding", () => {
   it("returns undefined values when club org has null org_name_public and logo_url", async () => {
     setupDb(
       { organization_id: "org-1" },
-      { plan: "club", org_name_public: null, logo_url: null },
+      { plan: "club_small", org_name_public: null, logo_url: null },
     );
     const result = await inviteBranding("team-1");
     expect(result).toEqual({ brandName: undefined, logoUrl: undefined });
