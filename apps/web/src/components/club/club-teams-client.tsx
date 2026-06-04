@@ -29,7 +29,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Plus, Archive, ArchiveRestore } from "lucide-react";
+import { MoreHorizontal, Plus, Archive, ArchiveRestore, AlertTriangle } from "lucide-react";
+import type { OrgPlan } from "@/lib/plan";
 
 type Team = {
   id: string;
@@ -41,17 +42,59 @@ type Team = {
   memberCount: number;
 };
 
+/**
+ * Spec: docs/specs/club-upgrade-monetization.md → "Over-Limit Downgrade".
+ *
+ * Returns the persistent warning banner copy when the org is over its
+ * `team_limit`, or `null` when nothing should render. The copy is intentionally
+ * verbatim from the spec; tests pin the exact strings.
+ *
+ * Counting semantics: `activeCount` is the number of NON-archived teams. The
+ * route + RPC count the same way (20260521000000_create_club_team_active_count
+ * + POST /api/club/teams) so "archive teams to stay on Free" / "Archive teams
+ * or upgrade to Club Large" is an honest remedy — archiving genuinely frees a
+ * slot.
+ *
+ * Why server-derived: the banner reads from the org's `plan` and `team_limit`
+ * (both server-side), so the page passes both plus the precomputed
+ * `activeTeamCount` rather than re-counting client-side.
+ */
+export function overLimitMessage(
+  plan: OrgPlan | null,
+  teamLimit: number | null,
+  activeCount: number,
+): string | null {
+  if (teamLimit == null) return null;
+  if (activeCount <= teamLimit) return null;
+  if (plan === "free") {
+    return `You have ${activeCount} teams but your Free plan allows ${teamLimit}. Upgrade to add more, or archive teams to stay on Free.`;
+  }
+  if (plan === "club_small") {
+    return `You have ${activeCount} teams but Club Small allows ${teamLimit}. Archive teams or upgrade to Club Large to add more.`;
+  }
+  // club_large has team_limit=NULL so we never reach here with a club_large
+  // plan; an unrecognised plan with a finite limit suppresses the banner
+  // rather than rendering with a missing tier name.
+  return null;
+}
+
 export function ClubTeamsClient({
   orgId,
   activeTeams,
   archivedTeams,
   showArchived,
+  plan,
+  teamLimit,
+  activeTeamCount,
 }: {
   orgId: string;
   teams: Team[];
   activeTeams: Team[];
   archivedTeams: Team[];
   showArchived: boolean;
+  plan: OrgPlan | null;
+  teamLimit: number | null;
+  activeTeamCount: number;
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
@@ -109,8 +152,20 @@ export function ClubTeamsClient({
     ? [...activeTeams, ...archivedTeams]
     : activeTeams;
 
+  const overLimitBanner = overLimitMessage(plan, teamLimit, activeTeamCount);
+
   return (
     <div className="space-y-6">
+      {overLimitBanner && (
+        <div
+          role="alert"
+          data-testid="over-limit-banner"
+          className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <span>{overLimitBanner}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Teams</h1>
         <div className="flex gap-2">

@@ -132,7 +132,7 @@ describe("setActiveTeam — subdomain routing disabled", () => {
     mocks.setHost("lista.team");
     mocks.tableData.teams = { organization_id: mocks.ORG_ID };
     mocks.tableData.organizations = {
-      plan: "club",
+      plan: "club_small",
       subdomain_status: "active",
       subdomain: "riverside",
     };
@@ -150,7 +150,7 @@ describe("setActiveTeam — subdomain routing disabled", () => {
     mocks.setHost("localhost");
     mocks.tableData.teams = { organization_id: mocks.ORG_ID };
     mocks.tableData.organizations = {
-      plan: "club",
+      plan: "club_small",
       subdomain_status: "active",
       subdomain: "riverside",
     };
@@ -167,8 +167,9 @@ describe("setActiveTeam — redirect logic", () => {
   it("returns redirectUrl to subdomain when switching to a club team from main domain", async () => {
     mocks.setHost("lista.team");
     mocks.tableData.teams = { organization_id: mocks.ORG_ID };
+    // club_large here (sibling tests cover club_small) — both tiers redirect.
     mocks.tableData.organizations = {
-      plan: "club",
+      plan: "club_large",
       subdomain_status: "active",
       subdomain: "riverside",
     };
@@ -229,7 +230,7 @@ describe("setActiveTeam — redirect logic", () => {
     mocks.setHost("riverside.lista.team");
     mocks.tableData.teams = { organization_id: mocks.ORG_ID };
     mocks.tableData.organizations = {
-      plan: "club",
+      plan: "club_small",
       subdomain_status: "active",
       subdomain: "riverside",
     };
@@ -244,7 +245,7 @@ describe("setActiveTeam — redirect logic", () => {
     mocks.setHost("lista.team");
     mocks.tableData.teams = { organization_id: mocks.ORG_ID };
     mocks.tableData.organizations = {
-      plan: "club",
+      plan: "club_small",
       subdomain_status: "pending",
       subdomain: "riverside",
     };

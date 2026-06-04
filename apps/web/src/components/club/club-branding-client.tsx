@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ClubLogoUpload } from "@/components/club/club-logo-upload";
+import { isClubPlan } from "@/lib/plan";
 
 export function ClubBrandingClient({
   org,
@@ -35,7 +36,7 @@ export function ClubBrandingClient({
   const [faviconUrl, setFaviconUrl] = useState(org.faviconUrl);
   const [saving, setSaving] = useState(false);
 
-  const isClub = org.plan === "club";
+  const isClub = isClubPlan(org.plan);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();

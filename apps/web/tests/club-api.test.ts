@@ -19,18 +19,26 @@ const mocks = vi.hoisted(() => {
   // Per-table results; tests set these before each case.
   // Each entry is what .single()/.maybeSingle()/plain-await returns for that table.
   const tableData: Record<string, unknown> = {};
+  // Per-table row counts for `.select(..., { count: "exact", head: true })`.
+  const tableCounts: Record<string, number> = {};
   // Per-table insert errors (null = success)
   const insertErrors: Record<string, object | null> = {};
   // Per-table update errors (null = success)
   const updateErrors: Record<string, object | null> = {};
 
-  // Thenable chain — supports both .maybeSingle()/.single() and plain await
-  const makeChain = (val: unknown): Record<string, unknown> => {
-    const promise = Promise.resolve({ data: val, error: null });
+  // Thenable chain — supports both .maybeSingle()/.single() and plain await.
+  // `count` is carried through .eq()/.in()/.neq() so head-count queries resolve
+  // with the configured row count.
+  const makeChain = (
+    val: unknown,
+    count: number | null = null
+  ): Record<string, unknown> => {
+    const promise = Promise.resolve({ data: val, error: null, count });
     const chain: Record<string, unknown> = {
-      eq: () => makeChain(val),
-      in: () => makeChain(val),
-      neq: () => makeChain(val),
+      eq: () => makeChain(val, count),
+      in: () => makeChain(val, count),
+      neq: () => makeChain(val, count),
+      is: () => makeChain(val, count),
       single: () => promise,
       maybeSingle: () => promise,
       then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
@@ -42,7 +50,8 @@ const mocks = vi.hoisted(() => {
   const mockFrom = vi.fn().mockImplementation((table: string) => {
     const result = tableData[table] ?? null;
     return {
-      select: () => makeChain(result),
+      select: (_cols?: unknown, opts?: { count?: string; head?: boolean }) =>
+        makeChain(result, opts?.count ? (tableCounts[table] ?? 0) : null),
       insert: (_rows: unknown) =>
         Promise.resolve({ data: null, error: insertErrors[table] ?? null }),
       update: (_vals: unknown) => ({
@@ -60,6 +69,7 @@ const mocks = vi.hoisted(() => {
     mockAssertTeamAdmin,
     mockFrom,
     tableData,
+    tableCounts,
     insertErrors,
     updateErrors,
   };
@@ -216,6 +226,64 @@ describe("POST /api/club/teams — success", () => {
   });
 });
 
+// ── POST /api/club/teams — team limit (spec: "Team Creation Limits") ──────────
+
+describe("POST /api/club/teams — team limit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.keys(mocks.tableData).forEach((k) => delete mocks.tableData[k]);
+    Object.keys(mocks.tableCounts).forEach((k) => delete mocks.tableCounts[k]);
+    Object.keys(mocks.insertErrors).forEach((k) => delete mocks.insertErrors[k]);
+    mocks.mockResolveRequestUser.mockResolvedValue(AUTHED_USER);
+    mocks.tableData.profiles = PROFILE;
+    mocks.tableData.organization_members = ORG_MEMBERS;
+  });
+
+  it("rejects the 11th team for a club_small org (limit 10) with the exact message", async () => {
+    mocks.tableData.organizations = { team_limit: 10 };
+    mocks.tableCounts.teams = 10; // already at the cap
+    const res = await POST(
+      makeTeamsRequest({ orgId: "org-1", teamName: "U13 Boys" })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("You've reached your plan limit of 10 teams.");
+  });
+
+  it("allows creating a team for a club_small org still under the limit", async () => {
+    mocks.tableData.organizations = { team_limit: 10 };
+    mocks.tableCounts.teams = 9;
+    const res = await POST(
+      makeTeamsRequest({ orgId: "org-1", teamName: "U13 Boys" })
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("never blocks a club_large org (NULL team_limit = unlimited)", async () => {
+    mocks.tableData.organizations = { team_limit: null };
+    mocks.tableCounts.teams = 500; // far beyond any small-tier cap
+    const res = await POST(
+      makeTeamsRequest({ orgId: "org-1", teamName: "U13 Boys" })
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("rejects a 2nd team for a free org (regression — limit 1)", async () => {
+    mocks.tableData.organizations = { team_limit: 1 };
+    mocks.tableCounts.teams = 1;
+    const res = await POST(
+      makeTeamsRequest({ orgId: "org-1", teamName: "Second Team" })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("You've reached your plan limit of 1 teams.");
+  });
+});
+
 // ── PATCH /api/club/settings ──────────────────────────────────────────────────
 
 describe("PATCH /api/club/settings — authentication", () => {
@@ -249,7 +317,7 @@ describe("PATCH /api/club/settings — input validation", () => {
     Object.keys(mocks.tableData).forEach((k) => delete mocks.tableData[k]);
     mocks.tableData.profiles = PROFILE;
     mocks.tableData.organization_members = { role: "owner" };
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(makeSettingsRequest({ orgId: "org-1" }));
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -279,7 +347,7 @@ describe("PATCH /api/club/settings — authorization", () => {
 
   it("returns 403 when a director tries to update branding color", async () => {
     mocks.tableData.organization_members = { role: "director" };
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", brandColor: "#ff0000" })
     );
@@ -288,7 +356,7 @@ describe("PATCH /api/club/settings — authorization", () => {
 
   it("returns 403 when a director tries to update subdomain", async () => {
     mocks.tableData.organization_members = { role: "director" };
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", subdomain: "myclub" })
     );
@@ -297,7 +365,7 @@ describe("PATCH /api/club/settings — authorization", () => {
 
   it("returns 403 when a director tries to update logoUrl", async () => {
     mocks.tableData.organization_members = { role: "director" };
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", logoUrl: "https://example.com/logo.png" })
     );
@@ -306,7 +374,7 @@ describe("PATCH /api/club/settings — authorization", () => {
 
   it("returns 403 when a director tries to update faviconUrl", async () => {
     mocks.tableData.organization_members = { role: "director" };
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", faviconUrl: "https://example.com/favicon.png" })
     );
@@ -346,7 +414,7 @@ describe("PATCH /api/club/settings — subdomain validation", () => {
   });
 
   it("returns 409 for a reserved subdomain: 'www'", async () => {
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", subdomain: "www" })
     );
@@ -356,7 +424,7 @@ describe("PATCH /api/club/settings — subdomain validation", () => {
   });
 
   it("returns 409 for a reserved subdomain: 'api'", async () => {
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", subdomain: "api" })
     );
@@ -366,7 +434,7 @@ describe("PATCH /api/club/settings — subdomain validation", () => {
   });
 
   it("returns 409 for reserved subdomains regardless of case", async () => {
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", subdomain: "ADMIN" })
     );
@@ -384,12 +452,34 @@ describe("PATCH /api/club/settings — subdomain validation", () => {
     expect(res.status).toBe(200);
   });
 
-  it("allows a valid subdomain for a club-plan org", async () => {
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+  it("allows a valid subdomain for a club_small org", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
     const res = await PATCH(
       makeSettingsRequest({ orgId: "org-1", subdomain: "westside" })
     );
     expect(res.status).toBe(200);
+  });
+
+  // Both club tiers (not just club_small) get the subdomain feature per the
+  // pricing table — the gate uses isClubPlan(), not a legacy `plan === 'club'`.
+  it("allows a valid subdomain for a club_large org", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "club_large" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "eastside" })
+    );
+    expect(res.status).toBe(200);
+  });
+
+  // The retired legacy `'club'` value must NOT pass the gate — the migration
+  // split it into club_small/club_large and no org should carry it anymore.
+  it("returns 403 for the retired legacy 'club' plan value", async () => {
+    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    const res = await PATCH(
+      makeSettingsRequest({ orgId: "org-1", subdomain: "legacy" })
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("subdomain_requires_club_plan");
   });
 });
 
@@ -400,7 +490,7 @@ describe("PATCH /api/club/settings — success", () => {
     Object.keys(mocks.updateErrors).forEach((k) => delete mocks.updateErrors[k]);
     mocks.mockResolveRequestUser.mockResolvedValue(AUTHED_USER);
     mocks.tableData.profiles = PROFILE;
-    mocks.tableData.organizations = { subdomain: null, plan: "club" };
+    mocks.tableData.organizations = { subdomain: null, plan: "club_small" };
   });
 
   it("returns 200 when an owner updates branding color", async () => {

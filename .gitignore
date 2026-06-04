@@ -55,3 +55,8 @@ apps/mobile/.expo/
 # local scratch directories
 crash_logs/
 images/
+IMPLEMENTATION_PLAN.md
+PROGRESS.md
+.ralph/
+PROMPT_plan.md
+PROMPT_build.md

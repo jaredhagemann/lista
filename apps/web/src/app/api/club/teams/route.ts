@@ -56,6 +56,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
+  // Enforce the per-org team limit (spec: "Team Creation Limits"). The cap is
+  // per-org, not per-user, so it cannot live in RLS — it is enforced here and
+  // in the create_club_team RPC, which must agree. A NULL team_limit
+  // (club_large) is unlimited and never blocks. Existing teams above the limit
+  // (e.g. after a Large → Small downgrade) stay accessible; only creating an
+  // additional team past the cap is rejected. Archived teams do NOT count —
+  // spec's over-limit banner advises archiving as a remedy, so archiving must
+  // actually free a slot. The RPC enforces the same active-only count.
+  const { data: org } = await admin
+    .from("organizations")
+    .select("team_limit")
+    .eq("id", orgId)
+    .single();
+
+  if (org?.team_limit != null) {
+    const { count } = await admin
+      .from("teams")
+      .select("*", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .is("archived_at", null);
+
+    if ((count ?? 0) >= org.team_limit) {
+      return NextResponse.json(
+        { error: `You've reached your plan limit of ${org.team_limit} teams.` },
+        { status: 403 }
+      );
+    }
+  }
+
   const teamId = crypto.randomUUID();
 
   // Create the team

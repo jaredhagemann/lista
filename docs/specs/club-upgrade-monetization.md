@@ -166,7 +166,7 @@ The `defaultPm` ID is passed explicitly to `subscriptions.create` (see conversio
 
 ### Trial Expiration (Day 91 Cron)
 
-A daily cron job (`/api/cron/trial-expiration`) queries orgs where `trial_ends_at < now()` and `subscription_status = 'trialing'`.
+A daily cron job (`/api/cron/trial-expiration`) queries orgs where `trial_ends_at < now()` and `subscription_status = 'trialing'`. Register it in `vercel.json` alongside the existing reminders cron — same daily schedule (`0 12 * * *`) and same `CRON_SECRET` auth pattern.
 
 **Idempotency guard:** The query already filters on `subscription_status = 'trialing'`, which is the primary guard — once the subscription is created and the webhook fires, `subscription_status` flips to `'active'` and the org is excluded from future runs. However, the webhook may arrive after the next cron run. To close this window:
 
@@ -176,13 +176,13 @@ A daily cron job (`/api/cron/trial-expiration`) queries orgs where `trial_ends_a
 **Conversion path (has payment method):**
 
 1. Retrieve the Stripe customer and read `invoice_settings.default_payment_method` — if null, take the downgrade path instead.
-2. Verify no existing active subscription in Stripe (`subscriptions.list({ customer, status: 'active' })`) — skip if one already exists.
+2. Verify no existing active subscription in Stripe (`subscriptions.list({ customer, status: 'active' })`). If one already exists, write `stripe_subscription_id = subscription.id` and `subscription_status = 'active'` to the org row (the webhook did not sync these fields when the subscription was created via this path), then skip the remaining conversion steps. This prevents the org from remaining stuck in `trialing` in the DB and being retried on every cron run.
 3. Call `subscriptions.create` with the price ID matching the org's current `plan`, the idempotency key `trial-convert-{orgId}`, and `default_payment_method` set to the ID retrieved in step 1. Passing it explicitly ensures the subscription charges the correct card regardless of any future change to the customer default.
 4. Immediately write `stripe_subscription_id = subscription.id` and `subscription_status = 'active'` to the org row in a single update. The cron is the authoritative activation point for this path — `customer.subscription.created` is a no-op and must not double-write.
 
 **Downgrade path (no payment method):**
 
-Set `plan → 'free'`, `subscription_status → null`, `team_limit → 1`. `trial_ends_at` is left as-is (permanent record).
+Set `plan → 'free'`, `subscription_status → NULL`, `team_limit → 1`. `trial_ends_at` is left as-is (permanent record). `NULL` is the correct value here — there was never a Stripe subscription, so `'canceled'` would be semantically wrong. The feature gating check (`subscription_status IN ('trialing', 'active', 'past_due')`) correctly excludes `NULL`, so free orgs with no subscription history are gated out regardless of how they got there.
 
 ---
 
@@ -197,7 +197,13 @@ Two Stripe products, each with a monthly recurring price:
 | Club Small | `STRIPE_CLUB_SMALL_PRICE_ID` | $99/month |
 | Club Large | `STRIPE_CLUB_LARGE_PRICE_ID` | $299/month |
 
-The existing `STRIPE_CLUB_PRICE_ID` is retired once JOGA FC is migrated to the new price ID.
+The existing `STRIPE_CLUB_PRICE_ID` is retired: remove all code references to it as part of this feature. The env var itself can remain in place (harmless) but must be removed from `env.example` and replaced with the two new vars. JOGA FC's Stripe subscription (if any) is unaffected — the migration backfills them to `club_large` at the DB level only.
+
+Add to `env.example`:
+```
+STRIPE_CLUB_SMALL_PRICE_ID=
+STRIPE_CLUB_LARGE_PRICE_ID=
+```
 
 ### API Routes
 
@@ -208,11 +214,31 @@ The existing `STRIPE_CLUB_PRICE_ID` is retired once JOGA FC is migrated to the n
 | `POST /api/billing/create-checkout` | *(existing, updated)* Creates a subscription checkout session for direct upgrades and re-upgrades after cancellation; body: `{ orgId, plan }` |
 | `POST /api/billing/change-plan` | Upgrades Small → Large (immediate subscription item update) or initiates Large → Small deferred downgrade (Subscription Schedule); body: `{ orgId, plan }` |
 | `POST /api/billing/cancel` | Sets `cancel_at_period_end = true` on the Stripe subscription; body: `{ orgId }` |
-| `POST /api/billing/portal` | *(existing)* Opens Stripe Customer Portal |
+| `POST /api/billing/reactivate` | Clears `cancel_at_period_end` on the Stripe subscription (reverses a pending cancellation); body: `{ orgId }` |
+| `POST /api/billing/portal` | *(existing)* Opens Stripe Customer Portal (payment method + history + cancel only — plan switching disabled) |
 | `POST /api/billing/webhook` | *(existing, extended)* Handles Stripe events |
 | `GET /api/billing/status` | *(existing, extended)* Returns plan, trial status, days remaining, pending plan change |
 | `POST /api/cron/trial-expiration` | Daily cron: send trial reminders and expire trials (convert or downgrade) |
 | `POST /api/admin/upgrade` | *(existing, updated)* Bypasses Stripe — manually sets an org to `club_small` or `club_large`; gated by `ADMIN_UPGRADE_CODE` env var; body: `{ orgId, plan, code }` |
+
+### Route Authorization & State Requirements
+
+Every billing mutation is rejected with 403 unless the caller is the org owner. Additional preconditions are enforced per route:
+
+| Route | Caller | Current `plan` | Current `subscription_status` | Additional preconditions |
+|---|---|---|---|---|
+| `POST /api/billing/start-trial` | Owner | `free` | any / null | `trial_ends_at IS NULL`; `stripe_subscription_id IS NULL` |
+| `POST /api/billing/create-setup` | Owner | `club_small` or `club_large` | `trialing` | — |
+| `POST /api/billing/create-checkout` | Owner | `free`, or `club_*` with `canceled` | any / null | — |
+| `POST /api/billing/change-plan` | Owner | `club_small` or `club_large` | `trialing` or `active` | `stripe_subscription_id IS NOT NULL` when `subscription_status = 'active'` |
+| `POST /api/billing/cancel` | Owner | `club_small` or `club_large` | `active` | `stripe_subscription_id IS NOT NULL`; `subscription_cancel_at IS NULL`; `pending_plan IS NULL` |
+| `POST /api/billing/reactivate` | Owner | `club_small` or `club_large` | `active` | `stripe_subscription_id IS NOT NULL`; `subscription_cancel_at IS NOT NULL` |
+| `POST /api/billing/portal` | Owner | `club_small` or `club_large` | not `canceled` | `stripe_subscription_id IS NOT NULL` |
+| `GET /api/billing/status` | Owner or director | any | any | — |
+| `POST /api/cron/trial-expiration` | Cron (`CRON_SECRET`) | — | — | — |
+| `POST /api/admin/upgrade` | Org owner | any | any | Valid `ADMIN_UPGRADE_CODE` in request body |
+
+All mutation routes return 400 with a descriptive `error` field when a precondition is not met. Routes do not silently no-op on invalid state — they reject so the client can surface the problem rather than assuming success.
 
 ### Webhook Events
 
@@ -263,6 +289,27 @@ This event fires for multiple reasons; the handler must branch on the actual cha
 | Any other update | No DB change required. |
 
 Access gating must treat `subscription_cancel_at IS NOT NULL` the same as an active subscription — the org retains full club access until `customer.subscription.deleted` fires.
+
+---
+
+### Customer Portal Configuration
+
+The Stripe Customer Portal is used only for payment method management, invoice history, and cancellation. **Plan switching must be disabled** — allowing it would bypass the app's custom plan-change logic (deferred Large → Small downgrade via Subscription Schedule, trial-period upgrades, team-limit writes) and leave the DB out of sync with Stripe.
+
+Configure the portal in the Stripe Dashboard under **Settings → Billing → Customer portal**:
+
+| Feature | Setting |
+|---|---|
+| Payment methods | **Enabled** — customers can add, remove, and update saved cards |
+| Invoice history | **Enabled** — customers can view and download past invoices |
+| Cancel subscription | **Enabled** — triggers `customer.subscription.updated` (`cancel_at_period_end = true`) which the webhook already handles |
+| Update subscriptions (plan change) | **Disabled** — plan changes go through `POST /api/billing/change-plan` only |
+| Pause subscription | **Disabled** |
+| Customer information updates | Disabled (name/address not needed for this flow) |
+
+The `POST /api/billing/portal` route must pass a `return_url` so users land back on the Club Billing page after exiting the portal. Stripe enforces the allowed-domains list configured in the portal settings, so ensure the production domain is listed there.
+
+The "Cancel plan" button on the Club Billing page calls `POST /api/billing/cancel` directly (not the portal) to keep cancellation in-app and preserve the ability to show the custom "Canceling" badge and reactivation flow. The portal's cancel feature is a fallback for users who reach the portal directly.
 
 ---
 
@@ -351,7 +398,7 @@ Cancellation is two-phase in Stripe:
 1. **Phase 1 — Pending cancellation:** User clicks "Cancel plan" (or cancels via the Stripe portal). This sets `cancel_at_period_end = true` on the Stripe subscription. Stripe fires `customer.subscription.updated`; the webhook writes `subscription_cancel_at`. Access remains fully active. `subscription_status` stays `'active'`.
 2. **Phase 2 — Final deletion:** At period end, Stripe fires `customer.subscription.deleted`. The webhook sets `plan = 'free'`, `team_limit = 1`, `subscription_status = 'canceled'`, `subscription_cancel_at = NULL`, and quarantines the subdomain.
 
-**Reactivation:** If the user reactivates before period end, Stripe fires `customer.subscription.updated` with `cancel_at_period_end = false`. The webhook clears `subscription_cancel_at`; UI returns to the normal active state.
+**Reactivation:** The "Reactivate" button on the billing page calls `POST /api/billing/reactivate`. The route calls `stripe.subscriptions.update(stripe_subscription_id, { cancel_at_period_end: false })`. Stripe fires `customer.subscription.updated` with `cancel_at_period_end = false`; the webhook clears `subscription_cancel_at` and the UI returns to the normal active state. The route itself makes no DB write — the webhook is the sole writer for this transition.
 
 Data is never deleted.
 
@@ -383,9 +430,10 @@ Status badge and messaging derive from DB state as follows:
 Additional elements:
 
 - "Add payment method" button (links to Stripe setup session) when trialing and no payment method on file.
-- "Manage subscription" button (Stripe portal) when `stripe_subscription_id IS NOT NULL` and status is not `'canceled'`.
-- "Cancel plan" button when `subscription_status = 'active'` and `subscription_cancel_at IS NULL` and `pending_plan IS NULL`.
-- Billing history (via Stripe portal).
+- "Manage payment method" button (Stripe portal — payment method + history only) when `stripe_subscription_id IS NOT NULL` and status is not `'canceled'`. Plan switching is disabled in the portal; plan changes are handled in-app only.
+- "Cancel plan" button when `subscription_status = 'active'` and `stripe_subscription_id IS NOT NULL` and `subscription_cancel_at IS NULL` and `pending_plan IS NULL`. This calls `POST /api/billing/cancel` directly, not the portal, to keep the cancellation flow in-app.
+- Billing history link (Stripe portal) when `stripe_subscription_id IS NOT NULL`.
+- For orgs where `stripe_subscription_id IS NULL` and `subscription_status = 'active'` (admin/pilot upgrades): show no subscription-management buttons. Display a single note in place of the action area: "Managed account — contact us to make changes."
 
 ---
 
@@ -466,6 +514,7 @@ Fields written on a successful admin upgrade:
 
 **Trial expiration cron:**
 - [ ] Cron skips orgs where `stripe_subscription_id IS NOT NULL` (idempotency guard)
+- [ ] Cron detects existing active Stripe subscription (step 2): writes `stripe_subscription_id` and `subscription_status = 'active'` to DB before skipping — org is not retried on the next cron run
 - [ ] Cron reads `invoice_settings.default_payment_method`; takes downgrade path if null
 - [ ] Cron creates subscription with explicit `default_payment_method` and idempotency key `trial-convert-{orgId}`
 - [ ] Cron writes `stripe_subscription_id` and `subscription_status = 'active'` immediately after `subscriptions.create`
