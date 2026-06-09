@@ -24,6 +24,9 @@ export async function generateMetadata(): Promise<Metadata> {
     title: { template: `%s | ${appName}`, default: appName },
     description: "Zero-cost, ad-free team management. Scheduling, notifications, and roster management.",
     manifest: "/manifest.json",
+    icons: tenant?.isWhiteLabel && tenant.faviconUrl
+      ? { icon: tenant.faviconUrl }
+      : undefined,
   };
 }
 
@@ -45,11 +48,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" style={brandVars}>
-      <head>
-        {tenant?.isWhiteLabel && tenant.faviconUrl && (
-          <link rel="icon" href={tenant.faviconUrl} />
-        )}
-      </head>
+      <head />
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ProgressBar color={tenant?.isWhiteLabel ? tenant.brandColorSecondary : null} />
         <AppNameProvider value={appName}>
