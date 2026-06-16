@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { EventDetail } from "@/components/calendar/event-detail";
-import { getActiveMembership, getActiveProfileId } from "@/lib/get-active-membership";
+import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -30,13 +30,11 @@ export default async function EventDetailPage({
 
   if (!user) redirect("/login");
 
-  // Resolve active profile (may be a managed player) and the active membership.
-  // getActiveMembership handles both direct team_members rows AND parent-only
-  // managers whose access comes via profile_managers.
-  const [activeProfileId, activeMembership] = await Promise.all([
-    getActiveProfileId(user.id),
-    getActiveMembership(supabase, user.id),
-  ]);
+  // Resolve the active membership. getActiveMembership handles both direct
+  // team_members rows AND parent-only managers whose access comes via
+  // profile_managers (in which case it resolves to the managed player's
+  // membership).
+  const activeMembership = await getActiveMembership(supabase, user.id);
 
   const { data: rawEvent, error } = await supabase
     .from("events")
@@ -54,6 +52,12 @@ export default async function EventDetailPage({
   if (!activeMembership || activeMembership.team_id !== event.team_id) {
     redirect("/dashboard");
   }
+
+  // The profile we act as for RSVP must be the one whose membership grants
+  // access to this event — i.e. the active player, never a parent-only manager
+  // who reaches the event via their child. Deriving it from the resolved
+  // membership keeps it consistent with the access check above.
+  const activeProfileId = activeMembership.profile_id ?? user.id;
 
   const membership = activeMembership.teams as unknown as MembershipWithTeam;
   const isAdmin =

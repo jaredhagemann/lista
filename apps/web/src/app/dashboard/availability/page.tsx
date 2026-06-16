@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { AvailabilityMatrix } from "@/components/availability/availability-matrix";
-import { getActiveMembership, getActiveProfileId } from "@/lib/get-active-membership";
+import { getActiveMembership } from "@/lib/get-active-membership";
 
 export default async function AvailabilityPage() {
   const supabase = await createClient();
@@ -11,9 +11,12 @@ export default async function AvailabilityPage() {
 
   if (!user) redirect("/login");
 
-  const activeProfileId = await getActiveProfileId(user.id);
   const membership = await getActiveMembership(supabase, user.id);
   if (!membership || !membership.team_id) redirect("/dashboard");
+
+  // RSVP as the profile whose membership grants access to this team (the active
+  // player), not the parent-only manager who reaches it via their child.
+  const activeProfileId = membership.profile_id ?? user.id;
 
   const teamId = membership.team_id;
   const isAdmin =

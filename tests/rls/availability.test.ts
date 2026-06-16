@@ -3,6 +3,7 @@ import {
   createTestUser,
   createTestTeam,
   addTeamMember,
+  createManagedProfile,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -127,6 +128,57 @@ describe("availability RLS", () => {
       .select()
       .eq("event_id", eventId)
       .eq("profile_id", coach.user.id);
+    expect(data![0].status).toBe("available");
+  });
+
+  // ── Roster-membership guard ──────────────────────────────────────────────────
+  // Availability rows must only ever be attributed to a roster member of the
+  // event's team. A parent-only manager (not on the roster) must not be able to
+  // RSVP as themselves — only on behalf of their managed player who IS on the
+  // roster. Regression test for managed-availability misattribution.
+
+  it("parent-only manager cannot INSERT own availability for a team they don't belong to", async () => {
+    const parent = await createTestUser();
+    const coach = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+
+    // The parent's child is on the team; the parent is NOT a roster member.
+    const childId = await createManagedProfile(parent.user.id, { firstName: "Iris" });
+    await addTeamMember(teamId, childId, "player");
+
+    const eventId = await createEvent(teamId);
+
+    const { error } = await parent.client.from("availability").insert({
+      event_id: eventId,
+      profile_id: parent.user.id, // parent's own profile — not a roster member
+      status: "available",
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("parent CAN INSERT managed child's availability when the child is a roster member", async () => {
+    const parent = await createTestUser();
+    const coach = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+
+    const childId = await createManagedProfile(parent.user.id, { firstName: "Iris" });
+    await addTeamMember(teamId, childId, "player");
+
+    const eventId = await createEvent(teamId);
+
+    const { error } = await parent.client.from("availability").insert({
+      event_id: eventId,
+      profile_id: childId, // the roster player — managed by the parent
+      status: "available",
+    });
+    expect(error).toBeNull();
+
+    const { data } = await adminClient
+      .from("availability")
+      .select()
+      .eq("event_id", eventId)
+      .eq("profile_id", childId);
+    expect(data!.length).toBe(1);
     expect(data![0].status).toBe("available");
   });
 
