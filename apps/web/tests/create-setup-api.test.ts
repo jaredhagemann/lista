@@ -372,6 +372,9 @@ describe("POST /api/billing/create-setup — session shape", () => {
     expect(args.customer).toBe("cus_existing");
     expect(args.metadata).toEqual({ org_id: "org-1" });
 
+    // Stripe requires an explicit currency for setup-mode sessions.
+    expect(args.currency).toBe("usd");
+
     // mode:'setup' must not include line_items / subscription_data — those are
     // for subscription-mode sessions and Stripe would reject the call.
     expect(args.line_items).toBeUndefined();

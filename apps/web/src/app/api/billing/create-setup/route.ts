@@ -111,6 +111,9 @@ export async function POST(request: Request) {
     {
       customer: customerId,
       mode: "setup",
+      // Stripe requires an explicit currency for setup-mode sessions; use USD
+      // to match the club plan prices.
+      currency: "usd",
       metadata: { org_id: orgId },
       success_url: `${appUrl}/dashboard/club/billing?setup=success`,
       cancel_url: `${appUrl}/dashboard/club/billing?setup=canceled`,
