@@ -92,13 +92,42 @@ creation, multi-tenant redirects, invite linking, and account linking.
 - Loading/disabled and error states (e.g. user cancels at Google, provider
   misconfig) handled gracefully.
 
-### R3. OAuth callback & multi-tenant redirect
-- Reuse `/auth/callback`. Confirm it correctly returns the user to the **host
-  they initiated from** (club subdomain vs root). `signInWithOAuth`'s
-  `redirectTo` must be derived from the current request origin, mirroring the
-  signup route's existing `origin`-based `redirectTo` logic.
+### R3. OAuth callback & multi-tenant redirect — **resolved: wildcard + direct redirect**
+- Reuse `/auth/callback`. `signInWithOAuth`'s `redirectTo` is derived from the
+  current host (`window.location.origin`), so the user lands back on the **same
+  host they started on** (root or club subdomain) and `exchangeCodeForSession`
+  sets the session cookie there in one hop — **no bounce**.
+- **Allow-list (Supabase → Auth → URL Configuration):** add a wildcard for club
+  subdomains plus the root and dev hosts:
+  - `https://lista.team/**` (root, prod)
+  - `https://*.lista.team/**` (all club subdomains)
+  - `http://localhost:3000/**` (dev)
+  - the Vercel preview pattern, e.g. `https://lista-*-<scope>.vercel.app/**`
+- **Use single `*`, not `**`, for the subdomain label.** Supabase's glob treats
+  `.` and `/` as separators: `*` matches one label (`joga`) and cannot cross into
+  another host, whereas `**` spans `.`/`/` and would make
+  `https://**.lista.team/**` match `https://evil.com/x.lista.team` — an
+  open-redirect hole. `https://*.lista.team/**` is safe because an attacker
+  cannot obtain a `lista.team` subdomain.
+- The **Google OAuth client redirect URI** (registered in Google Cloud) stays the
+  single fixed Supabase callback `https://<project-ref>.supabase.co/auth/v1/callback`
+  — Google does **not** allow wildcards there, and it doesn't need them: every
+  flow funnels through Supabase's callback before bouncing to our app host.
+- **Why direct-to-subdomain is robust here:** the middleware already scopes the
+  Supabase auth cookie to `.lista.team` (parent domain) when subdomain routing is
+  on (`apps/web/src/lib/supabase/middleware.ts`), so the PKCE code-verifier and
+  resulting session cookie are visible across all `*.lista.team` hosts. The
+  exchange therefore succeeds regardless of which `*.lista.team` host receives
+  the callback. (A "land on root, then bounce to subdomain" alternative also
+  works *because of* that parent-domain cookie, but adds a hop and leans on the
+  cookie-domain logic that previously caused a staging bug — so direct redirect
+  is preferred.)
+- Set **Site URL** to the exact production root (`https://lista.team`); keep
+  wildcards only in the additional-redirect-URLs list, per Supabase's guidance.
 - Preserve `?next=` so post-login routing (dashboard vs invite acceptance) is
   retained through the round-trip.
+- **Caveat:** if Supabase Auth is ever moved behind a custom domain (e.g.
+  `auth.lista.team`), the Google client's redirect URI must be updated to match.
 
 ### R4. Profile creation for OAuth users
 - Update `handle_new_user()` (new migration) to populate `first_name`/`last_name`
@@ -182,12 +211,15 @@ creation, multi-tenant redirects, invite linking, and account linking.
 
 ## Open Questions (still to resolve during design)
 
-1. **Subdomain redirect strategy.** Does Supabase's redirect allow-list support a
-   `*.lista.team` wildcard, or must we land on a fixed callback host and then
-   bounce to the subdomain? Affects R3. **I'll research Supabase's allow-list
-   capabilities and propose the concrete approach** before the build plan.
-2. **Unverified-pending-signup linking edge case** (R5) — confirm Supabase's
+1. **Unverified-pending-signup linking edge case** (R5) — confirm Supabase's
    exact behavior with a live test during implementation.
+
+## Resolved by research
+
+- **Subdomain redirect strategy (was Open Q1).** Supabase's redirect allow-list
+  **does** support glob wildcards; use `https://*.lista.team/**` (single `*`) and
+  redirect directly back to the originating subdomain. Full rationale, the
+  `*` vs `**` security note, and the allow-list entries are in **R3**.
 
 ## Test plan (to be expanded once Open Questions are resolved)
 
