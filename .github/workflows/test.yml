@@ -32,7 +32,12 @@ jobs:
           cache: pnpm
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned: `latest` drifted to a CLI whose `supabase start` no longer
+          # issues/accepts the static legacy demo JWT keys in
+          # .env.test.local.example, so the service-role token downgraded to the
+          # anon role and every test failed with "permission denied for table
+          # organizations". 2.78.1 is verified to work with those keys.
+          version: 2.78.1
       - name: Start local Supabase stack
         run: supabase start
       - name: Copy test env
