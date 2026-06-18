@@ -243,6 +243,32 @@ implementation. Anticipated coverage:
 - **E2E** (`tests/e2e/`): "Continue with Google" renders on login and signup
   (full OAuth round-trip against live Google is typically mocked/stubbed in CI).
 
+## Implementation scope: autonomous agent vs operator
+
+To keep an autonomous build loop on track, this separates code tasks from
+external configuration the agent cannot perform.
+
+**In scope for the build agent (code + tests):**
+- "Continue with Google" button on `login-form.tsx` and `signup-form.tsx`,
+  calling `signInWithOAuth` with a host-derived `redirectTo` and `next`
+  passthrough (R2, R3).
+- `handle_new_user()` migration that derives `first_name`/`last_name` from Google
+  metadata and sets `avatar_url` from `picture` when null (R4) — created in
+  `supabase/migrations/` and shipped via the normal PR/Actions flow.
+- Invite-linkage carried through the OAuth round-trip (R6).
+- All tests, written first per the project mandate: DB-trigger/RLS, the
+  single-account linking invariant, avatar population, callback redirect/host
+  handling, and an e2e check that the buttons render (R-Test Plan).
+
+**Out of scope for the agent — operator prerequisites (manual, no API):**
+- Creating the Google Cloud OAuth client and consent screen.
+- Enabling the Google provider, setting the redirect allow-list / Site URL, and
+  turning on automatic identity linking in the Supabase dashboard.
+
+The agent should **assume these are configured** and must **not** attempt
+dashboard or Google Cloud changes. Where a test needs live OAuth, mock/stub it
+rather than depend on real Google.
+
 ## Config / rollout checklist (no secrets in repo)
 
 - [ ] Google Cloud OAuth client (Web) created; consent screen configured.
