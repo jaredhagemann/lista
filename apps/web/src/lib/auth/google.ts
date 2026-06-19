@@ -1,24 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
+import { sanitizeNext } from "@/lib/auth/sanitize-next";
 
-const DEFAULT_NEXT = "/dashboard";
-
-/**
- * Belt-and-suspenders guard against open-redirect via `?next=`. The
- * `/auth/callback` route does the same check server-side; we run it here
- * before initiating the OAuth round-trip so a poisoned `next` never even
- * leaves the browser.
- *
- * Returns `next` only if it is a same-origin path. Anything else falls back
- * to `/dashboard`.
- */
-export function sanitizeNext(next: string | null | undefined): string {
-  if (typeof next !== "string" || next.length === 0) return DEFAULT_NEXT;
-  if (!next.startsWith("/")) return DEFAULT_NEXT;
-  // Protocol-relative (`//evil.com`) and backslash variant some browsers
-  // normalise to `/` — both would escape the origin once concatenated.
-  if (next.startsWith("//") || next.startsWith("/\\")) return DEFAULT_NEXT;
-  return next;
-}
+export { sanitizeNext };
 
 /**
  * Initiates Supabase OAuth with Google.
@@ -27,6 +10,10 @@ export function sanitizeNext(next: string | null | undefined): string {
  * returns to the **same host** the user started on — root or club
  * subdomain — per spec R3. `next` is sanitised and appended so post-login
  * routing (dashboard vs invite acceptance) survives the round-trip (R6).
+ *
+ * The same sanitiser runs server-side in `/auth/callback`; this is the
+ * client-side first line of defence so a poisoned `next` never even leaves
+ * the browser.
  */
 export async function signInWithGoogle(next?: string | null) {
   const supabase = createClient();
