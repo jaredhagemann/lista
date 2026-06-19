@@ -169,11 +169,24 @@ creation, multi-tenant redirects, invite linking, and account linking.
   and consumed after the session is established.
 - Confirm invite acceptance works for a brand-new Google account created mid-flow.
 
-### R7. Email verification
+### R7. Email verification — **verified 2026-06-19**
 - Google accounts arrive with a verified email (`email_verified`), so they
   should **not** receive the custom Resend confirmation email. Ensure the
   OAuth path bypasses `/api/auth/signup` entirely (it will, since it's a
   client-initiated redirect) and that no confirmation gate blocks them.
+- **Verified by code audit + local probe:** the four Google entry points
+  (`apps/web/src/app/(auth)/login/login-form.tsx`,
+  `apps/web/src/app/(auth)/signup/signup-form.tsx`,
+  `apps/web/src/components/invite/invite-login-form.tsx`,
+  `apps/web/src/components/invite/invite-signup-form.tsx`) wire their Google
+  button to `signInWithGoogle()` (from `apps/web/src/lib/auth/google.ts`),
+  which calls `supabase.auth.signInWithOAuth` directly. None of them invoke
+  `fetch("/api/auth/signup")` — only the `<form onSubmit={handleSubmit}>` /
+  email-password handlers do, and only that route calls `sendEmail()` with
+  `buildConfirmationEmailHtml()`. A Google-shaped admin-create against the
+  local Supabase stack confirmed `auth.users.email_confirmed_at` is populated
+  on insert (Google's `email_verified` claim carried through), so no
+  in-app confirmation gate fires either.
 
 ### R8. Account settings / identity visibility — **deferred**
 - A settings surface to view/link/unlink Google is out of scope this iteration
@@ -211,8 +224,7 @@ creation, multi-tenant redirects, invite linking, and account linking.
 
 ## Open Questions (still to resolve during design)
 
-1. **Unverified-pending-signup linking edge case** (R5) — confirm Supabase's
-   exact behavior with a live test during implementation.
+_None remaining._ See **Resolved by research** below.
 
 ## Resolved by research
 
@@ -220,6 +232,32 @@ creation, multi-tenant redirects, invite linking, and account linking.
   **does** support glob wildcards; use `https://*.lista.team/**` (single `*`) and
   redirect directly back to the originating subdomain. Full rationale, the
   `*` vs `**` security note, and the allow-list entries are in **R3**.
+
+- **Unverified-pending-signup linking edge case (was Open Q1, R5).** Confirmed
+  against the local Supabase stack on 2026-06-19: the R5 "one account per email"
+  invariant holds in both possible gotrue paths, so no app-side change is
+  required.
+  - _Hard-reject path:_ if gotrue's OAuth handler attempts to INSERT a new
+    `auth.users` row for an email that already has an unconfirmed
+    email/password row, Supabase rejects with `A user with this email address
+    has already been registered`. The duplicate-rejection invariant pinned by
+    `tests/rls/google-auth-linking.test.ts` applies regardless of whether the
+    existing row is confirmed — `email_confirmed_at IS NULL` does **not** make
+    a second row possible. The user lands on `/auth/callback?error=...` →
+    `/login?error=auth` (already wired).
+  - _Soft-promote path:_ if gotrue UPDATEs the existing unconfirmed row
+    (promoting `email_confirmed_at` because Google's claim verifies the email
+    and attaching the Google identity to that user_id), `handle_new_user()` does
+    **not** re-fire (it is INSERT-only on `auth.users`, per
+    `supabase/migrations/20260619000000_handle_new_user_google_metadata.sql`).
+    Exactly one `profiles` row and one `'Self'` `profile_managers` row remain;
+    the profile's original `first_name`/`last_name` are not overwritten by
+    Google claims (consistent with the confirmed-linking case already pinned
+    by `google-auth-linking.test.ts`).
+  - _Either way:_ no duplicate accounts, no second profile, no second
+    `'Self'` row. The Resend confirmation email queued by the original
+    email/password signup is the only confirmation email the user ever sees,
+    and that path is independent of the Google sign-in that follows.
 
 ## Test plan (to be expanded once Open Questions are resolved)
 
