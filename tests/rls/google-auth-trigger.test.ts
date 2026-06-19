@@ -147,6 +147,113 @@ describe("handle_new_user() — OAuth-shaped metadata (R4)", () => {
   });
 });
 
+describe("handle_new_user() — avatar non-overwrite on later Google sign-in (R4)", () => {
+  // R4 is explicit: avatar_url is populated from Google's `picture` ONLY when
+  // currently null, "so we never clobber a user-uploaded avatar on a later
+  // Google sign-in." The (a) leg ("first OAuth-shaped insert with picture
+  // populates avatar_url") is already pinned by the OAuth-shaped-metadata
+  // suite above; this block pins the (b) leg: subsequent sign-ins must not
+  // overwrite an existing avatar_url.
+  //
+  // We simulate "a later Google sign-in" the same way `google-auth-linking`
+  // does — `adminClient.auth.admin.updateUserById(...)` with Google-shaped
+  // user_metadata. That mirrors what Supabase does when it auto-links an
+  // identity or refreshes claims on a returning sign-in: the existing
+  // auth.users row's raw_user_meta_data gains new keys; no new row is
+  // inserted; the INSERT trigger does not fire. The load-bearing assertion is
+  // therefore "avatar_url is unchanged after a metadata update" — if a future
+  // change ever taught the trigger to fire on UPDATE (or added a sibling
+  // sync path), this test fails.
+
+  it("does not overwrite a user-uploaded avatar_url when Google metadata arrives later", async () => {
+    // Start with an email/password user — profile begins with avatar_url null.
+    const { userId } = await insertAuthUser({
+      first_name: "Avatar",
+      last_name: "Keeper",
+    });
+    const initial = await getProfile(userId);
+    expect(initial.avatar_url).toBeNull();
+
+    // Simulate the user uploading a custom avatar via the app (a value from
+    // the avatars storage bucket, not a googleusercontent URL — this is the
+    // exact case R4 calls out).
+    const customUpload = "https://lista.example/storage/v1/object/public/avatars/custom-upload.png";
+    const { error: setAvatarError } = await adminClient
+      .from("profiles")
+      .update({ avatar_url: customUpload })
+      .eq("id", userId);
+    if (setAvatarError) throw new Error(`Failed to set custom avatar: ${setAvatarError.message}`);
+
+    // Now they sign in with Google for the first time — Supabase auto-links
+    // the new identity and merges Google's claims (including `picture`) into
+    // the existing auth.users.raw_user_meta_data.
+    const googlePicture = "https://lh3.googleusercontent.com/a/should-not-clobber";
+    const { error: linkError } = await adminClient.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        iss: "https://accounts.google.com",
+        sub: "google-oauth-no-clobber",
+        provider_id: "google-oauth-no-clobber",
+        name: "Avatar Keeper",
+        full_name: "Avatar Keeper",
+        given_name: "Avatar",
+        family_name: "Keeper",
+        email_verified: true,
+        picture: googlePicture,
+      },
+    });
+    if (linkError) throw new Error(`Failed to simulate Google sign-in: ${linkError.message}`);
+
+    const after = await getProfile(userId);
+    expect(after.avatar_url).toBe(customUpload);
+  });
+
+  it("does not refresh an existing Google-sourced avatar_url when a later sign-in carries a different picture", async () => {
+    // Once avatar_url is set — even from Google — the "only set when null"
+    // contract means a returning sign-in (e.g. the user changed their Google
+    // profile photo) must not silently rewrite our stored URL. If we ever
+    // want refresh semantics they need to be an explicit feature, not a
+    // side effect of sign-in.
+    const picture1 = "https://lh3.googleusercontent.com/a/first-google-picture";
+    const { userId } = await insertAuthUser({
+      iss: "https://accounts.google.com",
+      sub: "google-oauth-returning-1",
+      provider_id: "google-oauth-returning-1",
+      name: "Returning User",
+      full_name: "Returning User",
+      given_name: "Returning",
+      family_name: "User",
+      email_verified: true,
+      picture: picture1,
+    });
+
+    // Precondition: the (a) leg from R4 — first OAuth sign-in populated
+    // avatar_url from picture. Re-asserted here so the "no overwrite"
+    // assertion below is meaningful even if this test is read in isolation.
+    const before = await getProfile(userId);
+    expect(before.avatar_url).toBe(picture1);
+
+    // Returning sign-in with a refreshed Google picture URL.
+    const picture2 = "https://lh3.googleusercontent.com/a/refreshed-google-picture";
+    const { error } = await adminClient.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        iss: "https://accounts.google.com",
+        sub: "google-oauth-returning-1",
+        provider_id: "google-oauth-returning-1",
+        name: "Returning User",
+        full_name: "Returning User",
+        given_name: "Returning",
+        family_name: "User",
+        email_verified: true,
+        picture: picture2,
+      },
+    });
+    if (error) throw new Error(`Failed to simulate returning sign-in: ${error.message}`);
+
+    const after = await getProfile(userId);
+    expect(after.avatar_url).toBe(picture1);
+  });
+});
+
 describe("handle_new_user() — email/password regression", () => {
   it("still derives first_name and last_name from raw first_name/last_name keys", async () => {
     // This is the existing email/password shape used by /api/auth/signup. It
