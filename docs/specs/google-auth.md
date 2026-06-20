@@ -1,8 +1,10 @@
 # Spec: Google Authentication (Sign in with Google)
 
-> Status: **Draft / requirements exploration.** No implementation yet. The
-> "Open Questions" section captures product decisions that must be made before
-> a build plan is written.
+> Status: **Implemented (web).** All build-plan items are complete and tested on
+> `feature/google-auth`; no open questions remain (see "Resolved by research").
+> Remaining before launch is operator config (Google Cloud OAuth client +
+> Supabase provider/allow-list/auto-linking) and a live end-to-end smoke test —
+> the code assumes these are in place. Mobile remains a follow-up (see Non-Goals).
 
 ## Overview
 
