@@ -167,14 +167,24 @@ exception when others then
   return 'UTC';
 end;
 $$;
+
+-- Is the team archived? Kept SEPARATE from is_team_player on purpose: archived
+-- semantics are context-dependent (writes are blocked, but team-scope
+-- aggregation still surfaces an archived team's board to its director), so the
+-- archived test must not be folded into the "is this a roster player" predicate.
+create or replace function is_team_archived(t_id uuid)
+returns boolean as $$
+  select archived_at is not null from teams where id = t_id;
+$$ language sql security definer stable;
 ```
 
 The trigger rejects a session when:
 
 1. **`profile_id` is not a `player` on `team_id`** → `is_team_player(team_id, profile_id)` is false. Closes the same hole the availability migration closed: a parent-manager can *see* a team, so without this check they could write a row against it.
-2. **`session_date` is in the future.** `session_date` is a bare calendar day, so the comparison is bare-date against the team-local "today": `today := (now() at time zone safe_team_tz(team_id))::date; if new.session_date > today then reject`. The team timezone is used **only** to pin down which calendar day "today" is (so a player logging at 8pm Pacific isn't rejected because it's already tomorrow in UTC) — it is never applied to `session_date` itself, which carries no time to convert. `safe_team_tz` (above) guarantees a valid zone, so a misconfigured `teams.timezone` degrades to UTC instead of erroring the insert.
-3. **`session_date` is more than 7 days in the past** — `new.session_date < today - 7` using the same team-local `today`. Backdating exists so you can log Saturday's session on Sunday, not so you can fill in a month before the board closes. Note the consequence: **the previous week's totals are still mutable for 7 days.** That is accepted — a week's numbers are final once it scrolls out of the window, and the UI does not claim otherwise.
-4. **The day's total would exceed 360 minutes** across all of that player's sessions on that `session_date` (all teams). Prevents the "twelve 300-minute sessions" attack that the per-session cap alone allows. To make this a genuinely **hard** cap and not just a per-statement one, the trigger takes a transaction-scoped advisory lock keyed on the player-day **before** it sums — `perform pg_advisory_xact_lock(hashtext(new.profile_id::text || new.session_date::text))` — so two concurrent inserts for the same player and date serialize instead of both reading `sum < 360` and both committing. The lock is on a tiny keyspace (one player-day) and released at transaction end, so it costs nothing in the common case where a player isn't racing parallel writes against themselves.
+2. **`team_id` is archived** → `is_team_archived(team_id)` is true. A player's roster row survives their team being archived (`teams.archived_at`), and `is_team_player` only checks the role — so without this, insert/update could still write *new* training to a dead team, and those sessions would never surface (club aggregation already excludes archived teams). Blocking it here on **both insert and update** means an archived team stops accepting new logs and stops allowing edits to old ones, while existing rows stay readable and deletable (moderation/cleanup) — the same "history preserved, forward writes revoked" stance as leaving a team.
+3. **`session_date` is in the future.** `session_date` is a bare calendar day, so the comparison is bare-date against the team-local "today": `today := (now() at time zone safe_team_tz(team_id))::date; if new.session_date > today then reject`. The team timezone is used **only** to pin down which calendar day "today" is (so a player logging at 8pm Pacific isn't rejected because it's already tomorrow in UTC) — it is never applied to `session_date` itself, which carries no time to convert. `safe_team_tz` (above) guarantees a valid zone, so a misconfigured `teams.timezone` degrades to UTC instead of erroring the insert.
+4. **`session_date` is more than 7 days in the past** — `new.session_date < today - 7` using the same team-local `today`. Backdating exists so you can log Saturday's session on Sunday, not so you can fill in a month before the board closes. Note the consequence: **a week's totals are still mutable by the player for 7 days**, then go final. "Final" is enforced on *all* player mutations, not just inserts/edits: the RLS `delete` policy applies the same 7-day bound to self/managed deletes (see Access Control), so once a week scrolls out of the window a player can neither add, edit, nor remove a session in it. Team admins can still delete for moderation — the one intentional exception.
+5. **The day's total would exceed 360 minutes** across all of that player's sessions on that `session_date` (all teams). Compute it as *the sum of the player's **other** sessions on that date plus the incoming row* — `select coalesce(sum(duration_minutes), 0) from training_sessions where profile_id = new.profile_id and session_date = new.session_date and id <> new.id` (a `plpgsql declare`d total), then reject when `total + new.duration_minutes > 360`. The `id <> new.id` exclusion is **essential on update**: a `before update` trigger still sees the row's *old* value in the table, so summing unconditionally would count the edited row twice and reject a legitimate edit (e.g. trimming a lone 300-min session to 200 would evaluate as 300 + 200 = 500). On insert the row isn't in the table yet, so the exclusion is a harmless no-op — the same expression serves both. Prevents the "twelve 300-minute sessions" attack that the per-session cap alone allows. To make this a genuinely **hard** cap and not just a per-statement one, the trigger takes a transaction-scoped advisory lock keyed on the player-day **before** it sums — `perform pg_advisory_xact_lock(hashtext(new.profile_id::text || new.session_date::text))` — so two concurrent inserts for the same player and date serialize instead of both reading `sum < 360` and both committing. The lock is on a tiny keyspace (one player-day) and released at transaction end, so it costs nothing in the common case where a player isn't racing parallel writes against themselves.
 
 Each failure raises a distinct `errcode`/message so the client can map it to a specific field error.
 
@@ -188,7 +198,7 @@ if new.created_by is null then
 end if;
 ```
 
-This makes `created_by` unforgeable: it is definitionally "who entered this row", which is always the authenticated caller, so there is never a legitimate reason to accept a client-supplied value. Without this, a crafted PostgREST insert could set `created_by` to the child's own profile (hiding that a parent logged it) or to another coach — defeating the audit purpose the column exists for. `created_by` is left out of the assignment on `update` so it preserves the original author when a row is later edited by someone else (e.g. a coach correcting an entry).
+This makes `created_by` unforgeable: it is definitionally "who entered this row", which is always the authenticated caller, so there is never a legitimate reason to accept a client-supplied value. Without this, a crafted PostgREST insert could set `created_by` to the child's own profile (hiding that a parent logged it) or to another coach — defeating the audit purpose the column exists for. `created_by` is left out of the assignment on `update` so it preserves the **original** author when a row is later edited by a *different* editor than the one who first logged it — the only such case, since the `update` policy is self/managed-only, is a player and their parent both being able to edit within the window (e.g. the player self-logged, a parent later tweaks the duration; `created_by` stays the player). **Coaches never reach this path: their moderation lever is delete, not edit** — so nothing about editing an entry is a coach action.
 
 **On `update`, the trigger stamps `updated_at`.** `new.updated_at := now()` — nothing else in the schema maintains it. No table in the codebase currently has an `updated_at` column, so there is no shared `moddatetime`/`set_updated_at` convention to inherit and no client code that sets it; without this line the column would sit frozen at its insert value forever. Since a `before insert or update` trigger already exists for validation, the bump is a one-line add on the update branch rather than a separate trigger.
 
@@ -201,13 +211,17 @@ This makes `created_by` unforgeable: it is definitionally "who entered this row"
 | Operation | Policy |
 |---|---|
 | `select` | `profile_id = auth.uid()` **or** `is_managed_by_me(profile_id)` **or** `is_team_admin(team_id)` |
-| `insert` | `(profile_id = auth.uid() or is_managed_by_me(profile_id))` and `is_team_player(team_id, profile_id)` and `has_club_access(team_org_id(team_id))` |
-| `update` | Same as insert, plus the row must still be inside the 7-day window (trigger) |
-| `delete` | `profile_id = auth.uid()` or `is_managed_by_me(profile_id)` or `is_team_admin(team_id)` |
+| `insert` | `(profile_id = auth.uid() or is_managed_by_me(profile_id))` and `is_team_player(team_id, profile_id)` and `not is_team_archived(team_id)` and `has_club_access(team_org_id(team_id))` |
+| `update` | Same as insert (incl. `not is_team_archived`), plus the row must still be inside the 7-day window (trigger) |
+| `delete` | `is_team_admin(team_id)` **or** `((profile_id = auth.uid() or is_managed_by_me(profile_id))` and `session_date >= (now() at time zone safe_team_tz(team_id))::date - 7)` |
 
 **Players cannot read each other's raw session rows.** The `select` policy grants self, managed children, and team admins (coach/manager/director — `is_team_admin` already covers directors org-wide). Teammate-visible numbers come exclusively from the aggregation RPC below, which returns totals and never notes. A note like "skipped, knee still hurts" should not be readable by twenty teammates.
 
-`delete` for team admins is the moderation lever: a coach who sees "480 minutes of shooting on a school day" removes it. There is no flag/approve workflow.
+`delete` for team admins is the moderation lever: a coach who sees "480 minutes of shooting on a school day" removes it, with **no** date bound. There is no flag/approve workflow.
+
+**Self/managed deletes are bounded by the same 7-day window as edits** (`session_date >= team-local today − 7`), so they can't mutate a week that has already scrolled out and gone "final". This makes the finality claim honest: once the window closes, a *player* can no longer edit **or** delete a session — only a coach can, and a coach doing so is moderation, not a player rewriting their own standings. The trade-off is deliberate: the earlier "delete-only after the window, so history can be corrected" affordance is gone, so a player who wants a genuinely mistaken *old* entry removed asks a coach. For a training log that's low-stakes and preferable to leaving finalized weeks silently mutable. The window uses `safe_team_tz(team_id)` for the same reason the trigger does — a bad `teams.timezone` must not error the delete.
+
+`insert`/`update` carry `not is_team_archived(team_id)` (matched by the trigger's rule 2, so the DB holds the line even if a policy is bypassed via PostgREST), but `delete` deliberately does **not** — archiving a team must not, by itself, block removing an existing row (a coach can still moderate one; a player can still delete an in-window one). Deletes remain governed by the normal `delete` policy, including the 7-day self/managed window. This is the same shape as the roster-departure rule: history is preserved, only forward writes are revoked.
 
 ### Club-tier gate in the database
 
@@ -237,7 +251,8 @@ The club-wide board is the reason this needs an RPC rather than a PostgREST quer
 create or replace function training_leaderboard(
   p_scope text,          -- 'team' | 'club'
   p_team_id uuid,        -- required for 'team'; optional team filter for 'club'
-  p_org_id uuid,         -- required for 'club'
+  p_org_id uuid,         -- required for 'club'; IGNORED for 'team' (org is
+                         --   derived via team_org_id(p_team_id) — see caller check)
   p_period text,         -- 'week' | 'month'
   p_anchor date          -- any date inside the target period
 )
@@ -261,7 +276,10 @@ returns table (
 
 Behavior:
 
-- **Caller check first.** For `'team'`: `is_team_member(p_team_id)`. For `'club'`: the caller (or a profile they manage) is on some non-archived team in `p_org_id`, or `is_org_admin(p_org_id)`. Plus `has_club_access(p_org_id)` in both cases. Otherwise `raise exception` — not an empty result, so a probing client gets a clear denial rather than an ambiguous zero.
+- **Caller check first.** Each scope derives the org it gates on from a trusted source rather than an interchangeable parameter, so the club-access check can't be applied to the wrong org (or to `null`):
+  - **`'team'`:** `is_team_member(p_team_id)` **and** `has_club_access(team_org_id(p_team_id))`. The org is **derived from the team**, not read from `p_org_id` — team scope doesn't require the caller to pass `p_org_id` at all, and trusting a passed value would both break the gate (`has_club_access(null)` is always false, so every team board would 404) and let a caller pair a team with an unrelated org's access status.
+  - **`'club'`:** the caller (or a profile they manage) is on some non-archived team in `p_org_id`, or `is_org_admin(p_org_id)`; **and** `has_club_access(p_org_id)`. If a `p_team_id` filter is supplied, **additionally assert `team_org_id(p_team_id) = p_org_id`** — the filter team must belong to the queried org, or `raise exception`. Without that assertion a caller could pass a team from a *different* org as the filter and have it evaluated behind `p_org_id`'s gate.
+  - Any failure `raise exception` — not an empty result, so a probing client gets a clear denial rather than an ambiguous zero.
 - **Current-roster filter.** A session contributes to a board **only if its owner is currently a roster `player` on the team it was credited to** — the aggregation inner-joins `team_members` on `(session.team_id, profile_id, role = 'player')`, it does not sum raw `training_sessions` by `team_id`. This is what keeps a player who left in April off the July board, without deleting their rows. `is_team_player(session.team_id, profile_id)` is exactly this predicate. Note the two consequences: (a) a session whose owner has since left its team is invisible on every board but still readable by that player in *My Training* (raw self-`select`), and (b) a mid-period **transfer A→B** moves the player's A-credited sessions off A's board when their A membership ends — those minutes live only in their own history from then on. Club scope additionally restricts to **non-archived** teams (consistent with the caller check); an archived team's sessions drop off the club board while remaining visible to a director on that team's own board.
 - **Period bounds** are computed from `p_anchor` with **no timezone conversion** — `date_trunc('week', p_anchor)` (Postgres weeks start Monday, which is what we want) or `date_trunc('month', p_anchor)` — because `session_date` is already a timezone-naive calendar day (see [Data Model](#training_sessions)). A session dated `2026-07-11` falls in the same Mon–Sun week no matter which team's timezone is involved, so a club-scoped board spanning teams in different timezones has **no cross-timezone ambiguity to resolve**: every row is bucketed by its bare `session_date` against the same anchor. (The only timezone-sensitive rule in the whole feature is the trigger's "today" boundary, above; aggregation never touches a timezone.)
 - **Excludes opted-out players** (`profiles.training_leaderboard_opt_out = true`) from the returned rows entirely.
@@ -279,7 +297,8 @@ create or replace function training_summary(
   p_profile_id uuid,
   p_scope text,          -- 'team' | 'club' — matches the board's scope toggle
   p_team_id uuid,        -- required for 'team'; optional team filter for 'club'
-  p_org_id uuid,         -- required for 'club'
+  p_org_id uuid,         -- required for 'club'; ignored for 'team' (same
+                         --   team_org_id derivation as training_leaderboard)
   p_period text,         -- 'week' | 'month'
   p_anchor date
 )
@@ -291,7 +310,8 @@ returns table (
 )
 ```
 
-- **Same grouping, caller check, period bounds, and opt-out semantics as `training_leaderboard`** — the summary is that function's ranking restricted to one profile. In particular, an **opted-out** caller still gets their own `rank` here even though they are absent from the board rows others see (spec: "Opted-out user sees their own numbers in the header").
+- **Subject authorization — the caller may only ask about themselves or a managed child.** Before anything else, `require p_profile_id = auth.uid() or is_managed_by_me(p_profile_id)`, else `raise exception`. This is a *distinct* check from the mirrored scope/org gate: that gate authorizes the **scope** (are you allowed to see this org/team's board), this one authorizes the **subject** (whose header is this). Without it, any org member passing an arbitrary `p_profile_id` could read another player's rank/total — and because the summary computes a rank even for a player the board excludes, that would leak precisely the standings an **opted-out** player removed from public view. `training_summary` is **not** a coach/admin RPC: coaches read per-player detail through the raw-row `select` path (`is_team_admin`) and aggregate there, so no capability is lost by restricting the subject here. If a coach-facing "player rank" view is ever wanted, it should be a separate, explicitly-scoped function rather than a loosening of this one.
+- **Same grouping, scope/org caller check, period bounds, and opt-out semantics as `training_leaderboard`** — the summary is that function's ranking restricted to one profile. In particular, an **opted-out** caller still gets their own `rank` here even though they are absent from the board rows others see (spec: "Opted-out user sees their own numbers in the header").
 - **`'club'` scope** ranks the caller among all distinct club players for the period (per the one-row-per-player rule above); `p_team_id` optionally narrows it to a single team, matching the club board's team filter. Without this, the club board's header could only ever report a team rank while the list beneath it ranks the whole club — a scope the two views must not disagree on.
 - **`denominator`** is the roster size in scope (the "of 18"): the team roster for `'team'`, the count of club players for `'club'` — returned so the page needn't compute it separately.
 
@@ -318,7 +338,7 @@ Route: `/dashboard/training`, a RSC that resolves the active profile/team (same 
 **My Training** (for players and parents-of-players)
 
 - "Log session" button → dialog: date (defaults today, min = 7 days ago, max = today — where "today" is the **team-local** day, matching the trigger boundary so the client and DB agree on the edge), duration (minutes; quick-pick chips 15/30/45/60 plus a free input), category, optional notes. Team selector appears **only** if the active player is on more than one team.
-- Chronological list of the active profile's sessions with edit/delete (edit and delete allowed inside the 7-day window; delete-only after, so history can be corrected but not rewritten).
+- Chronological list of the active profile's sessions. **Edit and delete are both allowed only inside the 7-day window**; once a session's date scrolls past it, the row is read-only to the player (no edit, no delete) and the UI shows why — e.g. a disabled control with "Older than 7 days — ask a coach to change this." Coaches retain delete from the Team view for moderation.
 - Month-to-date and week-to-date totals at the top.
 
 **Team** (coaches, managers, directors only)
@@ -361,7 +381,7 @@ alter table training_sessions
 
 ## Rollout
 
-1. Migration (table, opt-out column, `is_team_player`, `safe_team_tz`, `has_club_access`, validation trigger, RLS, both RPCs) — validated against staging by `.github/workflows/migrate.yml` on the PR, then production on merge.
+1. Migration (table, opt-out column, `is_team_player`, `is_team_archived`, `safe_team_tz`, `has_club_access`, validation trigger, RLS, both RPCs) — validated against staging by `.github/workflows/migrate.yml` on the PR, then production on merge.
 2. Regenerate `src/types/database.ts`.
 3. UI behind the existing club gate. No feature flag: the club gate *is* the flag, and the blast radius is a new route that no free org can reach.
 4. Seed nothing. An empty leaderboard on day one is correct; the first player to log a session is rank 1, which is a fine story to tell in the launch email.
@@ -387,6 +407,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - Player selects a teammate's raw session row → **denied**
 - Coach selects any of their team's players' rows → **allowed**; a coach of another team in the same org → **denied**; a **director** → **allowed** org-wide
 - Player deletes own session → allowed; deletes a teammate's → denied; coach deletes a player's → allowed
+- **Delete window:** player deletes own session dated **within** 7 days → allowed; player deletes own session dated **8+ days ago** → **denied** (finalized week is immutable to the player); a **coach/admin** deletes that same 8-day-old session → **allowed** (moderation has no date bound). Parent deleting a managed child's session follows the same window as the child's own.
 - Player updates a session to `duration_minutes = 999` → denied by CHECK
 
 ### 2. Validation trigger — `tests/rls/training-sessions.test.ts`
@@ -394,9 +415,11 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - `session_date` = tomorrow (team tz) → rejected
 - `session_date` = 8 days ago → rejected; 7 days ago → accepted
 - **Team with an invalid `timezone`** (`''`, `'PST'`, `'Pacific Time'`) → insert **still succeeds** (no `invalid value for parameter "TimeZone"`); the "today" boundary falls back to UTC via `safe_team_tz`. Also assert a team with `timezone = null` behaves the same.
+- **Archived team** (`teams.archived_at is not null`) with the player's roster row still present → **insert rejected**, and **update** of a pre-existing session on that team rejected; a **team admin's delete** of an existing row still **allowed** (archived-ness alone doesn't block delete), and a raw self-`select` still returns the row. Asserts writes are blocked while history stays readable and admin-removable.
 - Sessions summing to 361 minutes on one day → last insert rejected; 360 → accepted
 - Daily cap counts across **two different teams** for the same player → rejected
 - **Concurrent** inserts of 300 + 300 min for the same player-day, fired in parallel → exactly one commits, the other is rejected by the cap (asserts the advisory lock serializes the sum-then-write; without it both would race past 360)
+- **Cap excludes the edited row on update:** a single 300-min session edited *down* to 200 → **accepted** — the row must not count itself twice (must not evaluate as the old 300 + new 200 = 500). With a *second* 100-min session already on that day (day total 300), editing the first to 260 → **accepted** (260 + 100 = 360), and to 261 → **rejected** (261 + 100 = 361): proves the cap still counts the *other* rows on update, just not the edited one.
 
 ### 3. Leaderboard RPC — `tests/rls/training-leaderboard.test.ts` (new)
 
@@ -414,10 +437,14 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - Club scope masks names to first name + last initial; team scope does not
 - Non-member of the org calling club scope → exception
 - Free-tier org → exception
+- **Team scope derives the org, ignores `p_org_id`:** calling team scope for a club team with `p_org_id = null` (and with a *wrong/free-tier* `p_org_id`) still succeeds — the gate resolves via `team_org_id(p_team_id)`; conversely a team scope call for a team whose *own* org is free-tier → exception regardless of any `p_org_id` passed
+- **Club scope filter must belong to the org:** club scope with `p_org_id = A` and a `p_team_id` that belongs to org **B** → exception (the `team_org_id(p_team_id) = p_org_id` assertion); the same filter with a team that does belong to A → succeeds
 - Week boundary: a **Sunday-dated** session and a session dated the **following Monday** land in **different** weeks; a session dated that Monday and one dated the Sunday six days later (same Mon–Sun span) land in the **same** week
 - Bucketing is timezone-independent: two teams with different `teams.timezone` values (or one team with `timezone = null`) produce the **same** week/month bucket for the same `session_date` — no session is misfiled by a timezone difference
 - **`training_summary` scope tracks the board:** for a multi-team player, `training_summary` in `'team'` scope returns their team rank/denominator, and in `'club'` scope returns their club-wide rank over distinct players and the club-player denominator — the two disagree, and each matches the corresponding `training_leaderboard` scope
 - **`training_summary` for an opted-out caller** still returns a non-null `rank` in both scopes even though that caller is absent from `training_leaderboard` rows
+- **`training_summary` subject authorization:** caller requests their **own** summary → allowed; a **parent** requests a **managed child**'s → allowed; a caller requests a **teammate/another org member's** `p_profile_id` (even one on a team the caller can see) → **exception**, not another player's numbers
+- **Opt-out leak guard:** a member **cannot** obtain an opted-out player's `rank`/`total_minutes` by passing that player's `p_profile_id` to `training_summary` — the subject check denies it before the ranking runs (assert this specifically, since it's the standing opt-out is meant to hide)
 
 ### 4. Unit — `tests/unit/training.test.ts` (new)
 
