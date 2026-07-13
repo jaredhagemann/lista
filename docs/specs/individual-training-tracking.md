@@ -155,8 +155,11 @@ $$ language sql security definer stable;
 -- raises 'invalid value for parameter "TimeZone"', which would fail EVERY
 -- training insert for that team. coalesce() guards only null, not invalid — so
 -- probe the value and fall back to 'UTC' if Postgres won't accept it.
+-- security definer so it reliably reads teams.timezone from any write path
+-- regardless of the caller's RLS visibility of the team (search_path/qualify
+-- hardening per "Security-definer hygiene").
 create or replace function safe_team_tz(t_id uuid)
-returns text language plpgsql stable as $$
+returns text language plpgsql stable security definer as $$
 declare tz text;
 begin
   select timezone into tz from teams where id = t_id;
@@ -240,6 +243,39 @@ returns boolean as $$
   );
 $$ language sql security definer stable;
 ```
+
+### Security-definer hygiene
+
+Every helper and RPC in this feature is `security definer` — deliberately, since they must bypass RLS (membership/plan lookups, the club-board privilege escalation). That elevated context is exactly why each needs the following, and none of it is optional. (The inline `create or replace` snippets elsewhere in this spec omit the `set search_path` and grant lines for readability; **this subsection is authoritative** — the migration applies them to every definer function.)
+
+**1. Pin `search_path` and schema-qualify.** A `security definer` function that resolves an unqualified name (`teams`, `team_members`, `sum()`, `now()`) does so through the *caller's* `search_path`. An `authenticated` user can plant a shadowing object — most reliably in their temp schema, which Postgres searches first for unqualified names (`pg_temp.teams`, `pg_temp.sum(...)`) — and the definer function would run the attacker's object **with the definer's privileges**. So every function here is declared with `set search_path = ''` and references objects fully qualified (`public.team_members`, `public.teams`, `public.organizations`, …). This applies to all six: `is_team_player`, `is_team_archived`, `safe_team_tz`, `has_club_access`, `training_leaderboard`, `training_summary` (and any others the migration adds, including the validation-trigger function itself). Illustrative:
+
+```sql
+create or replace function is_team_player(t_id uuid, p_id uuid)
+returns boolean
+language sql security definer stable
+set search_path = ''                      -- <- pin it
+as $$
+  select exists (
+    select 1 from public.team_members tm  -- <- schema-qualified
+    where tm.team_id = t_id and tm.profile_id = p_id and tm.role = 'player'
+  );
+$$;
+```
+
+> Note: the ~30 pre-existing `security definer` functions in the repo do **not** set `search_path` — a latent, codebase-wide hardening gap. This feature does it right for its own functions; backfilling the rest is a separate ticket (see [Open Questions](#open-questions)).
+
+**2. Tighten `EXECUTE`, but keep `authenticated`.** Revoke execute from `anon` and `public` on all six so unauthenticated callers can't invoke them, then grant to `authenticated`:
+
+```sql
+revoke execute on function training_leaderboard(text, uuid, uuid, text, date) from anon, public;
+grant  execute on function training_leaderboard(text, uuid, uuid, text, date) to authenticated;
+-- …same for the other five.
+```
+
+Do **not** copy the `create_team` pattern (revoke from `authenticated`, grant only `service_role`): that function is a server-only admin call, whereas these must stay callable by `authenticated` — the RPCs are invoked directly by clients via `.rpc()`, and the helpers are evaluated *inside RLS policies*, where a missing `EXECUTE` for `authenticated` would make every gated insert/select fail with a permission error. Authorization for the RPCs comes from their in-function caller/subject checks, not from the grant.
+
+**3. Validate parameters in the RPCs.** Before any work, both RPCs reject malformed input with a clear `raise exception`: `p_scope in ('team','club')`, `p_period in ('week','month')`, and the required-per-scope params (`p_team_id` for `'team'`; `p_org_id` for `'club'`) — so a bad combination fails loudly instead of silently returning an empty or wrong-scoped result that a client might trust. (The helpers take only uuids and already behave safely on null — `exists(...)` → false — so they need no extra validation.)
 
 ---
 
@@ -439,6 +475,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - Free-tier org → exception
 - **Team scope derives the org, ignores `p_org_id`:** calling team scope for a club team with `p_org_id = null` (and with a *wrong/free-tier* `p_org_id`) still succeeds — the gate resolves via `team_org_id(p_team_id)`; conversely a team scope call for a team whose *own* org is free-tier → exception regardless of any `p_org_id` passed
 - **Club scope filter must belong to the org:** club scope with `p_org_id = A` and a `p_team_id` that belongs to org **B** → exception (the `team_org_id(p_team_id) = p_org_id` assertion); the same filter with a team that does belong to A → succeeds
+- **Parameter validation:** an invalid `p_scope` (`'org'`, `''`, `null`) → exception; an invalid `p_period` (`'day'`, `null`) → exception; `'team'` scope with `p_team_id = null` → exception; `'club'` scope with `p_org_id = null` → exception. Assert each fails loudly rather than returning an empty result set. (Applies to both `training_leaderboard` and `training_summary`.)
 - Week boundary: a **Sunday-dated** session and a session dated the **following Monday** land in **different** weeks; a session dated that Monday and one dated the Sunday six days later (same Mon–Sun span) land in the **same** week
 - Bucketing is timezone-independent: two teams with different `teams.timezone` values (or one team with `timezone = null`) produce the **same** week/month bucket for the same `session_date` — no session is misfiled by a timezone difference
 - **`training_summary` scope tracks the board:** for a multi-team player, `training_summary` in `'team'` scope returns their team rank/denominator, and in `'club'` scope returns their club-wide rank over distinct players and the club-player denominator — the two disagree, and each matches the corresponding `training_leaderboard` scope
@@ -468,3 +505,4 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 4. **Duration vs. quality.** Ranking purely on minutes rewards the kid who juggles for two hours over the kid who does a focused 30-minute finishing session. Nothing in v1 fixes that; curated drills with an expected duration are the real answer, which is an argument for pulling Phase 2 forward.
 5. **Should coaches log team-designated homework?** Not "a curated drill library", just "coach assigns 20 min of ball mastery before Thursday". It's a smaller feature than the drill library and probably the higher-value half of it.
 6. **Validate `teams.timezone` at the source?** This feature defends against a bad value with `safe_team_tz` (fall back to UTC), which is the right *local* fix. The more thorough fix — a CHECK constraint validating `teams.timezone` against `pg_timezone_names` plus a one-time backfill of any existing junk — belongs to the team-settings surface, not here, because it touches existing data and the settings UI. Worth a separate ticket so other timezone-dependent features (scheduling, reminders) don't each re-implement the same defense.
+7. **Backfill `search_path` on the pre-existing security-definer functions.** This feature pins `set search_path = ''` on its own functions (see [Security-definer hygiene](#security-definer-hygiene)), but the ~30 definer functions already in the repo (`is_team_member`, `is_team_admin`, `is_org_admin`, `team_org_id`, `is_managed_by_me`, …) do not, which is a latent privilege-escalation surface across the whole schema. Out of scope for training tracking, but should be its own hardening PR that adds `set search_path = ''` + schema-qualification to all of them at once, with the RLS test suite as the regression net.
