@@ -45,7 +45,7 @@ Nothing in the product currently models work a player does alone. `events` + `av
 | Leaderboard scope | Team (default) + club-wide toggle | Team is the meaningful peer group; club-wide is the differentiator clubs pay for. Club-wide is filterable by team so a U10 isn't visibly ranked below a U18. |
 | Trust model | Honor system + hard caps + coach moderation | Caps and a backdating window are enforced in the DB; coaches can delete a bogus entry. No approval queue — it would put the cost on the person with the least time. |
 | Privacy | Included by default, per-player opt-out | Leaderboards die without density. Opt-out is the escape hatch for a family who doesn't want their child publicly ranked. |
-| Periods | Mon–Sun weeks, calendar months, in team timezone | `teams.timezone` already exists. Weeks reset — that reset is most of the motivation. |
+| Periods | Mon–Sun weeks, calendar months, bucketed timezone-naive on `session_date` | `session_date` is a bare calendar day, so weeks/months are `date_trunc` with no timezone — no cross-tz misfiling. `teams.timezone` is used only for the trigger's "today" boundary. Weeks reset — that reset is most of the motivation. |
 | Gating | `hasClubAccess(plan, subscription_status)` | Reuse `src/lib/plan.ts` verbatim. Never re-derive the gate. |
 
 ---
@@ -69,7 +69,10 @@ create table training_sessions (
   --   1. A player can be on multiple teams; the leaderboard needs to know which
   --      board this session lands on, and the player must choose.
   --   2. RLS can gate directly on is_team_member(team_id) / is_team_admin(team_id).
-  --   3. Weekly/monthly bucketing needs teams.timezone, reachable in one join.
+  --   3. The trigger's team-local "today" boundary needs teams.timezone,
+  --      reachable in one join from team_id. (Bucketing itself is timezone-naive
+  --      on session_date — see Leaderboard Aggregation — so this join is only
+  --      for the insert/update window check, not for aggregation.)
   team_id uuid not null references teams(id) on delete cascade,
 
   -- The day the training happened, as the player reports it. A `date`, not a
@@ -92,7 +95,10 @@ create table training_sessions (
 
   -- Who actually entered the row (parent or the player themselves). Kept
   -- distinct from profile_id so a coach reviewing a suspicious entry can see
-  -- whether a parent or the player logged it.
+  -- whether a parent or the player logged it. NEVER trust the client for this:
+  -- the validation trigger overwrites it with the calling profile on every
+  -- insert (see below), so a crafted PostgREST request cannot forge it. The
+  -- column is only nominally "supplied" — the trigger is the source of truth.
   created_by uuid not null references profiles(id),
 
   created_at timestamptz not null default now(),
@@ -107,6 +113,8 @@ create index training_sessions_team_date_idx
 create index training_sessions_profile_date_idx
   on training_sessions (profile_id, session_date desc);
 ```
+
+**Roster changes and retention.** There is deliberately **no** foreign key from `training_sessions` to `team_members`, and removing a player from a team does **not** delete their sessions. Removal is a hard delete of the `team_members` row (the access-revoking step in `removeMember`, `app/actions/team.ts`), and this feature follows the same rule that flow already applies to availability — *"delete upcoming responses, preserve historical ones"*: forward-facing access is revoked, history is kept. Sessions are therefore never orphaned to a missing player; they simply stop appearing on peer boards once the owner is no longer a current roster `player` on their `team_id` (enforced at aggregation, not by a constraint — see [Leaderboard Aggregation → Current-roster filter](#leaderboard-aggregation)). The `on delete cascade` on `team_id` fires only when a **team itself is hard-deleted**, which the product does via archiving (`teams.archived_at`), not deletion — so in practice training history is destroyed only on the same irreversible path that destroys every other team-scoped row, which is acceptable.
 
 ### `profiles.training_leaderboard_opt_out`
 
@@ -141,11 +149,23 @@ $$ language sql security definer stable;
 The trigger rejects a session when:
 
 1. **`profile_id` is not a `player` on `team_id`** → `is_team_player(team_id, profile_id)` is false. Closes the same hole the availability migration closed: a parent-manager can *see* a team, so without this check they could write a row against it.
-2. **`session_date` is in the future**, relative to `current_date` in the team's timezone (`teams.timezone`, fallback `'UTC'`).
-3. **`session_date` is more than 7 days in the past.** Backdating exists so you can log Saturday's session on Sunday, not so you can fill in a month before the board closes. Note the consequence: **the previous week's totals are still mutable for 7 days.** That is accepted — a week's numbers are final once it scrolls out of the window, and the UI does not claim otherwise.
+2. **`session_date` is in the future.** `session_date` is a bare calendar day, so the comparison is bare-date against the team-local "today": `today := (now() at time zone coalesce(teams.timezone, 'UTC'))::date; if new.session_date > today then reject`. The team timezone is used **only** to pin down which calendar day "today" is (so a player logging at 8pm Pacific isn't rejected because it's already tomorrow in UTC) — it is never applied to `session_date` itself, which carries no time to convert.
+3. **`session_date` is more than 7 days in the past** — `new.session_date < today - 7` using the same team-local `today`. Backdating exists so you can log Saturday's session on Sunday, not so you can fill in a month before the board closes. Note the consequence: **the previous week's totals are still mutable for 7 days.** That is accepted — a week's numbers are final once it scrolls out of the window, and the UI does not claim otherwise.
 4. **The day's total would exceed 360 minutes** across all of that player's sessions on that `session_date` (all teams). Prevents the "twelve 300-minute sessions" attack that the per-session cap alone allows.
 
 Each failure raises a distinct `errcode`/message so the client can map it to a specific field error.
+
+**Beyond rejection, the trigger also stamps `created_by`.** On insert it overwrites `new.created_by` with the calling profile — the `profiles` row whose `auth_user_id = auth.uid()` — rather than trusting whatever the client sent:
+
+```sql
+-- Inside the before-insert branch, before the checks above run:
+new.created_by := (select id from profiles where auth_user_id = auth.uid());
+if new.created_by is null then
+  raise exception 'no calling profile' using errcode = '...';
+end if;
+```
+
+This makes `created_by` unforgeable: it is definitionally "who entered this row", which is always the authenticated caller, so there is never a legitimate reason to accept a client-supplied value. Without this, a crafted PostgREST insert could set `created_by` to the child's own profile (hiding that a parent logged it) or to another coach — defeating the audit purpose the column exists for. `created_by` is left out of the assignment on `update` so it preserves the original author when a row is later edited by someone else (e.g. a coach correcting an entry).
 
 ---
 
@@ -197,27 +217,55 @@ create or replace function training_leaderboard(
   p_anchor date          -- any date inside the target period
 )
 returns table (
-  profile_id uuid,
+  profile_id uuid,       -- one row PER PLAYER, never per (player, team)
   display_name text,     -- masked per scope; see below
   avatar_url text,
-  team_id uuid,
-  team_name text,
-  total_minutes integer,
+  team_id uuid,          -- see "Grouping" below: null on the unfiltered club board
+  team_name text,        --   populated only for 'team' scope or a team-filtered club query
+  total_minutes integer, -- sum of ALL the player's sessions in the scope+period
   session_count integer,
   rank integer
 )
 ```
 
+**Grouping — one row per player.** Both scopes group by `profile_id`, never by `(profile_id, team_id)`. Because each session is credited to exactly one team (the "pick one team per session" rule), summing a player's sessions across their teams counts every session exactly once — there is no double-count to avoid, and a multi-team player appears **once** with their true total rather than split across two rows and two rank slots. Consequently:
+
+- **`'team'` scope** sums only sessions whose `team_id = p_team_id`; `team_id`/`team_name` are that team.
+- **`'club'` scope, no team filter** (`p_team_id` null) sums every session the player logged on any non-archived team in `p_org_id`; `team_id`/`team_name` are **null** (the club list rows don't display a team, so there is nothing to resolve — and a player may span teams, so no single team is correct).
+- **`'club'` scope, team-filtered** (`p_team_id` given) sums only that team's sessions; `team_id`/`team_name` are that team. This differs from `'team'` scope only in the caller check and name masking below — a U10 parent may filter the club board to U18 without being a U18 member.
+
 Behavior:
 
 - **Caller check first.** For `'team'`: `is_team_member(p_team_id)`. For `'club'`: the caller (or a profile they manage) is on some non-archived team in `p_org_id`, or `is_org_admin(p_org_id)`. Plus `has_club_access(p_org_id)` in both cases. Otherwise `raise exception` — not an empty result, so a probing client gets a clear denial rather than an ambiguous zero.
-- **Period bounds** are computed from `p_anchor` in the team's timezone: `date_trunc('week', ...)` (Postgres weeks start Monday, which is what we want) or `date_trunc('month', ...)`. For a club-scoped query spanning teams in different timezones, the **org's teams are bucketed by their own team timezone** — in practice a club's teams share a timezone, and the alternative (one org-wide timezone) silently misfiles a session for a team that doesn't.
+- **Current-roster filter.** A session contributes to a board **only if its owner is currently a roster `player` on the team it was credited to** — the aggregation inner-joins `team_members` on `(session.team_id, profile_id, role = 'player')`, it does not sum raw `training_sessions` by `team_id`. This is what keeps a player who left in April off the July board, without deleting their rows. `is_team_player(session.team_id, profile_id)` is exactly this predicate. Note the two consequences: (a) a session whose owner has since left its team is invisible on every board but still readable by that player in *My Training* (raw self-`select`), and (b) a mid-period **transfer A→B** moves the player's A-credited sessions off A's board when their A membership ends — those minutes live only in their own history from then on. Club scope additionally restricts to **non-archived** teams (consistent with the caller check); an archived team's sessions drop off the club board while remaining visible to a director on that team's own board.
+- **Period bounds** are computed from `p_anchor` with **no timezone conversion** — `date_trunc('week', p_anchor)` (Postgres weeks start Monday, which is what we want) or `date_trunc('month', p_anchor)` — because `session_date` is already a timezone-naive calendar day (see [Data Model](#training_sessions)). A session dated `2026-07-11` falls in the same Mon–Sun week no matter which team's timezone is involved, so a club-scoped board spanning teams in different timezones has **no cross-timezone ambiguity to resolve**: every row is bucketed by its bare `session_date` against the same anchor. (The only timezone-sensitive rule in the whole feature is the trigger's "today" boundary, above; aggregation never touches a timezone.)
 - **Excludes opted-out players** (`profiles.training_leaderboard_opt_out = true`) from the returned rows entirely.
 - **Excludes players with zero minutes** in the period — the board shows who trained, not a roster with a column of zeros. Total roster size is returned separately by the page for the "you're 12th of 18" line.
 - **Name masking:** `'team'` scope returns full name (teammates already know each other from the roster). `'club'` scope returns `first name + last initial` ("Marcus H."), since it exposes children to adults on other teams.
 - **Ranking** is standard competition rank (1, 2, 2, 4) on `total_minutes desc`, tie-broken by `session_count desc`, then `min(session_date)` ascending (whoever got there first), then name.
 
-A second RPC, `training_summary(p_profile_id, p_team_id, p_period, p_anchor)`, returns the current user's own totals, rank, and roster size — so the header ("You: 145 min · 4 sessions · #3 of 18") does not require pulling the whole board.
+A second RPC, `training_summary`, returns just the current user's own totals, rank, and denominator — so the header ("You: 145 min · 4 sessions · #3 of 18") does not require pulling the whole board. Its scope parameters **mirror `training_leaderboard` exactly**, because the header sits above the board and must report a rank in the *same* scope the board is showing:
+
+```sql
+create or replace function training_summary(
+  p_profile_id uuid,
+  p_scope text,          -- 'team' | 'club' — matches the board's scope toggle
+  p_team_id uuid,        -- required for 'team'; optional team filter for 'club'
+  p_org_id uuid,         -- required for 'club'
+  p_period text,         -- 'week' | 'month'
+  p_anchor date
+)
+returns table (
+  total_minutes integer,
+  session_count integer,
+  rank integer,          -- the caller's rank within the SAME scope as the board
+  denominator integer    -- roster size in scope: team roster, or club player count
+)
+```
+
+- **Same grouping, caller check, period bounds, and opt-out semantics as `training_leaderboard`** — the summary is that function's ranking restricted to one profile. In particular, an **opted-out** caller still gets their own `rank` here even though they are absent from the board rows others see (spec: "Opted-out user sees their own numbers in the header").
+- **`'club'` scope** ranks the caller among all distinct club players for the period (per the one-row-per-player rule above); `p_team_id` optionally narrows it to a single team, matching the club board's team filter. Without this, the club board's header could only ever report a team rank while the list beneath it ranks the whole club — a scope the two views must not disagree on.
+- **`denominator`** is the roster size in scope (the "of 18"): the team roster for `'team'`, the count of club players for `'club'` — returned so the page needn't compute it separately.
 
 ---
 
@@ -241,7 +289,7 @@ Route: `/dashboard/training`, a RSC that resolves the active profile/team (same 
 
 **My Training** (for players and parents-of-players)
 
-- "Log session" button → dialog: date (defaults today, min = 7 days ago, max = today), duration (minutes; quick-pick chips 15/30/45/60 plus a free input), category, optional notes. Team selector appears **only** if the active player is on more than one team.
+- "Log session" button → dialog: date (defaults today, min = 7 days ago, max = today — where "today" is the **team-local** day, matching the trigger boundary so the client and DB agree on the edge), duration (minutes; quick-pick chips 15/30/45/60 plus a free input), category, optional notes. Team selector appears **only** if the active player is on more than one team.
 - Chronological list of the active profile's sessions with edit/delete (edit and delete allowed inside the 7-day window; delete-only after, so history can be corrected but not rewritten).
 - Month-to-date and week-to-date totals at the top.
 
@@ -302,6 +350,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 
 - Player inserts a session for themselves on their own team → **allowed**
 - Parent inserts a session for their managed child → **allowed**, `created_by` = parent, `profile_id` = child
+- Parent inserts for their child but **sends a forged `created_by`** (the child's id, or another coach's id) → **allowed**, but the stored `created_by` is the **parent** — the trigger overwrites the client value
 - Parent inserts a session for **themselves** (parent is not a `player`) → **denied** (the availability bug class)
 - Coach inserts a session for a player who isn't theirs → **denied**
 - Player inserts against a team they're not on → **denied**
@@ -326,11 +375,19 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - Opted-out player is absent from both team and club scope, but their minutes still appear in their own `training_summary`
 - Zero-minute players are absent
 - Club scope: a U10 parent gets U18 players' **totals** (which they cannot read via a direct table select — assert both in the same test, since that contrast is the whole point of the RPC)
+- **Multi-team player, club scope:** a player credited on two teams (90 min on each) appears in the unfiltered club board as **one row** with `total_minutes = 180`, `session_count = 2`, and **null** `team_id`/`team_name` — not two rows of 90
+- **Club scope team filter:** the same player, with the club board filtered to one of their teams, appears with `total_minutes = 90` and that `team_id`/`team_name` populated
+- **`'team'` scope for a multi-team player** returns only that team's minutes (90), not the cross-team sum — the per-team split still holds inside a single team board
+- **Player who left the team:** a player with sessions on team T, whose `team_members` row for T is then deleted, is **absent** from T's board (team scope) and from the club board — but the rows still exist and are returned by a raw self-`select` (My Training history is intact)
+- **Mid-period transfer A→B:** after the A membership is deleted and a B membership added, the player's A-credited sessions are absent from A's board, their B-credited sessions appear on B's board, and both remain in their own history
+- **Archived team:** sessions on an archived team drop off the **club** board, but a director querying that team directly (team scope) still sees them
 - Club scope masks names to first name + last initial; team scope does not
 - Non-member of the org calling club scope → exception
 - Free-tier org → exception
-- Week boundary: a session on Sunday 23:00 and one on Monday 00:30 (team timezone) land in **different** weeks
-- A team in `America/Los_Angeles` and one in `America/New_York` each bucket by their own timezone
+- Week boundary: a **Sunday-dated** session and a session dated the **following Monday** land in **different** weeks; a session dated that Monday and one dated the Sunday six days later (same Mon–Sun span) land in the **same** week
+- Bucketing is timezone-independent: two teams with different `teams.timezone` values (or one team with `timezone = null`) produce the **same** week/month bucket for the same `session_date` — no session is misfiled by a timezone difference
+- **`training_summary` scope tracks the board:** for a multi-team player, `training_summary` in `'team'` scope returns their team rank/denominator, and in `'club'` scope returns their club-wide rank over distinct players and the club-player denominator — the two disagree, and each matches the corresponding `training_leaderboard` scope
+- **`training_summary` for an opted-out caller** still returns a non-null `rank` in both scopes even though that caller is absent from `training_leaderboard` rows
 
 ### 4. Unit — `tests/unit/training.test.ts` (new)
 
@@ -349,6 +406,6 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 
 1. **Weekly recap notification.** Deferred from v1, but a leaderboard with no Monday nudge tends to decay after two weeks. The cheapest version — a Monday cron alongside `/api/cron/reminders`, plus `training_digest_enabled` on `notification_preferences` (same pattern as `chat_digest_enabled`) — is likely worth doing before launch rather than after. Flagging for a call.
 2. **Category list.** The nine above are soccer-shaped. If Lista is going to sell into other sports this year, the list should either be generic (technical / physical / recovery / other) or become org-configurable. Cheap to change now, annoying once there is data.
-3. **Multi-team players.** v1 makes the player pick one team per session. The alternative — crediting a session to every team the player is on — inflates club totals by double-counting. Picking is right, but worth confirming that a player on both a club team and an academy team finds it obvious.
+3. **Multi-team players.** ~~Open.~~ **Resolved.** Two sub-questions, both settled: (a) *crediting* — a session is credited to exactly one team, chosen by the player, never auto-credited to every team (that would inflate club totals). (b) *club-board aggregation* — the club board ranks **distinct players**, summing each player's sessions across all their teams (see [Leaderboard Aggregation → Grouping](#leaderboard-aggregation)); because each session is credited to one team, the sum counts every session once, so a multi-team player appears once with their true total rather than split across rows. The only residual gaming vector — manually entering the *same* session under two teams — is a moderation matter (coach delete), bounded by the 360-min daily cap, not an aggregation-design one. Still worth confirming in usability testing that a player on both a club team and an academy team finds the per-session team picker obvious.
 4. **Duration vs. quality.** Ranking purely on minutes rewards the kid who juggles for two hours over the kid who does a focused 30-minute finishing session. Nothing in v1 fixes that; curated drills with an expected duration are the real answer, which is an argument for pulling Phase 2 forward.
 5. **Should coaches log team-designated homework?** Not "a curated drill library", just "coach assigns 20 min of ball mastery before Thursday". It's a smaller feature than the drill library and probably the higher-value half of it.
