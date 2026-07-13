@@ -194,10 +194,15 @@ Each failure raises a distinct `errcode`/message so the client can map it to a s
 **Beyond rejection, the trigger also stamps `created_by`.** On insert it overwrites `new.created_by` with the calling profile — the `profiles` row whose `auth_user_id = auth.uid()` — rather than trusting whatever the client sent:
 
 ```sql
--- Inside the before-insert branch, before the checks above run:
-new.created_by := (select id from profiles where auth_user_id = auth.uid());
-if new.created_by is null then
-  raise exception 'no calling profile' using errcode = '...';
+-- Inside the before-insert branch, before the checks above run.
+-- Only overwrite when there IS an authenticated caller: the service role
+-- (auth.uid() null, used by tests/cron to seed rows) supplies created_by
+-- explicitly and is trusted, and the NOT NULL constraint enforces its presence.
+if auth.uid() is not null then
+  new.created_by := (select id from profiles where auth_user_id = auth.uid());
+  if new.created_by is null then
+    raise exception 'no calling profile' using errcode = '...';
+  end if;
 end if;
 ```
 
@@ -224,7 +229,7 @@ This makes `created_by` unforgeable: it is definitionally "who entered this row"
 
 **Self/managed deletes are bounded by the same 7-day window as edits** (`session_date >= team-local today − 7`), so they can't mutate a week that has already scrolled out and gone "final". This makes the finality claim honest: once the window closes, a *player* can no longer edit **or** delete a session — only a coach can, and a coach doing so is moderation, not a player rewriting their own standings. The trade-off is deliberate: the earlier "delete-only after the window, so history can be corrected" affordance is gone, so a player who wants a genuinely mistaken *old* entry removed asks a coach. For a training log that's low-stakes and preferable to leaving finalized weeks silently mutable. The window uses `safe_team_tz(team_id)` for the same reason the trigger does — a bad `teams.timezone` must not error the delete.
 
-`insert`/`update` carry `not is_team_archived(team_id)` (matched by the trigger's rule 2, so the DB holds the line even if a policy is bypassed via PostgREST), but `delete` deliberately does **not** — archiving a team must not, by itself, block removing an existing row (a coach can still moderate one; a player can still delete an in-window one). Deletes remain governed by the normal `delete` policy, including the 7-day self/managed window. This is the same shape as the roster-departure rule: history is preserved, only forward writes are revoked.
+`insert`/`update` carry `not is_team_archived(team_id)` (matched by the trigger's rule 2, so the DB holds the line even if a policy is bypassed via PostgREST), but `delete` deliberately does **not** — archiving a team must not, by itself, block removing an existing row. Deletes remain governed by the normal `delete` policy, including the 7-day self/managed window. Note one consequence of reusing `is_team_admin`: that helper already **excludes archived teams for a plain coach/manager** (only org admins retain access to archived teams — the app-wide rule), so on an archived team the moderation-delete lever is a **director/owner**, not the team coach; a player can still delete their own in-window row. This is the same shape as the roster-departure rule: history is preserved, only forward writes are revoked.
 
 ### Club-tier gate in the database
 
@@ -324,7 +329,7 @@ Behavior:
 - **Avatar in club scope — deliberately unmasked.** `avatar_url` is returned in full for both scopes, including `'club'`. This is a conscious decision, not an oversight: a club is a single vetted organization, and showing a player's photo to other adults *inside that same club* is judged acceptable. Two things follow, and both must be honored so the choice stays defensible:
   - It is a **new** exposure. Today the `profiles` SELECT policy is same-team-only, so a U10 parent cannot see a U18 player's name *or* photo. The club board is the first surface to cross that boundary; the RPC's `security definer` caller check (org membership + `has_club_access`) is therefore the *only* thing gating who sees these photos — it must stay tight (no anonymous/probing access, no leaking beyond the org).
   - The **opt-out** is the escape hatch. A family uncomfortable with the child's photo appearing club-wide removes it by opting out of the leaderboard entirely (opted-out players are excluded from all board rows). The settings copy should make clear that appearing on leaderboards means name-initial **and photo** are visible to other club members, so opting in is informed.
-- **Ranking** is standard competition rank (1, 2, 2, 4) on `total_minutes desc`, tie-broken by `session_count desc`, then `min(session_date)` ascending (whoever got there first), then **real** name (not the club-masked form, so ordering doesn't shift between scopes), then `profile_id` as a final stable tiebreak — so two players with identical stats *and* name still get a deterministic, repeatable order.
+- **Ranking** is standard competition rank (1, 2, 2, 4) on `total_minutes desc` **only** — two players with equal minutes genuinely **share** a rank ("you're both 2nd"), which is what the (1, 2, 2, 4) example means. The remaining keys — `session_count desc`, then `min(session_date)` ascending (whoever got there first), then **real** name (not the club-masked form), then `profile_id` — order the **display within a tie**; they do *not* change the rank number. Ordering by real name + `profile_id` keeps the sequence deterministic and stable across scopes.
 
 A second RPC, `training_summary`, returns just the current user's own totals, rank, and denominator — so the header ("You: 145 min · 4 sessions · #3 of 18") does not require pulling the whole board. Its scope parameters **mirror `training_leaderboard` exactly**, because the header sits above the board and must report a rank in the *same* scope the board is showing:
 
@@ -455,12 +460,12 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - `session_date` = tomorrow (team tz) → rejected
 - `session_date` = 8 days ago → rejected; 7 days ago → accepted
 - **Team with an invalid `timezone`** (`''`, `'PST'`, `'Pacific Time'`) → insert **still succeeds** (no `invalid value for parameter "TimeZone"`); the "today" boundary falls back to UTC via `safe_team_tz`. Also assert a team with `timezone = null` behaves the same.
-- **Archived team** (`teams.archived_at is not null`) with the player's roster row still present → **insert rejected**, and **update** of a pre-existing session on that team rejected; a **team admin's delete** of an existing row still **allowed** (archived-ness alone doesn't block delete), and a raw self-`select` still returns the row. Asserts writes are blocked while history stays readable and admin-removable.
+- **Archived team** (`teams.archived_at is not null`) with the player's roster row still present → **insert rejected**, and **update** of a pre-existing session on that team rejected; a **director's** (org-admin) delete of an existing row still **allowed** — a plain coach is *not* an admin of an archived team (`is_team_admin` excludes it), so the moderation lever there is the director. A raw self-`select` still returns the row. Asserts writes are blocked while history stays readable and admin-removable.
 - Sessions summing to 361 minutes on one day → last insert rejected; 360 → accepted
 - Daily cap counts across **two different teams** for the same player → rejected
 - **Concurrent** inserts of 300 + 300 min for the same player-day, fired in parallel → exactly one commits, the other is rejected by the cap (asserts the advisory lock serializes the sum-then-write; without it both would race past 360)
 - **Cap excludes the edited row on update:** a single 300-min session edited *down* to 200 → **accepted** — the row must not count itself twice (must not evaluate as the old 300 + new 200 = 500). With a *second* 100-min session already on that day (day total 300), editing the first to 260 → **accepted** (260 + 100 = 360), and to 261 → **rejected** (261 + 100 = 361): proves the cap still counts the *other* rows on update, just not the edited one.
-- **No calling profile:** an insert made with no authenticated user (`auth.uid()` is null, e.g. an unauthenticated PostgREST call) → rejected with the "no calling profile" error, because the `created_by` stamp resolves no `profiles` row. Confirms the row can't be written headless.
+- **`created_by` is stamped, not trusted:** an authenticated insert always stores `created_by` = the caller's profile regardless of what the client sent (covered by the forged-`created_by` RLS test); a **service-role** insert (`auth.uid()` null) must supply `created_by` explicitly — omitting it hits the `NOT NULL` constraint. Unauthenticated (`anon`) inserts never reach the trigger — RLS denies them first.
 
 ### 3. Leaderboard RPC — `tests/rls/training-leaderboard.test.ts` (new)
 

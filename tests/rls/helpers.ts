@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { execSync } from "node:child_process";
 import dotenv from "dotenv";
 
 dotenv.config({ path: ".env.test.local" });
@@ -145,6 +146,100 @@ export async function createManagedProfile(
 export function trackIds({ orgId, teamId }: { orgId?: string; teamId?: string }) {
   if (teamId) createdTeamIds.push(teamId);
   if (orgId) createdOrgIds.push(orgId);
+}
+
+/** Set an org's plan + subscription status (defaults to an active club tier). */
+export async function setOrgPlan(
+  orgId: string,
+  plan: "free" | "club_small" | "club_large" = "club_small",
+  subscriptionStatus: "trialing" | "active" | "past_due" | "canceled" = "active"
+) {
+  const { error } = await adminClient
+    .from("organizations")
+    .update({ plan, subscription_status: subscriptionStatus })
+    .eq("id", orgId);
+  if (error) throw new Error(`Failed to set org plan: ${error.message}`);
+}
+
+/** Add an explicit organization_members row (owner/director). */
+export async function addOrgMember(
+  orgId: string,
+  profileId: string,
+  role: "owner" | "director" = "director"
+) {
+  const { error } = await adminClient
+    .from("organization_members")
+    .insert({ organization_id: orgId, profile_id: profileId, role });
+  if (error) throw new Error(`Failed to add org member: ${error.message}`);
+}
+
+/** Archive a team. */
+export async function archiveTeam(teamId: string) {
+  const { error } = await adminClient
+    .from("teams")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", teamId);
+  if (error) throw new Error(`Failed to archive team: ${error.message}`);
+}
+
+/** Today's date (YYYY-MM-DD) in UTC, matching the default team timezone fallback. */
+export function todayStr(offsetDays = 0): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Run raw SQL in the local Postgres container as the postgres superuser.
+ * Test seeding only — used to create edge-case rows (e.g. out-of-window dates)
+ * that the validation trigger would otherwise reject.
+ */
+export function rawSql(sql: string) {
+  execSync(
+    `docker exec supabase_db_lista psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "${sql.replace(/"/g, '\\"')}"`,
+    { stdio: "pipe" }
+  );
+}
+
+/**
+ * Seed a session with an arbitrary (possibly out-of-window) date, bypassing the
+ * validation trigger via session_replication_role = replica. Returns the row id.
+ */
+export function seedOldSession(opts: {
+  id?: string;
+  profileId: string;
+  teamId: string;
+  date: string;
+  minutes?: number;
+}): string {
+  const id = opts.id ?? crypto.randomUUID();
+  rawSql(
+    `set session_replication_role = replica; ` +
+      `insert into training_sessions (id, profile_id, team_id, created_by, session_date, duration_minutes, category) ` +
+      `values ('${id}','${opts.profileId}','${opts.teamId}','${opts.profileId}','${opts.date}',${opts.minutes ?? 10},'other'); ` +
+      `set session_replication_role = default;`
+  );
+  return id;
+}
+
+/** Seed a training session via the service role (bypasses RLS; trigger still runs). */
+export async function insertSession(opts: {
+  profileId: string;
+  teamId: string;
+  createdBy: string;
+  date?: string;
+  minutes?: number;
+  category?: string;
+}): Promise<{ error: string | null }> {
+  const { error } = await adminClient.from("training_sessions").insert({
+    profile_id: opts.profileId,
+    team_id: opts.teamId,
+    created_by: opts.createdBy,
+    session_date: opts.date ?? todayStr(),
+    duration_minutes: opts.minutes ?? 30,
+    category: opts.category ?? "shooting",
+  });
+  return { error: error ? error.message : null };
 }
 
 /** Clean up all test data in correct FK order */
