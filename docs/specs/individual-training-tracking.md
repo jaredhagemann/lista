@@ -86,6 +86,10 @@ create table training_sessions (
 
   -- text + CHECK, not a Postgres enum: adding a category later is a one-line
   -- migration instead of an ALTER TYPE that can't run in a transaction.
+  -- The same nine values are mirrored by a TRAINING_CATEGORIES const in
+  -- src/lib/training.ts (the client's category picker + validation read from
+  -- it). Like has_club_access/hasClubAccess, the two lists can drift; a unit
+  -- test asserts they agree (see Test Plan §4).
   category text not null check (category in (
     'ball_mastery', 'dribbling', 'passing', 'shooting',
     'fitness', 'strength', 'agility', 'recovery', 'other'
@@ -144,14 +148,33 @@ returns boolean as $$
       and tm.role = 'player'
   );
 $$ language sql security definer stable;
+
+-- Resolve a team's timezone SAFELY. `teams.timezone` is nullable free text with
+-- no CHECK, so besides null it can hold a non-IANA string ('', 'PST',
+-- 'Pacific Time'). A bare `now() at time zone teams.timezone` on such a value
+-- raises 'invalid value for parameter "TimeZone"', which would fail EVERY
+-- training insert for that team. coalesce() guards only null, not invalid — so
+-- probe the value and fall back to 'UTC' if Postgres won't accept it.
+create or replace function safe_team_tz(t_id uuid)
+returns text language plpgsql stable as $$
+declare tz text;
+begin
+  select timezone into tz from teams where id = t_id;
+  if tz is null then return 'UTC'; end if;
+  perform now() at time zone tz;   -- raises if tz is not a valid zone
+  return tz;
+exception when others then
+  return 'UTC';
+end;
+$$;
 ```
 
 The trigger rejects a session when:
 
 1. **`profile_id` is not a `player` on `team_id`** → `is_team_player(team_id, profile_id)` is false. Closes the same hole the availability migration closed: a parent-manager can *see* a team, so without this check they could write a row against it.
-2. **`session_date` is in the future.** `session_date` is a bare calendar day, so the comparison is bare-date against the team-local "today": `today := (now() at time zone coalesce(teams.timezone, 'UTC'))::date; if new.session_date > today then reject`. The team timezone is used **only** to pin down which calendar day "today" is (so a player logging at 8pm Pacific isn't rejected because it's already tomorrow in UTC) — it is never applied to `session_date` itself, which carries no time to convert.
+2. **`session_date` is in the future.** `session_date` is a bare calendar day, so the comparison is bare-date against the team-local "today": `today := (now() at time zone safe_team_tz(team_id))::date; if new.session_date > today then reject`. The team timezone is used **only** to pin down which calendar day "today" is (so a player logging at 8pm Pacific isn't rejected because it's already tomorrow in UTC) — it is never applied to `session_date` itself, which carries no time to convert. `safe_team_tz` (above) guarantees a valid zone, so a misconfigured `teams.timezone` degrades to UTC instead of erroring the insert.
 3. **`session_date` is more than 7 days in the past** — `new.session_date < today - 7` using the same team-local `today`. Backdating exists so you can log Saturday's session on Sunday, not so you can fill in a month before the board closes. Note the consequence: **the previous week's totals are still mutable for 7 days.** That is accepted — a week's numbers are final once it scrolls out of the window, and the UI does not claim otherwise.
-4. **The day's total would exceed 360 minutes** across all of that player's sessions on that `session_date` (all teams). Prevents the "twelve 300-minute sessions" attack that the per-session cap alone allows.
+4. **The day's total would exceed 360 minutes** across all of that player's sessions on that `session_date` (all teams). Prevents the "twelve 300-minute sessions" attack that the per-session cap alone allows. To make this a genuinely **hard** cap and not just a per-statement one, the trigger takes a transaction-scoped advisory lock keyed on the player-day **before** it sums — `perform pg_advisory_xact_lock(hashtext(new.profile_id::text || new.session_date::text))` — so two concurrent inserts for the same player and date serialize instead of both reading `sum < 360` and both committing. The lock is on a tiny keyspace (one player-day) and released at transaction end, so it costs nothing in the common case where a player isn't racing parallel writes against themselves.
 
 Each failure raises a distinct `errcode`/message so the client can map it to a specific field error.
 
@@ -166,6 +189,8 @@ end if;
 ```
 
 This makes `created_by` unforgeable: it is definitionally "who entered this row", which is always the authenticated caller, so there is never a legitimate reason to accept a client-supplied value. Without this, a crafted PostgREST insert could set `created_by` to the child's own profile (hiding that a parent logged it) or to another coach — defeating the audit purpose the column exists for. `created_by` is left out of the assignment on `update` so it preserves the original author when a row is later edited by someone else (e.g. a coach correcting an entry).
+
+**On `update`, the trigger stamps `updated_at`.** `new.updated_at := now()` — nothing else in the schema maintains it. No table in the codebase currently has an `updated_at` column, so there is no shared `moddatetime`/`set_updated_at` convention to inherit and no client code that sets it; without this line the column would sit frozen at its insert value forever. Since a `before insert or update` trigger already exists for validation, the bump is a one-line add on the update branch rather than a separate trigger.
 
 ---
 
@@ -241,7 +266,10 @@ Behavior:
 - **Period bounds** are computed from `p_anchor` with **no timezone conversion** — `date_trunc('week', p_anchor)` (Postgres weeks start Monday, which is what we want) or `date_trunc('month', p_anchor)` — because `session_date` is already a timezone-naive calendar day (see [Data Model](#training_sessions)). A session dated `2026-07-11` falls in the same Mon–Sun week no matter which team's timezone is involved, so a club-scoped board spanning teams in different timezones has **no cross-timezone ambiguity to resolve**: every row is bucketed by its bare `session_date` against the same anchor. (The only timezone-sensitive rule in the whole feature is the trigger's "today" boundary, above; aggregation never touches a timezone.)
 - **Excludes opted-out players** (`profiles.training_leaderboard_opt_out = true`) from the returned rows entirely.
 - **Excludes players with zero minutes** in the period — the board shows who trained, not a roster with a column of zeros. Total roster size is returned separately by the page for the "you're 12th of 18" line.
-- **Name masking:** `'team'` scope returns full name (teammates already know each other from the roster). `'club'` scope returns `first name + last initial` ("Marcus H."), since it exposes children to adults on other teams.
+- **Name masking:** `'team'` scope returns full name (teammates already know each other from the roster). `'club'` scope returns `first name + last initial` ("Marcus H."), since it exposes children to adults on other teams. The signup trigger defaults `last_name` to `''`, so the initial can be missing: when `last_name` is empty (or whitespace) the masked name is the **first name alone** ("Marcus"), never a dangling `"Marcus "` with a trailing space and no letter. Compute it as `first_name || case when nullif(btrim(last_name), '') is not null then ' ' || left(btrim(last_name), 1) || '.' else '' end`.
+- **Avatar in club scope — deliberately unmasked.** `avatar_url` is returned in full for both scopes, including `'club'`. This is a conscious decision, not an oversight: a club is a single vetted organization, and showing a player's photo to other adults *inside that same club* is judged acceptable. Two things follow, and both must be honored so the choice stays defensible:
+  - It is a **new** exposure. Today the `profiles` SELECT policy is same-team-only, so a U10 parent cannot see a U18 player's name *or* photo. The club board is the first surface to cross that boundary; the RPC's `security definer` caller check (org membership + `has_club_access`) is therefore the *only* thing gating who sees these photos — it must stay tight (no anonymous/probing access, no leaking beyond the org).
+  - The **opt-out** is the escape hatch. A family uncomfortable with the child's photo appearing club-wide removes it by opting out of the leaderboard entirely (opted-out players are excluded from all board rows). The settings copy should make clear that appearing on leaderboards means name-initial **and photo** are visible to other club members, so opting in is informed.
 - **Ranking** is standard competition rank (1, 2, 2, 4) on `total_minutes desc`, tie-broken by `session_count desc`, then `min(session_date)` ascending (whoever got there first), then name.
 
 A second RPC, `training_summary`, returns just the current user's own totals, rank, and denominator — so the header ("You: 145 min · 4 sessions · #3 of 18") does not require pulling the whole board. Its scope parameters **mirror `training_leaderboard` exactly**, because the header sits above the board and must report a rank in the *same* scope the board is showing:
@@ -300,7 +328,7 @@ Route: `/dashboard/training`, a RSC that resolves the active profile/team (same 
 
 ### Settings
 
-Settings → Account gets **"Show me on training leaderboards"** (default on). Toggling it for a managed child is available from the parent's account when the child profile is active. Copy states explicitly: *"Your coaches can always see your training log. This only controls whether you appear on leaderboards other players can see."*
+Settings → Account gets **"Show me on training leaderboards"** (default on). Toggling it for a managed child is available from the parent's account when the child profile is active. Copy states explicitly, and must name the club-wide photo exposure so opting in is informed: *"Your coaches can always see your training log. This only controls whether you appear on leaderboards other players can see — including the club-wide board, where your first name, last initial, and profile photo are visible to other members of your club."*
 
 ---
 
@@ -333,7 +361,7 @@ alter table training_sessions
 
 ## Rollout
 
-1. Migration (table, opt-out column, `is_team_player`, `has_club_access`, validation trigger, RLS, both RPCs) — validated against staging by `.github/workflows/migrate.yml` on the PR, then production on merge.
+1. Migration (table, opt-out column, `is_team_player`, `safe_team_tz`, `has_club_access`, validation trigger, RLS, both RPCs) — validated against staging by `.github/workflows/migrate.yml` on the PR, then production on merge.
 2. Regenerate `src/types/database.ts`.
 3. UI behind the existing club gate. No feature flag: the club gate *is* the flag, and the blast radius is a new route that no free org can reach.
 4. Seed nothing. An empty leaderboard on day one is correct; the first player to log a session is rank 1, which is a fine story to tell in the launch email.
@@ -365,8 +393,10 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 
 - `session_date` = tomorrow (team tz) → rejected
 - `session_date` = 8 days ago → rejected; 7 days ago → accepted
+- **Team with an invalid `timezone`** (`''`, `'PST'`, `'Pacific Time'`) → insert **still succeeds** (no `invalid value for parameter "TimeZone"`); the "today" boundary falls back to UTC via `safe_team_tz`. Also assert a team with `timezone = null` behaves the same.
 - Sessions summing to 361 minutes on one day → last insert rejected; 360 → accepted
 - Daily cap counts across **two different teams** for the same player → rejected
+- **Concurrent** inserts of 300 + 300 min for the same player-day, fired in parallel → exactly one commits, the other is rejected by the cap (asserts the advisory lock serializes the sum-then-write; without it both would race past 360)
 
 ### 3. Leaderboard RPC — `tests/rls/training-leaderboard.test.ts` (new)
 
@@ -392,6 +422,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 ### 4. Unit — `tests/unit/training.test.ts` (new)
 
 - `has_club_access` (SQL) and `hasClubAccess` (TS) agree across every `(plan, subscription_status)` pair — the drift guard
+- **Category parity:** the `TRAINING_CATEGORIES` const in `src/lib/training.ts` equals the value set in the `training_sessions.category` CHECK constraint (query the constraint definition, or insert one row per TS value and assert none is rejected). Same drift guard as `has_club_access`, so the soccer-shaped list in [Open Question #2](#open-questions) can be changed in exactly one reviewed place
 - Period label formatting ("Jul 7 – Jul 13", "July 2026") and anchor stepping across a month/year boundary
 
 ### 5. E2E — `tests/e2e/training.spec.ts` (new)
@@ -409,3 +440,4 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 3. **Multi-team players.** ~~Open.~~ **Resolved.** Two sub-questions, both settled: (a) *crediting* — a session is credited to exactly one team, chosen by the player, never auto-credited to every team (that would inflate club totals). (b) *club-board aggregation* — the club board ranks **distinct players**, summing each player's sessions across all their teams (see [Leaderboard Aggregation → Grouping](#leaderboard-aggregation)); because each session is credited to one team, the sum counts every session once, so a multi-team player appears once with their true total rather than split across rows. The only residual gaming vector — manually entering the *same* session under two teams — is a moderation matter (coach delete), bounded by the 360-min daily cap, not an aggregation-design one. Still worth confirming in usability testing that a player on both a club team and an academy team finds the per-session team picker obvious.
 4. **Duration vs. quality.** Ranking purely on minutes rewards the kid who juggles for two hours over the kid who does a focused 30-minute finishing session. Nothing in v1 fixes that; curated drills with an expected duration are the real answer, which is an argument for pulling Phase 2 forward.
 5. **Should coaches log team-designated homework?** Not "a curated drill library", just "coach assigns 20 min of ball mastery before Thursday". It's a smaller feature than the drill library and probably the higher-value half of it.
+6. **Validate `teams.timezone` at the source?** This feature defends against a bad value with `safe_team_tz` (fall back to UTC), which is the right *local* fix. The more thorough fix — a CHECK constraint validating `teams.timezone` against `pg_timezone_names` plus a one-time backfill of any existing junk — belongs to the team-settings surface, not here, because it touches existing data and the settings UI. Worth a separate ticket so other timezone-dependent features (scheduling, reminders) don't each re-implement the same defense.
