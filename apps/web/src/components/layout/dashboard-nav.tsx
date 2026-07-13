@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, ClipboardList, Home, MessageSquare, Settings, Users, LogOut, Menu, X, Building2 } from "lucide-react";
+import { Calendar, ClipboardList, Dumbbell, Home, MessageSquare, Settings, Users, LogOut, Menu, X, Building2 } from "lucide-react";
 import { useState } from "react";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 import { ProfileSwitcher } from "@/components/layout/profile-switcher";
@@ -32,6 +32,8 @@ const baseNavItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
 ];
 
+const trainingNavItem = { href: "/dashboard/training", label: "Training", icon: Dumbbell };
+
 export function DashboardNav({
   ownProfile,
   activeProfile,
@@ -42,6 +44,7 @@ export function DashboardNav({
   logoUrl = null,
   orgName,
   orgRole = null,
+  hasTrainingAccess = false,
 }: {
   ownProfile: Profile | null;
   activeProfile: Profile | null;
@@ -55,6 +58,8 @@ export function DashboardNav({
   orgName?: string;
   /** Org role — when set, shows the Club admin nav link. */
   orgRole?: "owner" | "director" | null;
+  /** Club-tier training gate — when true, shows the Training nav item. */
+  hasTrainingAccess?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -62,7 +67,12 @@ export function DashboardNav({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navItems = [
-    ...baseNavItems,
+    // Training sits between Availability and Team when the org has club access.
+    ...(hasTrainingAccess
+      ? baseNavItems.flatMap((item) =>
+          item.href === "/dashboard/team" ? [trainingNavItem, item] : [item]
+        )
+      : baseNavItems),
     ...(orgRole ? [{ href: "/dashboard/club", label: "Club", icon: Building2 }] : []),
     { href: "/dashboard/settings", label: "Settings", icon: Settings },
   ];

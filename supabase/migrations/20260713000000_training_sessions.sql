@@ -36,10 +36,12 @@ create table public.training_sessions (
 
   notes text check (char_length(notes) <= 500),
 
-  -- Who actually entered the row. Stamped by the validation trigger from the
-  -- calling profile for authenticated callers (unforgeable); the service role
-  -- (auth.uid() null) supplies it explicitly when seeding.
-  created_by uuid not null references public.profiles(id),
+  -- Who actually entered the row. The `default auth.uid()` only makes the column
+  -- optional for clients (so it needn't be sent); the validation trigger is the
+  -- real source of truth — it overwrites created_by with the calling profile for
+  -- authenticated callers (unforgeable). The service role (auth.uid() null)
+  -- supplies it explicitly when seeding.
+  created_by uuid not null references public.profiles(id) default auth.uid(),
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -244,10 +246,10 @@ create policy "training_sessions_delete" on public.training_sessions
 
 create or replace function public.training_leaderboard(
   p_scope   text,
-  p_team_id uuid,
-  p_org_id  uuid,
-  p_period  text,
-  p_anchor  date
+  p_team_id uuid default null,
+  p_org_id  uuid default null,
+  p_period  text default 'week',
+  p_anchor  date default current_date
 )
 returns table (
   profile_id    uuid,
@@ -392,10 +394,10 @@ $$;
 create or replace function public.training_summary(
   p_profile_id uuid,
   p_scope      text,
-  p_team_id    uuid,
-  p_org_id     uuid,
-  p_period     text,
-  p_anchor     date
+  p_team_id    uuid default null,
+  p_org_id     uuid default null,
+  p_period     text default 'week',
+  p_anchor     date default current_date
 )
 returns table (
   total_minutes integer,

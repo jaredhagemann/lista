@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { hasClubAccess } from "@/lib/plan";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
@@ -108,6 +110,29 @@ export default async function SettingsPage({
     }
   }
 
+  // Resolve the active profile (own or a managed child) for the training
+  // leaderboard opt-out toggle — shown only when the active team's org has
+  // club access (training is a club-tier feature).
+  const cookieStore = await cookies();
+  const activeProfileId = cookieStore.get("active_profile_id")?.value ?? user.id;
+  let trainingProfile:
+    | { id: string; firstName: string | null; optedOut: boolean }
+    | null = null;
+  if (orgPlan && hasClubAccess(orgPlan.plan, orgPlan.subscriptionStatus)) {
+    const { data: ap } = await supabase
+      .from("profiles")
+      .select("id, first_name, training_leaderboard_opt_out")
+      .eq("id", activeProfileId)
+      .maybeSingle();
+    if (ap) {
+      trainingProfile = {
+        id: ap.id,
+        firstName: ap.first_name,
+        optedOut: ap.training_leaderboard_opt_out,
+      };
+    }
+  }
+
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
   const isAdmin =
     membership?.role === "coach" ||
@@ -175,7 +200,7 @@ export default async function SettingsPage({
           </TabsContent>
         )}
         <TabsContent value="account" className="space-y-6">
-          <AccountSettings />
+          <AccountSettings trainingProfile={trainingProfile} />
         </TabsContent>
         <TabsContent value="plan" className="space-y-6">
           <PlanTabClient orgPlan={orgPlan} />

@@ -932,7 +932,7 @@ export type Database = {
         Insert: {
           category: string
           created_at?: string
-          created_by: string
+          created_by?: string
           duration_minutes: number
           id?: string
           notes?: string | null
@@ -1014,11 +1014,11 @@ export type Database = {
       team_org_id: { Args: { t_id: string }; Returns: string }
       training_leaderboard: {
         Args: {
-          p_anchor: string
-          p_org_id: string
-          p_period: string
+          p_anchor?: string
+          p_org_id?: string
+          p_period?: string
           p_scope: string
-          p_team_id: string
+          p_team_id?: string
         }
         Returns: {
           avatar_url: string
@@ -1033,12 +1033,12 @@ export type Database = {
       }
       training_summary: {
         Args: {
-          p_anchor: string
-          p_org_id: string
-          p_period: string
+          p_anchor?: string
+          p_org_id?: string
+          p_period?: string
           p_profile_id: string
           p_scope: string
-          p_team_id: string
+          p_team_id?: string
         }
         Returns: {
           denominator: number

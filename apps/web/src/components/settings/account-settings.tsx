@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { TrainingLeaderboardToggle } from "@/components/settings/training-leaderboard-toggle";
 
 // ---------------------------------------------------------------------------
 // Password reset
@@ -297,9 +298,14 @@ function DeleteAccountSection() {
 // Exported composite component
 // ---------------------------------------------------------------------------
 
-export function AccountSettings() {
+export function AccountSettings({
+  trainingProfile,
+}: {
+  trainingProfile?: { id: string; firstName: string | null; optedOut: boolean } | null;
+}) {
   return (
     <div className="space-y-6">
+      {trainingProfile && <TrainingLeaderboardToggle profile={trainingProfile} />}
       <PasswordResetForm />
       <Separator />
       <DeleteAccountSection />
