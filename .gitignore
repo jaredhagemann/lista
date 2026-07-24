@@ -1,5 +1,6 @@
 # dependencies
 node_modules
+.pnpm-store/
 .pnp
 .pnp.*
 .yarn/*
@@ -28,6 +29,9 @@ build
 # misc
 .DS_Store
 *.pem
+
+# secrets / OAuth client credentials (never commit)
+*OAuth Client*.txt
 
 # debug
 npm-debug.log*

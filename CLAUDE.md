@@ -15,6 +15,8 @@ cd apps/web && npx vitest run tests/rls/teams.test.ts  # Run a single test file
 
 RLS tests run against the live Supabase instance and require `.env.local` with valid credentials. They create/clean up test users via the service role key and include retry logic for auth rate limits.
 
+**Supabase CLI is pinned** as a devDependency (`supabase@2.78.1`). Always start/reset the local stack through the pinned binary — `pnpm exec supabase start`, `pnpm exec supabase db reset` (or via the `pnpm test:rls` script, which already resolves the local binary). Do **not** install or use a `latest` global Supabase CLI: newer releases no longer accept the static legacy demo JWT keys in `.env.test.local.example`, so the service-role token silently downgrades to `anon` and every RLS test fails with `permission denied for table organizations`. This applies inside the Ralph sandbox container too — `supabase start` there must use 2.78.1.
+
 ## Architecture
 
 Next.js 16 App Router + Supabase (PostgreSQL with RLS) + Tailwind CSS 4 + shadcn/ui. No separate backend services — the frontend talks directly to Supabase via PostgREST, with RLS policies as the authorization layer.
