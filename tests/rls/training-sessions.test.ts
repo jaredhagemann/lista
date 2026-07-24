@@ -260,7 +260,12 @@ describe("training_sessions RLS + trigger", () => {
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
-    for (const tz of ["", "PST", "Pacific Time", null]) {
+    // NB: "PST" is intentionally excluded — Postgres accepts it as a valid tz
+    // abbreviation (UTC-8), so safe_team_tz() does NOT fall back to UTC for it.
+    // Using it here made this test flaky: between 00:00–08:00 UTC the UTC-8
+    // "today" is the previous day, so a UTC-today session_date read as future.
+    // Only genuinely-invalid strings exercise the UTC-fallback path.
+    for (const tz of ["", "Pacific Time", "Not/AZone", null]) {
       await adminClient.from("teams").update({ timezone: tz }).eq("id", teamId);
       const { error } = await player.client
         .from("training_sessions")
