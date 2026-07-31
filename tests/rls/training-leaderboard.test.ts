@@ -106,7 +106,7 @@ describe("training_leaderboard / training_summary RPC", () => {
     expect(row.team_id).toBeNull(); // unfiltered club board
   });
 
-  it("multi-team player: one club row (summed, null team); team-filtered splits", async () => {
+  it("multi-team player: global total counts once on club and fully on each team board", async () => {
     const { owner, orgId, teamId: t1 } = await clubOrg();
     const t2 = await addTeam(orgId, owner.user.id, "T2");
     const p = await createTestUser();
@@ -116,7 +116,7 @@ describe("training_leaderboard / training_summary RPC", () => {
     await insertSession({ profileId: p.user.id, teamId: t1, createdBy: p.user.id, minutes: 90 });
     await insertSession({ profileId: p.user.id, teamId: t2, createdBy: p.user.id, minutes: 90 });
 
-    // Unfiltered club: one row, 180, null team
+    // Unfiltered club: one row, 180, null team (counted once, not per membership)
     const all = await board(p.client, { p_scope: "club", p_team_id: null, p_org_id: orgId, p_period: "week", p_anchor: anchor });
     const rows = (all.data as Array<{ profile_id: string; total_minutes: number; session_count: number; team_id: string | null }>).filter((r) => r.profile_id === p.user.id);
     expect(rows.length).toBe(1);
@@ -124,15 +124,17 @@ describe("training_leaderboard / training_summary RPC", () => {
     expect(rows[0].session_count).toBe(2);
     expect(rows[0].team_id).toBeNull();
 
-    // Club filtered to t1: 90, team populated
+    // Club filtered to t1: the filter changes the cohort, NOT the minutes — the
+    // player's GLOBAL 180 still shows, with the filter team populated.
     const filtered = await board(p.client, { p_scope: "club", p_team_id: t1, p_org_id: orgId, p_period: "week", p_anchor: anchor });
     const fr = (filtered.data as Array<{ profile_id: string; total_minutes: number; team_id: string | null }>).find((r) => r.profile_id === p.user.id)!;
-    expect(fr.total_minutes).toBe(90);
+    expect(fr.total_minutes).toBe(180);
     expect(fr.team_id).toBe(t1);
 
-    // Team scope t1: only 90
+    // Team scope t1: the full global total (180), not just t1's 90 — a session is
+    // global to the player and counts fully on every team board they belong to.
     const team = await board(p.client, { p_scope: "team", p_team_id: t1, p_org_id: null, p_period: "week", p_anchor: anchor });
-    expect((team.data as Array<{ total_minutes: number }>)[0].total_minutes).toBe(90);
+    expect((team.data as Array<{ total_minutes: number }>)[0].total_minutes).toBe(180);
   });
 
   it("player who left the team drops off the board but keeps history", async () => {

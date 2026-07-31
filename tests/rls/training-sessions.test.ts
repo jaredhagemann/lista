@@ -9,6 +9,8 @@ import {
   todayStr,
   insertSession,
   seedOldSession,
+  getDefaultCategoryId,
+  createCategory,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -30,12 +32,13 @@ describe("training_sessions RLS + trigger", () => {
 
   it("player inserts own session on own team → allowed, created_by stamped", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
     const { data, error } = await player.client
       .from("training_sessions")
-      .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category: "shooting" })
+      .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category_id: catId })
       .select()
       .single();
     expect(error).toBeNull();
@@ -44,13 +47,14 @@ describe("training_sessions RLS + trigger", () => {
 
   it("parent inserts for managed child → allowed; created_by = parent, profile_id = child", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const parent = await createTestUser();
     const child = await createManagedProfile(parent.user.id, { firstName: "Kid" });
     await addTeamMember(teamId, child, "player");
 
     const { data, error } = await parent.client
       .from("training_sessions")
-      .insert({ profile_id: child, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category: "passing" })
+      .insert({ profile_id: child, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category_id: catId })
       .select()
       .single();
     expect(error).toBeNull();
@@ -60,13 +64,14 @@ describe("training_sessions RLS + trigger", () => {
 
   it("forged created_by is overwritten by the trigger", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const parent = await createTestUser();
     const child = await createManagedProfile(parent.user.id, { firstName: "Kid" });
     await addTeamMember(teamId, child, "player");
 
     const { data, error } = await parent.client
       .from("training_sessions")
-      .insert({ profile_id: child, team_id: teamId, created_by: child, session_date: todayStr(), duration_minutes: 30, category: "passing" })
+      .insert({ profile_id: child, team_id: teamId, created_by: child, session_date: todayStr(), duration_minutes: 30, category_id: catId })
       .select()
       .single();
     expect(error).toBeNull();
@@ -75,46 +80,49 @@ describe("training_sessions RLS + trigger", () => {
 
   it("parent inserts for themselves (not a player) → denied", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const parent = await createTestUser();
     const child = await createManagedProfile(parent.user.id, { firstName: "Kid" });
     await addTeamMember(teamId, child, "player");
 
     const { error } = await parent.client
       .from("training_sessions")
-      .insert({ profile_id: parent.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category: "fitness" });
+      .insert({ profile_id: parent.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category_id: catId });
     expect(error).not.toBeNull();
   });
 
   it("coach inserts for a player → denied (not self/managed)", async () => {
     const { coach, teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
     const { error } = await coach.client
       .from("training_sessions")
-      .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category: "shooting" });
+      .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category_id: catId });
     expect(error).not.toBeNull();
   });
 
   it("player inserts against a team they're not on → denied", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const outsider = await createTestUser();
-    // outsider is not a member of teamId
     const { error } = await outsider.client
       .from("training_sessions")
-      .insert({ profile_id: outsider.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category: "shooting" });
+      .insert({ profile_id: outsider.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 30, category_id: catId });
     expect(error).not.toBeNull();
   });
 
   it("free-tier org insert → denied; canceled → denied; past_due & trialing → allowed", async () => {
     const { orgId, teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
     const attempt = () =>
       player.client
         .from("training_sessions")
-        .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 20, category: "agility" });
+        .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 20, category_id: catId });
 
     await setOrgPlan(orgId, "free", "active");
     expect((await attempt()).error).not.toBeNull();
@@ -137,15 +145,14 @@ describe("training_sessions RLS + trigger", () => {
     await addTeamMember(teamId, teammate.user.id, "player");
     await insertSession({ profileId: player.user.id, teamId, createdBy: player.user.id });
 
-    // teammate cannot read player's row
     const asTeammate = await teammate.client.from("training_sessions").select().eq("profile_id", player.user.id);
     expect(asTeammate.data!.length).toBe(0);
 
-    // coach of the team can
     const asCoach = await coach.client.from("training_sessions").select().eq("profile_id", player.user.id);
     expect(asCoach.data!.length).toBe(1);
 
-    // a coach of a DIFFERENT team in the same org cannot
+    // a coach of a DIFFERENT team in the same org, where the player is NOT a
+    // roster player, cannot read the player's rows.
     const otherCoach = await createTestUser();
     const otherTeam = await adminClient.from("teams").insert({ id: crypto.randomUUID(), organization_id: orgId, name: "Other", owner_id: otherCoach.user.id }).select().single();
     await addTeamMember(otherTeam.data!.id, otherCoach.user.id, "coach");
@@ -159,6 +166,32 @@ describe("training_sessions RLS + trigger", () => {
     expect(asDirector.data!.length).toBe(1);
   });
 
+  it("global coach visibility: a coach on any of the player's current teams reads all rows, incl. rows logged through another team", async () => {
+    // Player is on team A (coachA) and team B (coachB), different orgs. They log
+    // through A. coachB must be able to read that A-context row (global model).
+    const { coach: coachA, teamId: teamA } = await clubTeam();
+    const catA = await getDefaultCategoryId(teamA);
+    const { coach: coachB, teamId: teamB } = await clubTeam();
+
+    const player = await createTestUser();
+    await addTeamMember(teamA, player.user.id, "player");
+    await addTeamMember(teamB, player.user.id, "player");
+
+    await insertSession({ profileId: player.user.id, teamId: teamA, createdBy: player.user.id, categoryId: catA });
+
+    // coachB (no shared team_id on the row, but a current team of the player) sees it
+    const asCoachB = await coachB.client.from("training_sessions").select().eq("profile_id", player.user.id);
+    expect(asCoachB.data!.length).toBe(1);
+    expect(asCoachB.data![0].team_id).toBe(teamA);
+
+    // a coach with no current relationship to the player sees nothing
+    const strangerCoach = await createTestUser();
+    const { teamId: teamC } = await createTestTeam(strangerCoach.user.id);
+    await setOrgPlan((await adminClient.from("teams").select("organization_id").eq("id", teamC).single()).data!.organization_id, "club_small", "active");
+    const asStranger = await strangerCoach.client.from("training_sessions").select().eq("profile_id", player.user.id);
+    expect(asStranger.data!.length).toBe(0);
+  });
+
   it("delete: own allowed, teammate denied, coach allowed", async () => {
     const { coach, teamId } = await clubTeam();
     const player = await createTestUser();
@@ -166,23 +199,17 @@ describe("training_sessions RLS + trigger", () => {
     const teammate = await createTestUser();
     await addTeamMember(teamId, teammate.user.id, "player");
 
-    // seed 3 rows
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) {
-      const id = crypto.randomUUID();
-      await adminClient.from("training_sessions").insert({ id, profile_id: player.user.id, team_id: teamId, created_by: player.user.id, session_date: todayStr(), duration_minutes: 10, category: "other" });
-      ids.push(id);
+      ids.push(seedOldSession({ profileId: player.user.id, teamId, date: todayStr() }));
     }
 
-    // teammate cannot delete player's row
     await teammate.client.from("training_sessions").delete().eq("id", ids[0]);
     expect((await adminClient.from("training_sessions").select().eq("id", ids[0])).data!.length).toBe(1);
 
-    // player deletes own
     expect((await player.client.from("training_sessions").delete().eq("id", ids[0])).error).toBeNull();
     expect((await adminClient.from("training_sessions").select().eq("id", ids[0])).data!.length).toBe(0);
 
-    // coach deletes a player's
     expect((await coach.client.from("training_sessions").delete().eq("id", ids[1])).error).toBeNull();
     expect((await adminClient.from("training_sessions").select().eq("id", ids[1])).data!.length).toBe(0);
   });
@@ -192,35 +219,55 @@ describe("training_sessions RLS + trigger", () => {
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
-    // in-window row (today)
-    const recent = crypto.randomUUID();
-    await adminClient.from("training_sessions").insert({ id: recent, profile_id: player.user.id, team_id: teamId, created_by: player.user.id, session_date: todayStr(), duration_minutes: 10, category: "other" });
-    // out-of-window row (30 days ago) — seeded past the trigger
+    const recent = seedOldSession({ profileId: player.user.id, teamId, date: todayStr() });
     const old = seedOldSession({ profileId: player.user.id, teamId, date: todayStr(-30) });
 
-    // player can delete the in-window row
     expect((await player.client.from("training_sessions").delete().eq("id", recent)).error).toBeNull();
     expect((await adminClient.from("training_sessions").select().eq("id", recent)).data!.length).toBe(0);
 
-    // player CANNOT delete the old row (outside window) — row remains
     await player.client.from("training_sessions").delete().eq("id", old);
     expect((await adminClient.from("training_sessions").select().eq("id", old)).data!.length).toBe(1);
 
-    // coach CAN delete the old row
     expect((await coach.client.from("training_sessions").delete().eq("id", old)).error).toBeNull();
     expect((await adminClient.from("training_sessions").select().eq("id", old)).data!.length).toBe(0);
   });
 
+  it("edit-vs-delete after leaving the logging-context team: in-window delete allowed, edit denied", async () => {
+    // Player on A and B logs through A, then leaves A (still on B). Within the
+    // 7-day window: self-delete allowed (ownership+window), edit denied (update
+    // policy + trigger require current membership on the context team).
+    const { teamId: teamA } = await clubTeam();
+    const catA = await getDefaultCategoryId(teamA);
+    const { teamId: teamB } = await clubTeam();
+    const player = await createTestUser();
+    await addTeamMember(teamA, player.user.id, "player");
+    await addTeamMember(teamB, player.user.id, "player");
+
+    const id1 = seedOldSession({ profileId: player.user.id, teamId: teamA, date: todayStr(), categoryId: catA });
+    const id2 = seedOldSession({ profileId: player.user.id, teamId: teamA, date: todayStr(), categoryId: catA });
+
+    // Remove team-A membership (still a player on B).
+    await adminClient.from("team_members").delete().eq("team_id", teamA).eq("profile_id", player.user.id);
+
+    // edit denied (row unchanged)
+    await player.client.from("training_sessions").update({ duration_minutes: 99 }).eq("id", id1);
+    expect((await adminClient.from("training_sessions").select("duration_minutes").eq("id", id1).single()).data!.duration_minutes).toBe(10);
+
+    // in-window self-delete still allowed
+    expect((await player.client.from("training_sessions").delete().eq("id", id2)).error).toBeNull();
+    expect((await adminClient.from("training_sessions").select().eq("id", id2)).data!.length).toBe(0);
+  });
+
   it("duration CHECK bounds: 999 and 3 denied; 5 and 300 accepted", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
-    const base = { profile_id: player.user.id, team_id: teamId, session_date: todayStr(), category: "other" as const };
+    const base = { profile_id: player.user.id, team_id: teamId, session_date: todayStr(), category_id: catId };
 
     expect((await player.client.from("training_sessions").insert({ ...base, duration_minutes: 999 })).error).not.toBeNull();
     expect((await player.client.from("training_sessions").insert({ ...base, duration_minutes: 3 })).error).not.toBeNull();
     expect((await player.client.from("training_sessions").insert({ ...base, duration_minutes: 5 })).error).toBeNull();
-    // 300 alone is fine, but 5 + 300 = 305 same day is under 360
     expect((await player.client.from("training_sessions").insert({ ...base, duration_minutes: 300 })).error).toBeNull();
   });
 
@@ -233,10 +280,8 @@ describe("training_sessions RLS + trigger", () => {
     expect((await parent.client.from("profiles").update({ training_leaderboard_opt_out: true }).eq("id", child)).error).toBeNull();
     expect((await adminClient.from("profiles").select("training_leaderboard_opt_out").eq("id", child).single()).data!.training_leaderboard_opt_out).toBe(true);
 
-    // a stranger cannot toggle someone else's
     const stranger = await createTestUser();
     await stranger.client.from("profiles").update({ training_leaderboard_opt_out: true }).eq("id", a.user.id);
-    // a already true; set false first to detect an unwanted change
     await adminClient.from("profiles").update({ training_leaderboard_opt_out: false }).eq("id", a.user.id);
     await stranger.client.from("profiles").update({ training_leaderboard_opt_out: true }).eq("id", a.user.id);
     expect((await adminClient.from("profiles").select("training_leaderboard_opt_out").eq("id", a.user.id).single()).data!.training_leaderboard_opt_out).toBe(false);
@@ -246,9 +291,10 @@ describe("training_sessions RLS + trigger", () => {
 
   it("future date rejected; 8 days ago rejected; 7 days ago accepted", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
-    const base = { profile_id: player.user.id, team_id: teamId, duration_minutes: 20, category: "other" as const };
+    const base = { profile_id: player.user.id, team_id: teamId, duration_minutes: 20, category_id: catId };
 
     expect((await player.client.from("training_sessions").insert({ ...base, session_date: todayStr(1) })).error).not.toBeNull();
     expect((await player.client.from("training_sessions").insert({ ...base, session_date: todayStr(-8) })).error).not.toBeNull();
@@ -257,58 +303,100 @@ describe("training_sessions RLS + trigger", () => {
 
   it("invalid teams.timezone still allows insert (UTC fallback)", async () => {
     const { teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
     // NB: "PST" is intentionally excluded — Postgres accepts it as a valid tz
     // abbreviation (UTC-8), so safe_team_tz() does NOT fall back to UTC for it.
-    // Using it here made this test flaky: between 00:00–08:00 UTC the UTC-8
-    // "today" is the previous day, so a UTC-today session_date read as future.
-    // Only genuinely-invalid strings exercise the UTC-fallback path.
     for (const tz of ["", "Pacific Time", "Not/AZone", null]) {
       await adminClient.from("teams").update({ timezone: tz }).eq("id", teamId);
       const { error } = await player.client
         .from("training_sessions")
-        .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 15, category: "recovery" });
+        .insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 15, category_id: catId });
       expect(error, `tz=${tz}`).toBeNull();
     }
   });
 
-  it("archived team: insert & update rejected; director delete allowed; row still selectable", async () => {
-    const { orgId, teamId } = await clubTeam();
+  it("category must belong to the logging-context team and be active (rule 6)", async () => {
+    const { teamId: teamA } = await clubTeam();
+    const catA = await getDefaultCategoryId(teamA);
+    const { teamId: teamB } = await clubTeam();
+    const catB = await getDefaultCategoryId(teamB);
+    const archived = await createCategory(teamA, "Archived", { isActive: false });
+
+    const player = await createTestUser();
+    await addTeamMember(teamA, player.user.id, "player");
+
+    const ins = (categoryId: string) =>
+      player.client.from("training_sessions").insert({ profile_id: player.user.id, team_id: teamA, session_date: todayStr(), duration_minutes: 20, category_id: categoryId });
+
+    expect((await ins(catB)).error).not.toBeNull();      // another team's category
+    expect((await ins(archived)).error).not.toBeNull();  // archived category
+    expect((await ins(catA)).error).toBeNull();          // active same-team category
+
+    // repoint an existing row to a foreign category → rejected
+    const rowId = seedOldSession({ profileId: player.user.id, teamId: teamA, date: todayStr(), categoryId: catA });
+    await player.client.from("training_sessions").update({ category_id: catB }).eq("id", rowId);
+    expect((await adminClient.from("training_sessions").select("category_id").eq("id", rowId).single()).data!.category_id).toBe(catA);
+  });
+
+  it("rule 6 is conditional: archiving a category does not freeze edits on its sessions", async () => {
+    const { coach, teamId } = await clubTeam();
+    const catId = await createCategory(teamId, "Temp", { createdBy: coach.user.id });
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
-    // A director (org admin) retains admin access to archived teams; a plain
-    // coach does not (is_team_admin excludes archived teams for non-org-admins).
+    const rowId = seedOldSession({ profileId: player.user.id, teamId, date: todayStr(), categoryId: catId });
+
+    // archive the category
+    await coach.client.from("training_categories").update({ is_active: false }).eq("id", catId);
+
+    // editing duration (leaving category_id unchanged) must still be accepted
+    expect((await player.client.from("training_sessions").update({ duration_minutes: 25 }).eq("id", rowId)).error).toBeNull();
+    expect((await adminClient.from("training_sessions").select("duration_minutes").eq("id", rowId).single()).data!.duration_minutes).toBe(25);
+  });
+
+  it("created_by is immutable on update", async () => {
+    const { teamId } = await clubTeam();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    const rowId = seedOldSession({ profileId: player.user.id, teamId, date: todayStr() });
+
+    // player tries to rewrite created_by while editing → stays the original
+    await player.client.from("training_sessions").update({ duration_minutes: 22, created_by: crypto.randomUUID() }).eq("id", rowId);
+    const after = await adminClient.from("training_sessions").select("created_by, duration_minutes").eq("id", rowId).single();
+    expect(after.data!.created_by).toBe(player.user.id);
+    expect(after.data!.duration_minutes).toBe(22);
+  });
+
+  it("archived team: insert & update rejected; director delete allowed; row still selectable", async () => {
+    const { orgId, teamId } = await clubTeam();
+    const catId = await getDefaultCategoryId(teamId);
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
     const director = await createTestUser();
     await adminClient.from("organization_members").insert({ organization_id: orgId, profile_id: director.user.id, role: "director" });
 
-    const sessionId = crypto.randomUUID();
-    await adminClient.from("training_sessions").insert({ id: sessionId, profile_id: player.user.id, team_id: teamId, created_by: player.user.id, session_date: todayStr(), duration_minutes: 20, category: "other" });
+    const sessionId = seedOldSession({ profileId: player.user.id, teamId, date: todayStr() });
 
     await archiveTeam(teamId);
 
-    // insert rejected
-    expect((await player.client.from("training_sessions").insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 10, category: "other" })).error).not.toBeNull();
-    // update rejected (RLS using clause: not archived)
+    expect((await player.client.from("training_sessions").insert({ profile_id: player.user.id, team_id: teamId, session_date: todayStr(), duration_minutes: 10, category_id: catId })).error).not.toBeNull();
     await player.client.from("training_sessions").update({ duration_minutes: 25 }).eq("id", sessionId);
-    expect((await adminClient.from("training_sessions").select("duration_minutes").eq("id", sessionId).single()).data!.duration_minutes).toBe(20);
-    // director (org admin) delete allowed — the moderation lever for archived teams
+    expect((await adminClient.from("training_sessions").select("duration_minutes").eq("id", sessionId).single()).data!.duration_minutes).toBe(10);
     expect((await director.client.from("training_sessions").delete().eq("id", sessionId)).error).toBeNull();
     expect((await adminClient.from("training_sessions").select().eq("id", sessionId)).data!.length).toBe(0);
   });
 
-  it("daily cap: 361 rejected, 360 accepted; across two teams; excludes edited row on update", async () => {
+  it("daily cap: 361 rejected, 360 accepted; across two teams", async () => {
     const { orgId, teamId } = await clubTeam();
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
-    // 300 then 61 → 361 rejected; 60 → 360 accepted
     expect((await insertSession({ profileId: player.user.id, teamId, createdBy: player.user.id, minutes: 300 })).error).toBeNull();
     expect((await insertSession({ profileId: player.user.id, teamId, createdBy: player.user.id, minutes: 61 })).error).not.toBeNull();
     expect((await insertSession({ profileId: player.user.id, teamId, createdBy: player.user.id, minutes: 60 })).error).toBeNull();
 
-    // across two teams, same day, same player → still capped
     const team2 = await adminClient.from("teams").insert({ id: crypto.randomUUID(), organization_id: orgId, name: "T2", owner_id: player.user.id }).select().single();
     await addTeamMember(team2.data!.id, player.user.id, "player");
     expect((await insertSession({ profileId: player.user.id, teamId: team2.data!.id, createdBy: player.user.id, minutes: 5 })).error).not.toBeNull();
@@ -319,14 +407,10 @@ describe("training_sessions RLS + trigger", () => {
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
-    const only = crypto.randomUUID();
-    await adminClient.from("training_sessions").insert({ id: only, profile_id: player.user.id, team_id: teamId, created_by: player.user.id, session_date: todayStr(), duration_minutes: 300, category: "other" });
-    // edit down to 200 → must be accepted (not 300+200=500)
+    const only = seedOldSession({ profileId: player.user.id, teamId, date: todayStr(), minutes: 300 });
     expect((await player.client.from("training_sessions").update({ duration_minutes: 200 }).eq("id", only)).error).toBeNull();
 
-    // add a second 100-min row (day total 300)
-    await adminClient.from("training_sessions").insert({ id: crypto.randomUUID(), profile_id: player.user.id, team_id: teamId, created_by: player.user.id, session_date: todayStr(), duration_minutes: 100, category: "other" });
-    // edit first to 260 → 360 accepted; to 261 → 361 rejected
+    seedOldSession({ profileId: player.user.id, teamId, date: todayStr(), minutes: 100 });
     expect((await player.client.from("training_sessions").update({ duration_minutes: 260 }).eq("id", only)).error).toBeNull();
     await player.client.from("training_sessions").update({ duration_minutes: 261 }).eq("id", only);
     expect((await adminClient.from("training_sessions").select("duration_minutes").eq("id", only).single()).data!.duration_minutes).toBe(260);
