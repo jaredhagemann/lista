@@ -137,6 +137,37 @@ describe("training_leaderboard / training_summary RPC", () => {
     expect((team.data as Array<{ total_minutes: number }>)[0].total_minutes).toBe(180);
   });
 
+  it("hard-deleting a context team preserves the player's global sessions (SET NULL) — still counts on another team's board", async () => {
+    // Player on team A (org A) and team B (org B). Logs through A, then A is
+    // hard-deleted. The session survives as a contextless global row and still
+    // counts on team B's board.
+    const { teamId: teamA } = await clubOrg();
+    const { teamId: teamB } = await clubOrg();
+    const p = await createTestUser();
+    await adminClient.from("profiles").update({ first_name: "Ghost", last_name: "Row" }).eq("id", p.user.id);
+    await addTeamMember(teamA, p.user.id, "player");
+    await addTeamMember(teamB, p.user.id, "player");
+    await insertSession({ profileId: p.user.id, teamId: teamA, createdBy: p.user.id, minutes: 75 });
+
+    // hard-delete team A (the DB op deleteTeam performs) — must succeed
+    const del = await adminClient.from("teams").delete().eq("id", teamA);
+    expect(del.error).toBeNull();
+
+    // the session survives with null logging context
+    const surviving = await adminClient
+      .from("training_sessions")
+      .select("team_id, category_id, duration_minutes")
+      .eq("profile_id", p.user.id);
+    expect(surviving.data!.length).toBe(1);
+    expect(surviving.data![0].team_id).toBeNull();
+    expect(surviving.data![0].category_id).toBeNull();
+
+    // and it still counts on team B's board
+    const b = await board(p.client, { p_scope: "team", p_team_id: teamB, p_org_id: null, p_period: "week", p_anchor: anchor });
+    const row = (b.data as Array<{ profile_id: string; total_minutes: number }>).find((r) => r.profile_id === p.user.id);
+    expect(row?.total_minutes).toBe(75);
+  });
+
   it("player who left the team drops off the board but keeps history", async () => {
     const { teamId } = await clubOrg();
     const viewer = await playerWith(teamId, "Viewer", 30);

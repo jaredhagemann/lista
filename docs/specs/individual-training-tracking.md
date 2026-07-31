@@ -78,8 +78,10 @@ create table training_sessions (
   --      reachable in one join from team_id. (Bucketing itself is timezone-naive
   --      on session_date — see Leaderboard Aggregation — so this join is only
   --      for the insert/update window check, not for aggregation.)
-  team_id uuid not null references teams(id), -- RESTRICT: context deletion must
-                                              -- not erase a global player record
+  team_id uuid references teams(id) on delete set null, -- required on every user
+    -- write (RLS + trigger rule 1), but SET NULL on a team hard-delete so a
+    -- player's global session survives as a contextless row (it still counts on
+    -- their other teams) instead of blocking the delete or being erased
 
   -- The day the training happened, as the player reports it. A `date`, not a
   -- timestamptz: a session belongs to the day the player says it happened and
@@ -92,12 +94,14 @@ create table training_sessions (
 
   -- FK to the per-team managed category list (see "Training Categories"). A
   -- session's category is a row the team's coach/manager/director controls,
-  -- not a hardcoded enum. No `on delete` action (RESTRICT is the default): a
-  -- category that has sessions is archived (is_active=false), never
-  -- hard-deleted, so this FK can never orphan a session. The referenced
-  -- category must belong to the SAME team as the session — a plain FK can't
-  -- span two columns, so the validation trigger enforces it (rule 6).
-  category_id uuid not null references training_categories(id),
+  -- not a hardcoded enum. Required on every user write (RLS + trigger rule 6),
+  -- but ON DELETE SET NULL: when the context team is hard-deleted its categories
+  -- cascade away, so the session's category becomes null (a contextless row)
+  -- rather than blocking the team delete. The UI never hard-deletes a category
+  -- (removal is a soft-archive), so an in-use category is not dropped this way in
+  -- normal use. The referenced category must belong to the SAME team as the
+  -- session — a plain FK can't span two columns, so trigger rule 6 enforces it.
+  category_id uuid references training_categories(id) on delete set null,
 
   notes text check (char_length(notes) <= 500),
 
@@ -119,7 +123,9 @@ create index training_sessions_profile_date_idx
   on training_sessions (profile_id, session_date desc);
 ```
 
-**Roster changes and retention.** There is deliberately **no** foreign key from `training_sessions` to `team_members`, and removing a player from a team does **not** delete their sessions. Removal is a hard delete of the `team_members` row (the access-revoking step in `removeMember`, `app/actions/team.ts`), and this feature follows the same rule that flow already applies to availability — *"delete upcoming responses, preserve historical ones"*: history is kept. Because sessions are global to the player, removing them from team A removes them only from A's cohort; the same sessions continue to count on team B's board if they are still a current player there. Joining a new team makes the player's sessions in the selected week/month count on that team's board as well. The logging-context `team_id` therefore uses the FK default **RESTRICT**, not `on delete cascade`: deleting a team must not silently erase a player-owned session that still counts elsewhere. The product's normal removal path is archiving (`teams.archived_at`), which preserves the context. Any future irreversible team/account-erasure flow must handle these global rows explicitly rather than inheriting a team-scoped cascade.
+**Roster changes and retention.** There is deliberately **no** foreign key from `training_sessions` to `team_members`, and removing a player from a team does **not** delete their sessions. Removal is a hard delete of the `team_members` row (the access-revoking step in `removeMember`, `app/actions/team.ts`), and this feature follows the same rule that flow already applies to availability — *"delete upcoming responses, preserve historical ones"*: history is kept. Because sessions are global to the player, removing them from team A removes them only from A's cohort; the same sessions continue to count on team B's board if they are still a current player there. Joining a new team makes the player's sessions in the selected week/month count on that team's board as well.
+
+**Team hard-delete preserves global sessions (SET NULL, not cascade or RESTRICT).** Deleting a team must not silently erase a player-owned session that still counts elsewhere — but it also must not be *blocked* by one (a plain `on delete cascade` would erase it; the FK default RESTRICT would block the delete after `deleteTeam` had already fanned out notifications and removed images). So the logging-context `team_id` (and, symmetrically, `category_id`) use **`on delete set null`**: hard-deleting team A nulls those columns on the affected sessions, leaving them as **contextless global rows** that still sum for the player on their other teams. Aggregation joins sessions by `profile_id` (never `team_id`), so a null-context row counts normally; a player with no remaining team simply isn't in any cohort, and the row lives only in their own history. Users can never *write* a null context (the RLS `WITH CHECK` and trigger rules 1/6 require a live team + matching active category); only the delete cascade produces one, and the validation trigger explicitly lets that context-nulling update through. `deleteTeam` (`app/actions/team.ts`) is ordered so the irreversible storage cleanup runs **only after** the team row is successfully deleted. The product's normal removal path remains archiving (`teams.archived_at`), which keeps the context intact.
 
 ### `profiles.training_leaderboard_opt_out`
 
@@ -619,7 +625,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - **Rename propagates without backfill:** renaming a **non-default** category that has sessions updates `label` in place; a join from those sessions now resolves the **new** label, with no change to `training_sessions` rows.
 - **Team ownership is immutable:** changing a category's `team_id` after insert — both with and without existing sessions — is **denied** by the category-invariant trigger. This prevents moving a referenced category to another team without touching the session rows.
 - **Archive + restore:** setting `is_active = false` removes the category from the active picker and moves it to the management screen's Archived section while a pre-existing session still resolves its label. Restoring the same row (`is_active = true`) returns it to the picker with the same `id`, label, `created_by`, and `sort_order`; no replacement row is inserted.
-- **Default is protected (invariant trigger + policy):** a `delete` of the `is_default` "General" row → **denied** (both the `is_default = false` delete policy and the trigger's delete guard); setting **`is_active = false` on the default** (archive) → **denied**; changing its **`label` or `sort_order`** → **denied**; setting **`is_default = false`** (demote) → **denied**; setting **`is_default = true` on a second row** → **denied** (partial unique index). After each denied attempt, assert the team still has exactly one active default named "General" at position 0. A `delete` of a **non-default** category that **has sessions** → blocked by the FK (RESTRICT), whereas **archiving** it instead → allowed; a `delete` of a non-default category with **no** sessions → allowed (though the UI archives rather than deletes).
+- **Default is protected (invariant trigger + policy):** a `delete` of the `is_default` "General" row → **denied** (both the `is_default = false` delete policy and the trigger's delete guard); setting **`is_active = false` on the default** (archive) → **denied**; changing its **`label` or `sort_order`** → **denied**; setting **`is_default = false`** (demote) → **denied**; setting **`is_default = true` on a second row** → **denied** (partial unique index). After each denied attempt, assert the team still has exactly one active default named "General" at position 0. A `delete` of a **non-default** category that **has sessions** → **allowed**, and the referencing sessions' `category_id` is **SET NULL** (not orphaned, not blocked); the session rows themselves survive. The UI never offers this — removal there is a soft-archive that keeps the label resolvable — but the DB-level behavior is SET NULL so a team hard-delete (which cascade-deletes categories) can't be blocked by an in-use category.
 
 ### 2c. Category server action — `tests/unit/training-category-actions.test.ts` (new)
 

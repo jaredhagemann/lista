@@ -298,17 +298,26 @@ describe("training_categories RLS + seeding + invariants", () => {
 
   // ── A non-default with sessions can't be hard-deleted, but can be archived ─
 
-  it("a non-default category with sessions cannot be hard-deleted (FK), but can be archived", async () => {
+  it("hard-deleting a non-default category with sessions nulls their category_id (SET NULL); archiving keeps the label", async () => {
     const { coach, teamId } = await clubTeam();
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
-    const catId = await createCategory(teamId, "Strength", { createdBy: coach.user.id });
-    await insertSession({ profileId: player.user.id, teamId, createdBy: player.user.id, categoryId: catId });
 
-    const del = await adminClient.from("training_categories").delete().eq("id", catId);
-    expect(del.error).not.toBeNull(); // RESTRICT
+    // Archive path (what the UI does): the session keeps resolving its label.
+    const keep = await createCategory(teamId, "Strength", { createdBy: coach.user.id });
+    await insertSession({ profileId: player.user.id, teamId, createdBy: player.user.id, categoryId: keep });
+    expect((await coach.client.from("training_categories").update({ is_active: false }).eq("id", keep)).error).toBeNull();
 
-    const arch = await coach.client.from("training_categories").update({ is_active: false }).eq("id", catId);
-    expect(arch.error).toBeNull();
+    // Direct hard-delete (not offered by the UI): FK is SET NULL, so the delete
+    // succeeds and the referencing session's category_id becomes null rather
+    // than orphaning. The session itself survives.
+    const drop = await createCategory(teamId, "Speed", { createdBy: coach.user.id });
+    await insertSession({ profileId: player.user.id, teamId, createdBy: player.user.id, categoryId: drop, minutes: 20 });
+    const sessionRow = await adminClient.from("training_sessions").select("id").eq("category_id", drop).single();
+
+    const del = await adminClient.from("training_categories").delete().eq("id", drop);
+    expect(del.error).toBeNull();
+    const after = await adminClient.from("training_sessions").select("category_id").eq("id", sessionRow.data!.id).single();
+    expect(after.data!.category_id).toBeNull();
   });
 });

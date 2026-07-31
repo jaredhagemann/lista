@@ -356,6 +356,30 @@ describe("training_sessions RLS + trigger", () => {
     expect((await adminClient.from("training_sessions").select("duration_minutes").eq("id", rowId).single()).data!.duration_minutes).toBe(25);
   });
 
+  it("a client cannot null the logging context to bypass validation", async () => {
+    const { teamId } = await clubTeam();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    const rowId = seedOldSession({ profileId: player.user.id, teamId, date: todayStr() });
+
+    // nulling category_id alone → blocked by the RLS UPDATE WITH CHECK
+    await player.client.from("training_sessions").update({ category_id: null }).eq("id", rowId);
+    expect((await adminClient.from("training_sessions").select("category_id").eq("id", rowId).single()).data!.category_id).not.toBeNull();
+
+    // nulling category_id while also pushing a future date must not slip past
+    // date/category validation → rejected, row unchanged
+    await player.client.from("training_sessions").update({ category_id: null, session_date: todayStr(1) }).eq("id", rowId);
+    const afterUser = await adminClient.from("training_sessions").select("category_id, session_date").eq("id", rowId).single();
+    expect(afterUser.data!.category_id).not.toBeNull();
+    expect(afterUser.data!.session_date).toBe(todayStr());
+
+    // even a service-role write (bypasses RLS) can't null the context AND change
+    // another field: the tight cascade exception doesn't match, so the trigger
+    // runs full validation and rejects it.
+    const svc = await adminClient.from("training_sessions").update({ category_id: null, session_date: todayStr(1) }).eq("id", rowId);
+    expect(svc.error).not.toBeNull();
+  });
+
   it("created_by is immutable on update", async () => {
     const { teamId } = await clubTeam();
     const player = await createTestUser();

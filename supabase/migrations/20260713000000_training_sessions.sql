@@ -72,9 +72,13 @@ create table public.training_sessions (
   profile_id uuid not null references public.profiles(id) on delete cascade,
 
   -- Logging/category context — NOT leaderboard credit. Individual training is
-  -- global to the player and counts for every current team/club cohort. RESTRICT
-  -- (the FK default): deleting a team must not erase a player-owned global row.
-  team_id uuid not null references public.teams(id),
+  -- global to the player and counts for every current team/club cohort. Required
+  -- on every user write (RLS + trigger), but nullable at the column level with
+  -- ON DELETE SET NULL: hard-deleting the context team must NOT erase a player's
+  -- global session (it still counts on their other teams). The row survives as a
+  -- contextless global record. Users can never write a null (RLS WITH CHECK +
+  -- trigger rule 1 forbid it); only the delete cascade produces one.
+  team_id uuid references public.teams(id) on delete set null,
 
   -- The day the training happened, as reported. A `date`, not timestamptz:
   -- bucketing is timezone-naive (see leaderboard RPC).
@@ -82,10 +86,13 @@ create table public.training_sessions (
 
   duration_minutes integer not null check (duration_minutes between 5 and 300),
 
-  -- FK to the logging-context team's managed category list. RESTRICT: a category
-  -- with sessions is archived, never hard-deleted, so this can't orphan. The
-  -- category must belong to the same team (validation trigger rule 6).
-  category_id uuid not null references public.training_categories(id),
+  -- FK to the logging-context team's managed category list. Required on every
+  -- user write (RLS + trigger rule 6), but nullable with ON DELETE SET NULL:
+  -- when the context team is hard-deleted its categories cascade away, so the
+  -- session's category becomes null (a contextless global row) rather than
+  -- blocking the delete. Management removal is always a soft-archive, never a
+  -- hard delete, so an in-use category is never dropped this way.
+  category_id uuid references public.training_categories(id) on delete set null,
 
   notes text check (char_length(notes) <= 500),
 
@@ -316,6 +323,29 @@ begin
     -- created_by immutable on update; stamp updated_at.
     new.created_by := old.created_by;
     new.updated_at := pg_catalog.now();
+    -- A genuine ON DELETE SET NULL cascade (context team hard-deleted) nulls
+    -- exactly ONE context column and touches nothing else, firing this trigger
+    -- as an UPDATE. Let ONLY that precise shape through — the session becomes a
+    -- contextless global row that still counts for the player on their other
+    -- teams. Any other null-context update (e.g. a client nulling category_id
+    -- while also changing the date/duration, or nulling one context column and
+    -- editing the other) does NOT match and falls through to full validation
+    -- below, which rejects it. Belt and suspenders: the RLS UPDATE WITH CHECK
+    -- also forbids a client from writing a null context at all.
+    if new.profile_id          =            old.profile_id
+       and new.session_date     =            old.session_date
+       and new.duration_minutes =            old.duration_minutes
+       and new.notes is not distinct from    old.notes
+       and (
+         (new.team_id is null and old.team_id is not null
+            and new.category_id is not distinct from old.category_id)
+         or
+         (new.category_id is null and old.category_id is not null
+            and new.team_id is not distinct from old.team_id)
+       )
+    then
+      return new;
+    end if;
   end if;
 
   -- 1. must be a roster player on the logging-context team (also gates edits:
@@ -414,7 +444,9 @@ create policy "training_sessions_update" on public.training_sessions
     and public.has_club_access(public.team_org_id(team_id))
   )
   with check (
-    (profile_id = auth.uid() or public.is_managed_by_me(profile_id))
+    team_id is not null
+    and category_id is not null
+    and (profile_id = auth.uid() or public.is_managed_by_me(profile_id))
     and public.is_team_player(team_id, profile_id)
     and not public.is_team_archived(team_id)
     and public.has_club_access(public.team_org_id(team_id))
