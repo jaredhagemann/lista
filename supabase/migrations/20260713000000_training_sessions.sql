@@ -277,7 +277,10 @@ begin
     return new;
 
   else  -- DELETE
-    if old.is_default then
+    -- Protect the default from DIRECT deletion, but allow it to disappear when
+    -- its team is deleted: an ON DELETE CASCADE from teams fires this trigger
+    -- only AFTER the parent team row is gone, so the team no longer exists then.
+    if old.is_default and exists (select 1 from public.teams where id = old.team_id) then
       raise exception 'default category cannot be deleted' using errcode = 'P0016';
     end if;
     return old;

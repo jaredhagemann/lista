@@ -201,9 +201,51 @@ export function rawSql(sql: string) {
   );
 }
 
+/** Fetch a team's seeded default ("General") category id. */
+export async function getDefaultCategoryId(teamId: string): Promise<string> {
+  const { data, error } = await adminClient
+    .from("training_categories")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("is_default", true)
+    .single();
+  if (error) throw new Error(`Failed to get default category: ${error.message}`);
+  return data.id;
+}
+
+/**
+ * Create a custom (non-default) category via the service role. A service-role
+ * custom insert must supply created_by (a real profile) — defaults to the
+ * team's owner. Returns the new category id.
+ */
+export async function createCategory(
+  teamId: string,
+  label: string,
+  opts: { createdBy?: string; sortOrder?: number; isActive?: boolean } = {}
+): Promise<string> {
+  let createdBy = opts.createdBy;
+  if (!createdBy) {
+    const { data } = await adminClient.from("teams").select("owner_id").eq("id", teamId).single();
+    createdBy = data!.owner_id as string;
+  }
+  const id = crypto.randomUUID();
+  const { error } = await adminClient.from("training_categories").insert({
+    id,
+    team_id: teamId,
+    label,
+    is_default: false,
+    sort_order: opts.sortOrder ?? 10,
+    is_active: opts.isActive ?? true,
+    created_by: createdBy,
+  });
+  if (error) throw new Error(`Failed to create category: ${error.message}`);
+  return id;
+}
+
 /**
  * Seed a session with an arbitrary (possibly out-of-window) date, bypassing the
  * validation trigger via session_replication_role = replica. Returns the row id.
+ * Defaults category_id to the team's "General" default via subquery.
  */
 export function seedOldSession(opts: {
   id?: string;
@@ -211,12 +253,16 @@ export function seedOldSession(opts: {
   teamId: string;
   date: string;
   minutes?: number;
+  categoryId?: string;
 }): string {
   const id = opts.id ?? crypto.randomUUID();
+  const catExpr = opts.categoryId
+    ? `'${opts.categoryId}'`
+    : `(select id from training_categories where team_id='${opts.teamId}' and is_default limit 1)`;
   rawSql(
     `set session_replication_role = replica; ` +
-      `insert into training_sessions (id, profile_id, team_id, created_by, session_date, duration_minutes, category) ` +
-      `values ('${id}','${opts.profileId}','${opts.teamId}','${opts.profileId}','${opts.date}',${opts.minutes ?? 10},'other'); ` +
+      `insert into training_sessions (id, profile_id, team_id, created_by, session_date, duration_minutes, category_id) ` +
+      `values ('${id}','${opts.profileId}','${opts.teamId}','${opts.profileId}','${opts.date}',${opts.minutes ?? 10}, ${catExpr}); ` +
       `set session_replication_role = default;`
   );
   return id;
@@ -229,15 +275,16 @@ export async function insertSession(opts: {
   createdBy: string;
   date?: string;
   minutes?: number;
-  category?: string;
+  categoryId?: string;
 }): Promise<{ error: string | null }> {
+  const categoryId = opts.categoryId ?? (await getDefaultCategoryId(opts.teamId));
   const { error } = await adminClient.from("training_sessions").insert({
     profile_id: opts.profileId,
     team_id: opts.teamId,
     created_by: opts.createdBy,
     session_date: opts.date ?? todayStr(),
     duration_minutes: opts.minutes ?? 30,
-    category: opts.category ?? "shooting",
+    category_id: categoryId,
   });
   return { error: error ? error.message : null };
 }
@@ -280,6 +327,9 @@ export async function cleanupTestData() {
     await adminClient.from("events").delete().eq("team_id", teamId);
     await adminClient.from("locations").delete().eq("team_id", teamId);
     await adminClient.from("invitations").delete().eq("team_id", teamId);
+    // training_sessions.team_id is RESTRICT — must go before the team delete;
+    // training_categories cascade with the team (guard allows cascade).
+    await adminClient.from("training_sessions").delete().eq("team_id", teamId);
     await adminClient.from("team_members").delete().eq("team_id", teamId);
     await adminClient.from("teams").delete().eq("id", teamId);
   }
