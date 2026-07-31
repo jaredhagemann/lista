@@ -190,6 +190,24 @@ describe("training_categories RLS + seeding + invariants", () => {
     await expect(createCategory(team2, "Shooting")).resolves.toBeTruthy();
   });
 
+  it("whitespace-only labels are rejected; trailing tab/newline variants collide", async () => {
+    const { teamId } = await clubTeam();
+    const owner = (await adminClient.from("teams").select("owner_id").eq("id", teamId).single()).data!.owner_id as string;
+
+    // A tab/newline-only label trims to empty → fails the length CHECK.
+    const wsOnly = await adminClient
+      .from("training_categories")
+      .insert({ team_id: teamId, label: "\t\n ", is_default: false, sort_order: 10, created_by: owner });
+    expect(wsOnly.error).not.toBeNull();
+
+    // "Passing" then "Passing\t" must collide under the broad-trim unique index.
+    await createCategory(teamId, "Passing");
+    const dupTab = await adminClient
+      .from("training_categories")
+      .insert({ team_id: teamId, label: "Passing\t", is_default: false, sort_order: 20, created_by: owner });
+    expect(dupTab.error).not.toBeNull();
+  });
+
   // ── Rename / audit immutability ─────────────────────────────────────────
 
   it("rename propagates to sessions; created_by/created_at preserved, updated_at advances", async () => {

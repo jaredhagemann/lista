@@ -27,7 +27,9 @@ create table public.training_categories (
 
   -- Display label as typed. The id is the stable identifier; non-default labels
   -- are freely renamable. The system "General" default label is immutable.
-  label text not null check (char_length(btrim(label)) between 1 and 40),
+  -- Trim ALL leading/trailing whitespace (space, tab, newline, CR, FF, VT), not
+  -- just ASCII space, so a whitespace-only label fails the 1-char lower bound.
+  label text not null check (char_length(btrim(label, E' \t\n\r\f\v')) between 1 and 40),
 
   -- Exactly one seeded "General" per team (partial unique index below). The
   -- default is delete/archive/rename-protected by the guard trigger.
@@ -50,9 +52,11 @@ create table public.training_categories (
   check (is_default or created_by is not null)
 );
 
--- No duplicate labels within a team (case/space-insensitive).
+-- No duplicate labels within a team, case- AND whitespace-insensitive. Uses the
+-- IDENTICAL broad trim as the label CHECK so "Passing", "Passing " and
+-- "Passing\t" all collide instead of slipping in as distinct rows.
 create unique index training_categories_team_label_idx
-  on public.training_categories (team_id, lower(btrim(label)));
+  on public.training_categories (team_id, lower(btrim(label, E' \t\n\r\f\v')));
 
 -- At most one default per team.
 create unique index training_categories_one_default_idx
@@ -637,7 +641,7 @@ begin
   join public.profiles p on p.id = tot.profile_id
   where not p.training_leaderboard_opt_out
   order by tot.total_minutes desc, tot.session_count desc,
-           tot.first_date asc, p.last_name asc, p.id asc;
+           tot.first_date asc, p.last_name asc, p.first_name asc, p.id asc;
 end;
 $$;
 
@@ -711,6 +715,29 @@ begin
     if p_team_id is not null
        and public.team_org_id(p_team_id) is distinct from p_org_id then
       raise exception 'filter team is not in the org' using errcode = 'P0008';
+    end if;
+  end if;
+
+  -- Subject must actually belong to the requested cohort, or the rank returned
+  -- below would be synthetic — the subject slotted into a board they are not on.
+  -- This is distinct from the subject-authorization check at the top (which only
+  -- proves the caller may ask about this profile) and the scope check above
+  -- (which only proves the caller may see this board).
+  if p_scope = 'team' then
+    if not public.is_team_player(p_team_id, p_profile_id) then
+      raise exception 'subject is not a player on this team' using errcode = 'P0009';
+    end if;
+  else
+    if not exists (
+      select 1 from public.team_members tm
+      join public.teams t on t.id = tm.team_id
+      where tm.profile_id = p_profile_id
+        and tm.role = 'player'
+        and t.organization_id = p_org_id
+        and t.archived_at is null
+        and (p_team_id is null or tm.team_id = p_team_id)
+    ) then
+      raise exception 'subject is not a player in this cohort' using errcode = 'P0009';
     end if;
   end if;
 

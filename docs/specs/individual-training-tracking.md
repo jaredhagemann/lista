@@ -154,7 +154,9 @@ create table training_categories (
   -- picker shows this verbatim; there is no separate slug/key — the id is the
   -- stable identifier. Non-default labels are freely renamable without touching
   -- sessions; the system-managed "General" default label is immutable.
-  label text not null check (char_length(btrim(label)) between 1 and 40),
+  -- Broad trim (space, tab, newline, CR, FF, VT) so a whitespace-only label
+  -- fails the 1-char lower bound. Identical trim in the unique index below.
+  label text not null check (char_length(btrim(label, E' \t\n\r\f\v')) between 1 and 40),
 
   -- Exactly one seeded "General" per team. The default is delete/archive-
   -- protected (Access Control) so a team always has at least one valid category
@@ -186,11 +188,12 @@ create table training_categories (
   check (is_default or created_by is not null)
 );
 
--- No duplicate labels within a team (case/space-insensitive). Lets the manage
--- UI reject "Passing" when "passing " already exists, and makes the suggestion
--- "add these" idempotent — re-adding a sport's set can't create dupes.
+-- No duplicate labels within a team, case- AND whitespace-insensitive. Uses the
+-- IDENTICAL broad trim as the CHECK, so "Passing", "passing ", and "Passing\t"
+-- all collide. Lets the manage UI reject dupes and makes the suggestion "add
+-- these" idempotent.
 create unique index training_categories_team_label_idx
-  on training_categories (team_id, lower(btrim(label)));
+  on training_categories (team_id, lower(btrim(label, E' \t\n\r\f\v')));
 
 -- At most one default per team. Partial unique index, not a CHECK.
 create unique index training_categories_one_default_idx
@@ -457,7 +460,7 @@ Behavior:
 - **Avatar in club scope — deliberately unmasked.** `avatar_url` is returned in full for both scopes, including `'club'`. This is a conscious decision, not an oversight: a club is a single vetted organization, and showing a player's photo to other adults *inside that same club* is judged acceptable. Two things follow, and both must be honored so the choice stays defensible:
   - It is a **new** exposure. Today the `profiles` SELECT policy is same-team-only, so a U10 parent cannot see a U18 player's name *or* photo. The club board is the first surface to cross that boundary; the RPC's `security definer` caller check (org membership + `has_club_access`) is therefore the *only* thing gating who sees these photos — it must stay tight (no anonymous/probing access, no leaking beyond the org).
   - The **opt-out** is the escape hatch. A family uncomfortable with the child's photo appearing club-wide removes it by opting out of the leaderboard entirely (opted-out players are excluded from all board rows). The settings copy should make clear that appearing on leaderboards means name-initial **and photo** are visible to other club members, so opting in is informed.
-- **Ranking** is standard competition rank (1, 2, 2, 4) on `total_minutes desc` **only** — two players with equal minutes genuinely **share** a rank ("you're both 2nd"), which is what the (1, 2, 2, 4) example means. The remaining keys — `session_count desc`, then `min(session_date)` ascending (whoever got there first), then **real** name (not the club-masked form), then `profile_id` — order the **display within a tie**; they do *not* change the rank number. Ordering by real name + `profile_id` keeps the sequence deterministic and stable across scopes.
+- **Ranking** is standard competition rank (1, 2, 2, 4) on `total_minutes desc` **only** — two players with equal minutes genuinely **share** a rank ("you're both 2nd"), which is what the (1, 2, 2, 4) example means. The remaining keys — `session_count desc`, then `min(session_date)` ascending (whoever got there first), then **real** name (`last_name`, then `first_name` — never the club-masked form), then `profile_id` — order the **display within a tie**; they do *not* change the rank number. Both name parts are ordering keys (not just `last_name`), so two players who share a surname order by first name rather than by their opaque UUID; the trailing `profile_id` only breaks a full-name tie and keeps the sequence deterministic and stable across scopes.
 
 A second RPC, `training_summary`, returns just the current user's own totals, rank, and denominator — so the header ("You: 145 min · 4 sessions · #3 of 18") does not require pulling the whole board. Its scope parameters **mirror `training_leaderboard` exactly**, because the header sits above the board and must report a rank in the *same* scope the board is showing:
 
@@ -482,6 +485,7 @@ returns table (
 ```
 
 - **Subject authorization — the caller may only ask about themselves or a managed child.** Before anything else, `require p_profile_id = auth.uid() or is_managed_by_me(p_profile_id)`, else `raise exception`. This is a *distinct* check from the mirrored scope/org gate: that gate authorizes the **scope** (are you allowed to see this org/team's board), this one authorizes the **subject** (whose header is this). Without it, any org member passing an arbitrary `p_profile_id` could read another player's rank/total — and because the summary computes a rank even for a player the board excludes, that would leak precisely the standings an **opted-out** player removed from public view. `training_summary` is **not** a coach/admin RPC: coaches read per-player detail through the raw-row `select` path (`is_team_admin`) and aggregate there, so no capability is lost by restricting the subject here. If a coach-facing "player rank" view is ever wanted, it should be a separate, explicitly-scoped function rather than a loosening of this one.
+- **Subject must belong to the requested cohort.** After the scope check passes, additionally require that `p_profile_id` is a current roster `player` in the selected cohort — `is_team_player(p_team_id, p_profile_id)` for `'team'` scope, or a roster player on some non-archived team in `p_org_id` (matching any `p_team_id` filter) for `'club'` scope — else `raise exception`. This is a *third* distinct gate: subject-authorization proves the caller may ask about the profile, the scope gate proves the caller may see the board, and this one proves the subject is actually **on** that board. Without it a caller who manages child A and can see team B's board could request child A's summary scoped to team B and receive a **synthetic** rank — the child slotted into a board they don't belong to.
 - **Same grouping, scope/org caller check, period bounds, and opt-out semantics as `training_leaderboard`** — the summary is that function's ranking restricted to one profile. In particular, an **opted-out** caller still gets their own `rank` here even though they are absent from the board rows others see (spec: "Opted-out user sees their own numbers in the header").
 - **`'club'` scope** ranks the caller among all distinct club players for the period (per the one-row-per-player rule above); `p_team_id` optionally narrows it to a single team, matching the club board's team filter. Without this, the club board's header could only ever report a team rank while the list beneath it ranks the whole club — a scope the two views must not disagree on.
 - **`denominator`** is the size of the peer cohort in scope (the "of 18"): the count of **distinct, non-opted-out roster `player`s** — zero-minute players **included** (it's the whole cohort you're measured against, not just who trained), current-roster only (a player who left the team isn't counted), and for `'club'` scope **distinct** across the org's non-archived teams. **Opted-out players are excluded from the denominator**, for the same privacy reason they're excluded from board rows: the count must not reveal how many people opted out, or let anyone infer that a specific hidden player exists. This is the single source for the "of N" — the board RPC doesn't return it.
@@ -620,7 +624,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - **Select:** a roster `player` (and a `parent` of a player) can `select` their team's categories → **allowed**; a user on **another** team in the org selecting this team's unused categories → **denied**. After a player logs a session and then leaves its logging-context team, the player/parent can still resolve that session's category label but cannot list the rest of the old team's categories. A coach of one of the player's current teams can likewise resolve the labels attached to the global rows they can moderate, including a label owned by another team, without gaining access to that team's unused category list.
 - **Write authorization:** **coach** adds a category → allowed; **manager** adds → allowed; **director** (org admin) and **owner** add → allowed; a plain **player** or **parent** adds → **denied**; a coach of a **different** team in the same org adds to this team → **denied** (`is_team_admin` is team-scoped and `is_org_admin` is false for a plain coach).
 - **Club gate on all writes:** a coach on a **free-tier** or **canceled** club org **adds**, **renames** (update), or **deletes** a non-default category → **denied** by `has_club_access` on each of insert/update/delete; `trialing`/`past_due` → **allowed**. (The seeded default still exists on a free-tier team — seeding bypasses the gate — assert it's present even though manual management is denied.) This pins the delete-gate fix: a canceled org's admin cannot prune categories via PostgREST.
-- **Unique label per team:** adding "Passing" when "passing " already exists on that team → **rejected** (the `lower(btrim(label))` index); the same label on a **different** team → **allowed**.
+- **Unique label per team + whitespace normalization:** adding "Passing" when "passing " already exists on that team → **rejected**; the same label on a **different** team → **allowed**. A **whitespace-only** label (tab/newline) → **rejected** by the length CHECK; "Passing\t" when "Passing" exists → **rejected** (both the CHECK and the index use the broad `btrim(label, E' \t\n\r\f\v')`, not plain `btrim`).
 - **Category audit fields are DB-owned:** an authenticated custom insert that submits another profile's `created_by` stores the **caller**; a service-role custom insert with null `created_by` is rejected by the CHECK; renaming, archiving, restoring, or changing `sort_order` preserves `created_by`/`created_at` and advances `updated_at`.
 - **Rename propagates without backfill:** renaming a **non-default** category that has sessions updates `label` in place; a join from those sessions now resolves the **new** label, with no change to `training_sessions` rows.
 - **Team ownership is immutable:** changing a category's `team_id` after insert — both with and without existing sessions — is **denied** by the category-invariant trigger. This prevents moving a referenced category to another team without touching the session rows.
@@ -637,6 +641,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 
 - Team scope returns only that team's players, ranked correctly
 - Ties: equal minutes → equal rank, next rank skips (1, 2, 2, 4)
+- **Tie display order uses first name:** two players with equal minutes/count/date and the **same last name** are returned in **first-name** order ("Aaron Same" before "Zed Same"), not UUID order — proving `first_name` is an ordering key ahead of `profile_id`
 - Opted-out player is absent from both team and club scope, but their minutes still appear in their own `training_summary`
 - Zero-minute players are absent
 - Club scope: a U10 parent gets U18 players' **totals** (which they cannot read via a direct table select — assert both in the same test, since that contrast is the whole point of the RPC)
@@ -662,6 +667,7 @@ Test-driven per `CLAUDE.md` — these are written before implementation.
 - **Zero-minute subject → null rank:** `training_summary` for a roster player with no sessions in the period returns `total_minutes = 0`, `session_count = 0`, and `rank = null` (the page uses this to show the empty-state CTA, not "#0 of N").
 - **`training_summary` subject authorization:** caller requests their **own** summary → allowed; a **parent** requests a **managed child**'s → allowed; a caller requests a **teammate/another org member's** `p_profile_id` (even one on a team the caller can see) → **exception**, not another player's numbers
 - **Opt-out leak guard:** a member **cannot** obtain an opted-out player's `rank`/`total_minutes` by passing that player's `p_profile_id` to `training_summary` — the subject check denies it before the ranking runs (assert this specifically, since it's the standing opt-out is meant to hide)
+- **Subject must be in the cohort:** a caller who manages child A and is a member of team B (so the scope check passes) requests child A's summary scoped to **team B**, where A is not a roster player → **exception** (no synthetic rank); the same caller requesting A's summary scoped to A's **own** team → allowed
 
 ### 4. Unit — `tests/unit/training.test.ts` (new)
 

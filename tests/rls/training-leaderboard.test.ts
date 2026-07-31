@@ -300,6 +300,46 @@ describe("training_leaderboard / training_summary RPC", () => {
     expect(os[0].rank).toBe(1); // 120 beats the 50
   });
 
+  it("summary requires the subject to belong to the requested cohort", async () => {
+    // coachB manages childA and can see teamB's board, but childA plays on teamA.
+    // Requesting childA's summary scoped to teamB must not synthesize a rank.
+    const { owner: coachB, orgId, teamId: teamA } = await clubOrg();
+    const teamB = await addTeam(orgId, coachB.user.id, "TeamB");
+    await addTeamMember(teamB, coachB.user.id, "coach"); // coachB is a member of teamB
+    const childA = await createManagedProfile(coachB.user.id, { firstName: "Kid", lastName: "A" });
+    await addTeamMember(teamA, childA, "player"); // childA is on teamA only
+    await insertSession({ profileId: childA, teamId: teamA, createdBy: coachB.user.id, minutes: 60 });
+
+    // childA is NOT on teamB → rejected (was previously a synthetic rank)
+    const wrong = await summary(coachB.client, { p_profile_id: childA, p_scope: "team", p_team_id: teamB, p_org_id: null, p_period: "week", p_anchor: anchor });
+    expect(wrong.error).not.toBeNull();
+
+    // childA IS on teamA → allowed
+    const right = await summary(coachB.client, { p_profile_id: childA, p_scope: "team", p_team_id: teamA, p_org_id: null, p_period: "week", p_anchor: anchor });
+    expect(right.error).toBeNull();
+  });
+
+  it("tie display order uses first name before profile_id", async () => {
+    const { teamId } = await clubOrg();
+    // Two players, identical minutes/count/date and the SAME last name — the tie
+    // must break on first name ("Aaron" before "Zed"), not the UUID.
+    const zed = await createTestUser();
+    await adminClient.from("profiles").update({ first_name: "Zed", last_name: "Same" }).eq("id", zed.user.id);
+    await addTeamMember(teamId, zed.user.id, "player");
+    const aaron = await createTestUser();
+    await adminClient.from("profiles").update({ first_name: "Aaron", last_name: "Same" }).eq("id", aaron.user.id);
+    await addTeamMember(teamId, aaron.user.id, "player");
+    await insertSession({ profileId: zed.user.id, teamId, createdBy: zed.user.id, minutes: 50, date: anchor });
+    await insertSession({ profileId: aaron.user.id, teamId, createdBy: aaron.user.id, minutes: 50, date: anchor });
+
+    const { data } = await board(zed.client, { p_scope: "team", p_team_id: teamId, p_org_id: null, p_period: "week", p_anchor: anchor });
+    const rows = data as Array<{ profile_id: string }>;
+    const aaronIdx = rows.findIndex((r) => r.profile_id === aaron.user.id);
+    const zedIdx = rows.findIndex((r) => r.profile_id === zed.user.id);
+    expect(aaronIdx).toBeGreaterThanOrEqual(0);
+    expect(aaronIdx).toBeLessThan(zedIdx);
+  });
+
   it("summary subject authorization: self/managed allowed, others denied", async () => {
     const { teamId } = await clubOrg();
     const me = await playerWith(teamId, "Me", 30);
