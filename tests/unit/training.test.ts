@@ -1,12 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
-  TRAINING_CATEGORIES,
+  SPORT_CATEGORY_SUGGESTIONS,
+  MAX_CATEGORY_LABEL_LENGTH,
   isCurrentPeriodOrLater,
   monthStartStr,
   periodLabel,
   stepAnchor,
   weekStartStr,
 } from "@/lib/training";
+
+// Mirror of the teams.sport CHECK constraint.
+const VALID_SPORTS = new Set([
+  "baseball", "basketball", "cricket", "field_hockey", "flag_football", "football",
+  "golf", "gymnastics", "ice_hockey", "lacrosse", "pickleball", "rugby", "soccer",
+  "softball", "swimming", "tennis", "track_and_field", "volleyball", "wrestling", "other",
+]);
 
 describe("training period helpers", () => {
   it("weekStartStr returns the Monday of the anchor's week", () => {
@@ -51,9 +59,19 @@ describe("training period helpers", () => {
     expect(isCurrentPeriodOrLater("month", "2026-06-30", today)).toBe(false); // last month
   });
 
-  it("category list has the expected nine values", () => {
-    expect(TRAINING_CATEGORIES).toHaveLength(9);
-    expect(TRAINING_CATEGORIES).toContain("ball_mastery");
-    expect(TRAINING_CATEGORIES).toContain("other");
+  it("sport category suggestions are well-formed", () => {
+    for (const [sport, labels] of Object.entries(SPORT_CATEGORY_SUGGESTIONS)) {
+      expect(VALID_SPORTS.has(sport), `unknown sport key "${sport}"`).toBe(true);
+      expect(labels!.length, `${sport} has no suggestions`).toBeGreaterThan(0);
+      const seen = new Set<string>();
+      for (const label of labels!) {
+        const trimmed = label.trim();
+        expect(trimmed.length, `${sport} "${label}" empty`).toBeGreaterThan(0);
+        expect(trimmed.length, `${sport} "${label}" too long`).toBeLessThanOrEqual(MAX_CATEGORY_LABEL_LENGTH);
+        const key = trimmed.toLowerCase();
+        expect(seen.has(key), `${sport} duplicate "${label}"`).toBe(false);
+        seen.add(key);
+      }
+    }
   });
 });

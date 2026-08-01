@@ -20,9 +20,8 @@ import {
   BACKDATE_WINDOW_DAYS,
   monthStartStr,
   todayInTz,
-  TRAINING_CATEGORY_LABELS,
+  MISSING_CATEGORY_LABEL,
   weekStartStr,
-  type TrainingCategory,
 } from "@/lib/training";
 import { LogSessionDialog, type EditableSession } from "./log-session-dialog";
 import type { TrainingViewProps } from "./training-view";
@@ -31,9 +30,10 @@ type SessionRow = {
   id: string;
   session_date: string;
   duration_minutes: number;
-  category: TrainingCategory;
+  category_id: string | null;
   notes: string | null;
   team_id: string;
+  training_categories: { label: string } | null;
 };
 
 export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: TrainingViewProps) {
@@ -43,7 +43,12 @@ export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: Trai
     .toISOString()
     .slice(0, 10);
 
+  const PAGE_SIZE = 50;
   const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [wtd, setWtd] = useState(0);
+  const [mtd, setMtd] = useState(0);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<EditableSession | undefined>(undefined);
@@ -54,25 +59,46 @@ export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: Trai
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    const weekStart = weekStartStr(today);
+    const monthStart = monthStartStr(today);
+
+    // History is paginated (most-recent `visible`), with an exact count so we
+    // know when to offer "Load more". WTD/MTD totals are aggregated in a
+    // SEPARATE query so they're never truncated by the history page size.
+    const historyReq = supabase
       .from("training_sessions")
-      .select("id, session_date, duration_minutes, category, notes, team_id")
+      .select(
+        "id, session_date, duration_minutes, category_id, notes, team_id, training_categories(label)",
+        { count: "exact" }
+      )
       .eq("profile_id", activeProfile.id)
       .order("session_date", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(100);
-    setSessions((data as SessionRow[]) ?? []);
+      .range(0, visible - 1);
+
+    // Month-to-date rows (only the two summed columns); bounds WTD too.
+    const totalsReq = supabase
+      .from("training_sessions")
+      .select("session_date, duration_minutes")
+      .eq("profile_id", activeProfile.id)
+      .gte("session_date", monthStart);
+
+    const [{ data: historyData, count }, { data: totalsData }] = await Promise.all([
+      historyReq,
+      totalsReq,
+    ]);
+
+    setSessions((historyData as SessionRow[]) ?? []);
+    setTotal(count ?? 0);
+    const monthRows = (totalsData as { session_date: string; duration_minutes: number }[]) ?? [];
+    setMtd(monthRows.reduce((n, r) => n + r.duration_minutes, 0));
+    setWtd(monthRows.filter((r) => r.session_date >= weekStart).reduce((n, r) => n + r.duration_minutes, 0));
     setLoading(false);
-  }, [supabase, activeProfile.id]);
+  }, [supabase, activeProfile.id, visible, today]);
 
   useEffect(() => {
     void load(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [load]);
-
-  const weekStart = weekStartStr(today);
-  const monthStart = monthStartStr(today);
-  const wtd = sessions.filter((s) => s.session_date >= weekStart).reduce((n, s) => n + s.duration_minutes, 0);
-  const mtd = sessions.filter((s) => s.session_date >= monthStart).reduce((n, s) => n + s.duration_minutes, 0);
 
   async function handleDelete() {
     if (!deleteId) return;
@@ -140,7 +166,7 @@ export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: Trai
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium">
-                    {TRAINING_CATEGORY_LABELS[s.category]} · {s.duration_minutes} min
+                    {s.training_categories?.label ?? MISSING_CATEGORY_LABEL} · {s.duration_minutes} min
                   </div>
                   {s.notes && <div className="truncate text-xs text-muted-foreground">{s.notes}</div>}
                 </div>
@@ -151,7 +177,7 @@ export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: Trai
                       size="icon"
                       aria-label="Edit"
                       onClick={() => {
-                        setEditing(s);
+                        setEditing({ ...s, category_label: s.training_categories?.label ?? null });
                         setDialogOpen(true);
                       }}
                     >
@@ -168,6 +194,14 @@ export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: Trai
             );
           })}
         </ul>
+      )}
+
+      {!loading && sessions.length < total && (
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
+            Load more
+          </Button>
+        </div>
       )}
 
       {dialogOpen && (

@@ -4,42 +4,129 @@
  */
 
 /**
- * Training session categories. This list is the client-side source of truth for
- * the category picker and validation, and it **must** stay in lockstep with the
- * `training_sessions.category` CHECK constraint in
- * `supabase/migrations/20260713000000_training_sessions.sql`. A unit test asserts
- * the two agree (the same drift guard as `has_club_access`/`hasClubAccess`), so
- * change both together in one reviewed place.
+ * A managed training category — a row in `training_categories`. Categories are
+ * per-team and coach-managed (one seeded "General" default + custom types); the
+ * old hardcoded enum is gone. A session references one by `category_id`.
  */
-export const TRAINING_CATEGORIES = [
-  "ball_mastery",
-  "dribbling",
-  "passing",
-  "shooting",
-  "fitness",
-  "strength",
-  "agility",
-  "recovery",
-  "other",
-] as const;
-
-export type TrainingCategory = (typeof TRAINING_CATEGORIES)[number];
-
-/** Human-readable labels for the category picker. */
-export const TRAINING_CATEGORY_LABELS: Record<TrainingCategory, string> = {
-  ball_mastery: "Ball mastery",
-  dribbling: "Dribbling",
-  passing: "Passing",
-  shooting: "Shooting",
-  fitness: "Fitness",
-  strength: "Strength",
-  agility: "Agility",
-  recovery: "Recovery",
-  other: "Other",
+export type CategoryRow = {
+  id: string;
+  label: string;
+  is_default: boolean;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
 };
 
-export function isTrainingCategory(value: string): value is TrainingCategory {
-  return (TRAINING_CATEGORIES as readonly string[]).includes(value);
+/** The seeded default category present on every team; its label is immutable. */
+export const DEFAULT_CATEGORY_LABEL = "General";
+
+/** Label shown for a session whose category was removed with its team (SET NULL). */
+export const MISSING_CATEGORY_LABEL = "—";
+
+/**
+ * Deterministic display order, mirroring the DB index and RPC ordering exactly:
+ * default first, then sort_order, then created_at, then id — NOT label — so
+ * concurrent additions that share a sort_order stay in a stable, spec-defined
+ * order. (created_at is an ISO string; id is a uuid; both sort lexicographically.)
+ */
+export function sortCategories<T extends CategoryRow>(rows: T[]): T[] {
+  return [...rows].sort(
+    (a, b) =>
+      Number(b.is_default) - Number(a.is_default) ||
+      a.sort_order - b.sort_order ||
+      a.created_at.localeCompare(b.created_at) ||
+      a.id.localeCompare(b.id)
+  );
+}
+
+/** Sports recognized by `teams.sport` (mirrors the CHECK constraint). */
+export type Sport =
+  | "baseball" | "basketball" | "cricket" | "field_hockey" | "flag_football"
+  | "football" | "golf" | "gymnastics" | "ice_hockey" | "lacrosse"
+  | "pickleball" | "rugby" | "soccer" | "softball" | "swimming"
+  | "tennis" | "track_and_field" | "volleyball" | "wrestling" | "other";
+
+/**
+ * Sport-based category suggestions offered (one click) in the manage-categories
+ * UI. Purely convenience — never enforced; a coach may accept, ignore, edit, or
+ * add their own. Sports without an entry (incl. "other") show only "add custom".
+ * Each list must have unique, ≤40-char labels (a unit test asserts this).
+ */
+export const SPORT_CATEGORY_SUGGESTIONS: Partial<Record<Sport, string[]>> = {
+  soccer: ["Ball mastery", "Dribbling", "Passing", "Shooting", "Fitness", "Strength", "Agility", "Recovery"],
+  basketball: ["Shooting", "Ball handling", "Finishing", "Footwork", "Conditioning", "Strength", "Recovery"],
+  baseball: ["Hitting", "Fielding", "Throwing", "Base running", "Conditioning", "Strength", "Recovery"],
+  softball: ["Hitting", "Fielding", "Throwing", "Base running", "Conditioning", "Strength", "Recovery"],
+  football: ["Route running", "Strength", "Speed & agility", "Film study", "Conditioning", "Recovery"],
+  flag_football: ["Route running", "Throwing", "Catching", "Speed & agility", "Conditioning", "Recovery"],
+  volleyball: ["Serving", "Passing", "Setting", "Hitting", "Blocking", "Conditioning", "Recovery"],
+  ice_hockey: ["Stickhandling", "Shooting", "Skating", "Passing", "Conditioning", "Strength", "Recovery"],
+  field_hockey: ["Stickwork", "Passing", "Shooting", "Speed & agility", "Conditioning", "Recovery"],
+  lacrosse: ["Cradling", "Passing", "Shooting", "Dodging", "Conditioning", "Strength", "Recovery"],
+  tennis: ["Serve", "Forehand", "Backhand", "Volley", "Footwork", "Conditioning", "Recovery"],
+  golf: ["Driving", "Irons", "Short game", "Putting", "Fitness", "Recovery"],
+  rugby: ["Passing", "Tackling", "Kicking", "Speed & agility", "Strength", "Conditioning", "Recovery"],
+  cricket: ["Batting", "Bowling", "Fielding", "Fitness", "Strength", "Recovery"],
+  swimming: ["Technique", "Endurance", "Sprints", "Kick sets", "Strength", "Recovery"],
+  track_and_field: ["Sprints", "Distance", "Technique", "Strength", "Plyometrics", "Recovery"],
+  gymnastics: ["Strength", "Flexibility", "Technique", "Conditioning", "Recovery"],
+  wrestling: ["Technique", "Conditioning", "Strength", "Live wrestling", "Recovery"],
+  pickleball: ["Serve & return", "Dinking", "Volleys", "Footwork", "Conditioning", "Recovery"],
+};
+
+/** DB label length ceiling (mirrors the CHECK) for client-side validation. */
+export const MAX_CATEGORY_LABEL_LENGTH = 40;
+
+/** Case/space-insensitive label key, matching the DB's broad-trim unique index. */
+export function normalizeLabelKey(label: string): string {
+  return label.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** Pure category-label validation shared by the client and the server action. */
+export function validateCategoryLabel(
+  raw: string
+): { label: string } | { error: string } {
+  const label = raw.trim();
+  if (label.length < 1 || label.length > MAX_CATEGORY_LABEL_LENGTH) {
+    return { error: `Name must be 1–${MAX_CATEGORY_LABEL_LENGTH} characters.` };
+  }
+  return { label };
+}
+
+/**
+ * Pure prefetch-filter planner for "Add suggested categories": given a team's
+ * existing categories and a sport's suggested labels, decide which to insert
+ * (with appended sort_order), which are already active, and which match an
+ * archived row (reported for explicit Restore, never silently reactivated).
+ */
+export function planSuggestedCategories(
+  existing: { label: string; is_active: boolean; sort_order: number }[],
+  suggestions: string[]
+): {
+  toInsert: { label: string; sort_order: number }[];
+  alreadyActive: number;
+  archived: string[];
+} {
+  const activeLabels = new Set(existing.filter((e) => e.is_active).map((e) => normalizeLabelKey(e.label)));
+  const archivedLabels = new Set(existing.filter((e) => !e.is_active).map((e) => normalizeLabelKey(e.label)));
+  let order = Math.max(0, ...existing.map((e) => e.sort_order)) + 10;
+
+  const toInsert: { label: string; sort_order: number }[] = [];
+  const archived: string[] = [];
+  let alreadyActive = 0;
+
+  for (const label of suggestions) {
+    const key = normalizeLabelKey(label);
+    if (activeLabels.has(key)) {
+      alreadyActive++;
+    } else if (archivedLabels.has(key)) {
+      archived.push(label);
+    } else {
+      toInsert.push({ label, sort_order: order });
+      order += 10;
+    }
+  }
+  return { toInsert, alreadyActive, archived };
 }
 
 /** DB-enforced bounds — mirror the CHECK / trigger so the client can validate for UX. */

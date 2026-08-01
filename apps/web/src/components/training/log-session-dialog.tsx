@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -26,12 +26,11 @@ import {
   MAX_NOTES_LENGTH,
   MAX_SESSION_MINUTES,
   MIN_SESSION_MINUTES,
-  TRAINING_CATEGORIES,
-  TRAINING_CATEGORY_LABELS,
   BACKDATE_WINDOW_DAYS,
   todayInTz,
   toDateStr,
-  type TrainingCategory,
+  sortCategories,
+  type CategoryRow,
 } from "@/lib/training";
 import type { TeamRef } from "./training-view";
 
@@ -39,7 +38,9 @@ export type EditableSession = {
   id: string;
   session_date: string;
   duration_minutes: number;
-  category: TrainingCategory;
+  category_id: string | null;
+  /** The current category's label, so an archived category can be retained in the picker. */
+  category_label: string | null;
   notes: string | null;
   team_id: string;
 };
@@ -64,31 +65,95 @@ export function LogSessionDialog({
   onSaved: () => void;
 }) {
   const supabase = createClient();
-  const today = todayInTz(timezone);
+  const [teamId, setTeamId] = useState(session?.team_id ?? defaultTeamId);
+
+  // Date bounds must use the SELECTED logging-context team's timezone, since the
+  // DB validates the future/backdate window against safe_team_tz(new.team_id).
+  // Falls back to the active team's tz (the prop) if the team isn't in the list.
+  const selectedTz = eligibleTeams.find((t) => t.id === teamId)?.timezone ?? timezone;
+  const today = todayInTz(selectedTz);
   const minDate = toDateStr(new Date(new Date(today + "T00:00:00Z").getTime() - BACKDATE_WINDOW_DAYS * 86400000));
 
   const [date, setDate] = useState(session?.session_date ?? today);
   const [minutes, setMinutes] = useState<number | "">(session?.duration_minutes ?? 30);
-  const [category, setCategory] = useState<TrainingCategory>(session?.category ?? "ball_mastery");
   const [notes, setNotes] = useState(session?.notes ?? "");
-  const [teamId, setTeamId] = useState(session?.team_id ?? defaultTeamId);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [categoryId, setCategoryId] = useState<string>(session?.category_id ?? "");
   const [saving, setSaving] = useState(false);
 
   const isEdit = !!session;
+
+  // If switching teams shifts "today" across a timezone/midnight boundary, clamp
+  // the selected date into the new [minDate, today] window so the client can't
+  // offer a date the DB would then reject (or vice-versa).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDate((d) => (d > today ? today : d < minDate ? minDate : d));
+  }, [today, minDate]);
+
+  // Load the selected team's active categories; reload when the team changes so
+  // the picker always reflects that team's managed list (categories are per-team).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("training_categories")
+        .select("id, label, is_default, sort_order, is_active, created_at")
+        .eq("team_id", teamId)
+        .eq("is_active", true);
+      if (cancelled) return;
+      const rows = sortCategories((data as CategoryRow[]) ?? []);
+      // When editing a session whose category was archived (so it's not in the
+      // active list) — but only for its own team — retain it as an option so it
+      // stays selected and a duration/note edit doesn't silently reassign it.
+      const currentId = session?.category_id ?? null;
+      if (
+        isEdit &&
+        currentId &&
+        session?.team_id === teamId &&
+        !rows.some((r) => r.id === currentId)
+      ) {
+        rows.push({
+          id: currentId,
+          label: `${session?.category_label ?? "Category"} (archived)`,
+          is_default: false,
+          sort_order: Number.MAX_SAFE_INTEGER,
+          is_active: false,
+          created_at: "",
+        });
+      }
+      setCategories(rows);
+      setCategoryId((prev) => {
+        if (prev && rows.some((r) => r.id === prev)) return prev;
+        return (rows.find((r) => r.is_default) ?? rows[0])?.id ?? "";
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, teamId, isEdit, session?.category_id, session?.category_label, session?.team_id]);
 
   async function handleSave() {
     if (minutes === "" || minutes < MIN_SESSION_MINUTES || minutes > MAX_SESSION_MINUTES) {
       toast.error(`Duration must be between ${MIN_SESSION_MINUTES} and ${MAX_SESSION_MINUTES} minutes.`);
       return;
     }
+    if (!categoryId) {
+      toast.error("Pick a category.");
+      return;
+    }
     setSaving(true);
+    // On edit, only send category_id if the user actually changed it — so a
+    // duration/note edit never rewrites the category, and a retained archived
+    // category is left untouched (the trigger's rule 6 also skips unchanged links).
+    const categoryChanged = !isEdit || categoryId !== (session?.category_id ?? null);
     const payload = {
       profile_id: profileId,
       team_id: teamId,
       session_date: date,
       duration_minutes: minutes,
-      category,
       notes: notes.trim() || null,
+      ...(categoryChanged ? { category_id: categoryId } : {}),
     };
     const res = isEdit
       ? await supabase.from("training_sessions").update(payload).eq("id", session!.id)
@@ -170,14 +235,14 @@ export function LogSessionDialog({
 
           <div className="space-y-1.5">
             <Label>Category</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as TrainingCategory)}>
+            <Select value={categoryId} onValueChange={setCategoryId} disabled={categories.length === 0}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Select a category" />
               </SelectTrigger>
               <SelectContent>
-                {TRAINING_CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {TRAINING_CATEGORY_LABELS[c]}
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.label}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -916,9 +916,60 @@ export type Database = {
           },
         ]
       }
+      training_categories: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          label: string
+          sort_order: number
+          team_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          label: string
+          sort_order: number
+          team_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          label?: string
+          sort_order?: number
+          team_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_categories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_categories_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       training_sessions: {
         Row: {
-          category: string
+          category_id: string | null
           created_at: string
           created_by: string
           duration_minutes: number
@@ -926,11 +977,11 @@ export type Database = {
           notes: string | null
           profile_id: string
           session_date: string
-          team_id: string
+          team_id: string | null
           updated_at: string
         }
         Insert: {
-          category: string
+          category_id?: string | null
           created_at?: string
           created_by?: string
           duration_minutes: number
@@ -938,11 +989,11 @@ export type Database = {
           notes?: string | null
           profile_id: string
           session_date: string
-          team_id: string
+          team_id?: string | null
           updated_at?: string
         }
         Update: {
-          category?: string
+          category_id?: string | null
           created_at?: string
           created_by?: string
           duration_minutes?: number
@@ -950,10 +1001,17 @@ export type Database = {
           notes?: string | null
           profile_id?: string
           session_date?: string
-          team_id?: string
+          team_id?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "training_sessions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "training_categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "training_sessions_created_by_fkey"
             columns: ["created_by"]
@@ -1010,6 +1068,10 @@ export type Database = {
       is_team_archived: { Args: { t_id: string }; Returns: boolean }
       is_team_member: { Args: { t_id: string }; Returns: boolean }
       is_team_player: { Args: { p_id: string; t_id: string }; Returns: boolean }
+      is_training_admin_for_profile: {
+        Args: { p_id: string }
+        Returns: boolean
+      }
       safe_team_tz: { Args: { t_id: string }; Returns: string }
       team_org_id: { Args: { t_id: string }; Returns: string }
       training_leaderboard: {

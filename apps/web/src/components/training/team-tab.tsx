@@ -8,14 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import {
   isCurrentPeriodOrLater,
+  MISSING_CATEGORY_LABEL,
   periodLabel,
   periodStartStr,
   stepAnchor,
   todayInTz,
-  TRAINING_CATEGORY_LABELS,
   type LeaderboardPeriod,
-  type TrainingCategory,
 } from "@/lib/training";
+import { ManageCategoriesDialog } from "./manage-categories-dialog";
+import { Settings2 } from "lucide-react";
 import type { TrainingViewProps } from "./training-view";
 
 type Player = {
@@ -30,8 +31,9 @@ type Session = {
   profile_id: string;
   session_date: string;
   duration_minutes: number;
-  category: TrainingCategory;
+  category_id: string | null;
   notes: string | null;
+  training_categories: { label: string } | null;
 };
 
 function periodEnd(period: LeaderboardPeriod, start: string): string {
@@ -51,27 +53,36 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [manageOpen, setManageOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     const start = periodStartStr(period, anchor);
     const end = periodEnd(period, start);
-    const [rosterRes, sessionRes] = await Promise.all([
-      supabase
-        .from("team_members")
-        .select("profiles(id, first_name, last_name, avatar_url, training_leaderboard_opt_out)")
-        .eq("team_id", activeTeam.id)
-        .eq("role", "player"),
-      supabase
+    // Roster first, then each roster player's GLOBAL sessions in the period —
+    // individual training is global to the player, so the team board shows their
+    // full total, not just rows logged through this team (matches the RPC).
+    const { data: rosterData } = await supabase
+      .from("team_members")
+      .select("profiles(id, first_name, last_name, avatar_url, training_leaderboard_opt_out)")
+      .eq("team_id", activeTeam.id)
+      .eq("role", "player");
+    const roster = ((rosterData ?? []).map((r) => r.profiles) as unknown as Player[]).filter(Boolean);
+    setPlayers(roster);
+
+    const ids = roster.map((p) => p.id);
+    let sess: Session[] = [];
+    if (ids.length > 0) {
+      const { data: sessionData } = await supabase
         .from("training_sessions")
-        .select("id, profile_id, session_date, duration_minutes, category, notes")
-        .eq("team_id", activeTeam.id)
+        .select("id, profile_id, session_date, duration_minutes, category_id, notes, training_categories(label)")
+        .in("profile_id", ids)
         .gte("session_date", start)
         .lt("session_date", end)
-        .order("session_date", { ascending: false }),
-    ]);
-    setPlayers(((rosterRes.data ?? []).map((r) => r.profiles) as unknown as Player[]).filter(Boolean));
-    setSessions((sessionRes.data as Session[]) ?? []);
+        .order("session_date", { ascending: false });
+      sess = (sessionData as Session[]) ?? [];
+    }
+    setSessions(sess);
     setLoading(false);
   }, [supabase, activeTeam.id, period, anchor]);
 
@@ -107,6 +118,12 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => setManageOpen(true)}>
+          <Settings2 className="mr-1.5 h-4 w-4" /> Manage categories
+        </Button>
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <div className="inline-flex rounded-md border p-0.5">
           {(["week", "month"] as const).map((p) => (
@@ -184,7 +201,7 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
                               })}
                             </span>
                             <span className="flex-1 min-w-0">
-                              {TRAINING_CATEGORY_LABELS[s.category]} · {s.duration_minutes} min
+                              {s.training_categories?.label ?? MISSING_CATEGORY_LABEL} · {s.duration_minutes} min
                               {s.notes && <span className="ml-1 text-muted-foreground">— {s.notes}</span>}
                             </span>
                             <Button
@@ -206,6 +223,15 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
             );
           })}
         </ul>
+      )}
+
+      {manageOpen && (
+        <ManageCategoriesDialog
+          open={manageOpen}
+          onOpenChange={setManageOpen}
+          teamId={activeTeam.id}
+          sport={activeTeam.sport}
+        />
       )}
     </div>
   );

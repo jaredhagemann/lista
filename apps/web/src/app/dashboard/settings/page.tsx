@@ -111,25 +111,42 @@ export default async function SettingsPage({
   }
 
   // Resolve the active profile (own or a managed child) for the training
-  // leaderboard opt-out toggle — shown only when the active team's org has
-  // club access (training is a club-tier feature).
+  // leaderboard opt-out toggle — shown only when the ACTIVE PROFILE's team's org
+  // has club access (training is a club-tier feature). Resolved independently of
+  // the Plan tab's `orgPlan`: that is scoped to organization_members
+  // (owners/directors), so reusing it would hide the toggle from ordinary
+  // players, who are the people the toggle is actually for. This mirrors the
+  // Training page — org derived from the active profile's active_team_id, so a
+  // parent viewing a managed child gets the CHILD's team/org, not the viewer's.
   const cookieStore = await cookies();
   const activeProfileId = cookieStore.get("active_profile_id")?.value ?? user.id;
   let trainingProfile:
     | { id: string; firstName: string | null; optedOut: boolean }
     | null = null;
-  if (orgPlan && hasClubAccess(orgPlan.plan, orgPlan.subscriptionStatus)) {
-    const { data: ap } = await supabase
-      .from("profiles")
-      .select("id, first_name, training_leaderboard_opt_out")
-      .eq("id", activeProfileId)
+  const { data: ap } = await supabase
+    .from("profiles")
+    .select("id, first_name, training_leaderboard_opt_out, active_team_id")
+    .eq("id", activeProfileId)
+    .maybeSingle();
+  if (ap?.active_team_id) {
+    const { data: apTeam } = await supabase
+      .from("teams")
+      .select("organization_id")
+      .eq("id", ap.active_team_id)
       .maybeSingle();
-    if (ap) {
-      trainingProfile = {
-        id: ap.id,
-        firstName: ap.first_name,
-        optedOut: ap.training_leaderboard_opt_out,
-      };
+    if (apTeam?.organization_id) {
+      const { data: apOrg } = await supabase
+        .from("organizations")
+        .select("plan, subscription_status")
+        .eq("id", apTeam.organization_id)
+        .maybeSingle();
+      if (apOrg && hasClubAccess(apOrg.plan, apOrg.subscription_status)) {
+        trainingProfile = {
+          id: ap.id,
+          firstName: ap.first_name,
+          optedOut: ap.training_leaderboard_opt_out,
+        };
+      }
     }
   }
 

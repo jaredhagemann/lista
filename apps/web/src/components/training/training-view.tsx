@@ -5,8 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LeaderboardTab } from "./leaderboard-tab";
 import { MyTrainingTab } from "./my-training-tab";
 import { TeamTab } from "./team-tab";
+import type { Sport } from "@/lib/training";
 
-export type TeamRef = { id: string; name: string };
+export type TeamRef = { id: string; name: string; timezone: string | null };
 
 export type TrainingViewProps = {
   viewerId: string;
@@ -16,7 +17,7 @@ export type TrainingViewProps = {
     lastName: string | null;
     optedOut: boolean;
   };
-  activeTeam: { id: string; name: string; timezone: string | null };
+  activeTeam: { id: string; name: string; timezone: string | null; sport: Sport | null };
   org: { id: string; name: string };
   isTeamAdmin: boolean;
   eligibleTeams: TeamRef[];
