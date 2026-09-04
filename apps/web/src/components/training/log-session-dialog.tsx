@@ -45,6 +45,9 @@ export type EditableSession = {
   team_id: string;
 };
 
+/** A roster player a coach can log for (coach mode). */
+export type RosterPlayer = { id: string; name: string };
+
 export function LogSessionDialog({
   open,
   onOpenChange,
@@ -54,6 +57,8 @@ export function LogSessionDialog({
   timezone,
   session,
   onSaved,
+  players,
+  playerId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -63,8 +68,17 @@ export function LogSessionDialog({
   timezone: string | null;
   session?: EditableSession;
   onSaved: () => void;
+  /** When provided, the dialog is in coach mode: log for a selected roster player. */
+  players?: RosterPlayer[];
+  /** Preselected/edited player (the session subject) in coach mode. */
+  playerId?: string;
 }) {
   const supabase = createClient();
+  const coachMode = players !== undefined;
+  const [selectedPlayerId, setSelectedPlayerId] = useState(playerId ?? "");
+  // The session subject: the chosen player in coach mode, else the active profile.
+  const subjectId = coachMode ? selectedPlayerId : profileId;
+  const playerName = players?.find((p) => p.id === subjectId)?.name ?? null;
   const [teamId, setTeamId] = useState(session?.team_id ?? defaultTeamId);
 
   // Date bounds must use the SELECTED logging-context team's timezone, since the
@@ -72,7 +86,12 @@ export function LogSessionDialog({
   // Falls back to the active team's tz (the prop) if the team isn't in the list.
   const selectedTz = eligibleTeams.find((t) => t.id === teamId)?.timezone ?? timezone;
   const today = todayInTz(selectedTz);
-  const minDate = toDateStr(new Date(new Date(today + "T00:00:00Z").getTime() - BACKDATE_WINDOW_DAYS * 86400000));
+  // Coaches/admins may backfill beyond the 7-day window (the DB exempts them), so
+  // coach mode drops the lower floor while keeping max = today (future is still
+  // rejected for everyone). See docs/specs/coach-log-training.md §5a.
+  const minDate = coachMode
+    ? undefined
+    : toDateStr(new Date(new Date(today + "T00:00:00Z").getTime() - BACKDATE_WINDOW_DAYS * 86400000));
 
   const [date, setDate] = useState(session?.session_date ?? today);
   const [minutes, setMinutes] = useState<number | "">(session?.duration_minutes ?? 30);
@@ -88,7 +107,7 @@ export function LogSessionDialog({
   // offer a date the DB would then reject (or vice-versa).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDate((d) => (d > today ? today : d < minDate ? minDate : d));
+    setDate((d) => (d > today ? today : minDate && d < minDate ? minDate : d));
   }, [today, minDate]);
 
   // Load the selected team's active categories; reload when the team changes so
@@ -134,6 +153,10 @@ export function LogSessionDialog({
   }, [supabase, teamId, isEdit, session?.category_id, session?.category_label, session?.team_id]);
 
   async function handleSave() {
+    if (coachMode && !subjectId) {
+      toast.error("Pick a player.");
+      return;
+    }
     if (minutes === "" || minutes < MIN_SESSION_MINUTES || minutes > MAX_SESSION_MINUTES) {
       toast.error(`Duration must be between ${MIN_SESSION_MINUTES} and ${MAX_SESSION_MINUTES} minutes.`);
       return;
@@ -148,7 +171,7 @@ export function LogSessionDialog({
     // category is left untouched (the trigger's rule 6 also skips unchanged links).
     const categoryChanged = !isEdit || categoryId !== (session?.category_id ?? null);
     const payload = {
-      profile_id: profileId,
+      profile_id: subjectId,
       team_id: teamId,
       session_date: date,
       duration_minutes: minutes,
@@ -161,7 +184,7 @@ export function LogSessionDialog({
     setSaving(false);
 
     if (res.error) {
-      toast.error(mapError(res.error.message));
+      toast.error(mapError(res.error.message, playerName));
       return;
     }
     toast.success(isEdit ? "Session updated" : "Session logged");
@@ -173,11 +196,35 @@ export function LogSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit session" : "Log a session"}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? "Edit session" : coachMode ? "Log for a player" : "Log a session"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          {eligibleTeams.length > 1 && (
+          {coachMode && (
+            <div className="space-y-1.5">
+              <Label>Player</Label>
+              {isEdit ? (
+                <p className="text-sm font-medium">{playerName ?? "—"}</p>
+              ) : (
+                <Select value={selectedPlayerId} onValueChange={setSelectedPlayerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a player" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {players!.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
+          {!coachMode && eligibleTeams.length > 1 && (
             <div className="space-y-1.5">
               <Label>Team</Label>
               <Select value={teamId} onValueChange={setTeamId}>
@@ -274,12 +321,19 @@ export function LogSessionDialog({
   );
 }
 
-/** Map the trigger's raise messages to something a player understands. */
-function mapError(message: string): string {
-  if (/daily training cap/i.test(message)) return "That would put you over the 360-minute daily limit.";
+/**
+ * Map the trigger's raise messages to friendly copy. In coach mode a `subject`
+ * name is passed so cap/roster errors read "That would put Ava over…" instead of
+ * the self-phrased "you" variants.
+ */
+function mapError(message: string, subject?: string | null): string {
+  const who = subject ?? "you";
+  if (/daily training cap/i.test(message))
+    return `That would put ${who} over the 360-minute daily limit.`;
   if (/future/i.test(message)) return "You can't log a session in the future.";
   if (/7 days/i.test(message)) return "You can only log sessions from the last 7 days.";
   if (/archived/i.test(message)) return "That team is archived.";
-  if (/player on this team/i.test(message)) return "You're not a player on that team.";
+  if (/player on this team/i.test(message))
+    return subject ? `${subject} isn't a player on that team.` : "You're not a player on that team.";
   return "Couldn't save the session. Please try again.";
 }

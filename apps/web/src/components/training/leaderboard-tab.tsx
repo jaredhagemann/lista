@@ -22,6 +22,7 @@ import {
   type LeaderboardPeriod,
   type LeaderboardScope,
 } from "@/lib/training";
+import { LogSessionDialog, type RosterPlayer } from "./log-session-dialog";
 import type { TrainingViewProps } from "./training-view";
 
 type BoardRow = {
@@ -86,10 +87,19 @@ export function LeaderboardTab({
   activeTeam,
   org,
   orgTeams,
+  isTeamAdmin,
+  eligibleTeams,
   onGoToMyTraining,
 }: TrainingViewProps & { onGoToMyTraining: () => void }) {
   const supabase = createClient();
   const today = todayInTz(activeTeam.timezone);
+
+  // A coach/admin who isn't a roster player themselves logs on behalf of players
+  // (spec §5c). Players (eligibleTeams non-empty) keep the self-log CTA.
+  const canSelfLog = eligibleTeams.length > 0;
+  const isCoachViewer = isTeamAdmin && !canSelfLog;
+  const [rosterPlayers, setRosterPlayers] = useState<RosterPlayer[]>([]);
+  const [logOpen, setLogOpen] = useState(false);
 
   const [scope, setScope] = useState<LeaderboardScope>("team");
   const [period, setPeriod] = useState<LeaderboardPeriod>("week");
@@ -136,6 +146,29 @@ export function LeaderboardTab({
   useEffect(() => {
     void load(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [load]);
+
+  // Load the active team's roster so a coach can log for a player from here.
+  useEffect(() => {
+    if (!isCoachViewer) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("team_members")
+        .select("profiles(id, first_name, last_name)")
+        .eq("team_id", activeTeam.id)
+        .eq("role", "player");
+      if (cancelled) return;
+      const rows = ((data ?? []).map((r) => r.profiles) as unknown as {
+        id: string;
+        first_name: string;
+        last_name: string | null;
+      }[]).filter(Boolean);
+      setRosterPlayers(rows.map((p) => ({ id: p.id, name: `${p.first_name}${p.last_name ? " " + p.last_name : ""}` })));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, isCoachViewer, activeTeam.id]);
 
   // The current user's row (absent when opted out — their standing lives in the
   // header instead) and whether it's currently below the fold.
@@ -254,14 +287,32 @@ export function LeaderboardTab({
                 </span>
               )}
             </p>
+          ) : isCoachViewer ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-muted-foreground">
+                Log training on behalf of a player.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setLogOpen(true)}
+                disabled={rosterPlayers.length === 0}
+              >
+                Log for a player →
+              </Button>
+            </div>
           ) : noneLogged ? (
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm text-muted-foreground">
-                You haven&apos;t logged training this {period}.
+                {canSelfLog
+                  ? `You haven't logged training this ${period}.`
+                  : `No training logged this ${period}.`}
               </p>
-              <Button size="sm" variant="secondary" onClick={onGoToMyTraining}>
-                Log a session →
-              </Button>
+              {canSelfLog && (
+                <Button size="sm" variant="secondary" onClick={onGoToMyTraining}>
+                  Log a session →
+                </Button>
+              )}
             </div>
           ) : (
             <p className="text-sm font-medium">
@@ -316,6 +367,19 @@ export function LeaderboardTab({
             </div>
           )}
         </>
+      )}
+
+      {logOpen && (
+        <LogSessionDialog
+          open={logOpen}
+          onOpenChange={setLogOpen}
+          profileId={viewerId}
+          eligibleTeams={[{ id: activeTeam.id, name: activeTeam.name, timezone: activeTeam.timezone }]}
+          defaultTeamId={activeTeam.id}
+          timezone={activeTeam.timezone}
+          players={rosterPlayers}
+          onSaved={load}
+        />
       )}
     </div>
   );
