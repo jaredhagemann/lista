@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,45 @@ type SummaryRow = {
   rank: number | null;
   denominator: number;
 };
+
+/**
+ * Whether the current user's row should be pinned into view: only when it is
+ * fully out of the viewport AND sitting *below* the fold (its top edge is past
+ * the top of the viewport). A row scrolled off the top has already been seen, so
+ * it is not re-pinned. Spec: "highlighted and pinned into view if they're below
+ * the fold."
+ */
+export function isSelfBelowFold(entry: {
+  isIntersecting: boolean;
+  boundingClientRect: { top: number };
+}): boolean {
+  return !entry.isIntersecting && entry.boundingClientRect.top > 0;
+}
+
+/** Row inner content, shared by the ranked list and the pinned self-row copy. */
+function LeaderboardRowContent({ r, isSelf }: { r: BoardRow; isSelf: boolean }) {
+  return (
+    <>
+      <span className="w-6 text-center text-sm font-semibold tabular-nums text-muted-foreground">
+        {r.rank}
+      </span>
+      <Avatar className="h-8 w-8">
+        {r.avatar_url && <AvatarImage src={r.avatar_url} alt={r.display_name} />}
+        <AvatarFallback className="text-xs">
+          {r.display_name.slice(0, 2).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <span className="flex-1 truncate text-sm font-medium">
+        {r.display_name}
+        {isSelf && <Badge variant="secondary" className="ml-2 align-middle">You</Badge>}
+      </span>
+      <span className="text-sm font-semibold tabular-nums">{r.total_minutes} min</span>
+      <span className="w-16 text-right text-xs text-muted-foreground tabular-nums">
+        {r.session_count} {r.session_count === 1 ? "session" : "sessions"}
+      </span>
+    </>
+  );
+}
 
 export function LeaderboardTab({
   viewerId,
@@ -97,6 +136,35 @@ export function LeaderboardTab({
   useEffect(() => {
     void load(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [load]);
+
+  // The current user's row (absent when opted out — their standing lives in the
+  // header instead) and whether it's currently below the fold.
+  const selfRow =
+    rows.find((r) => r.profile_id === activeProfile.id || r.profile_id === viewerId) ??
+    null;
+  const selfKey = selfRow ? selfRow.profile_id + (selfRow.team_id ?? "") : null;
+  const selfRowRef = useRef<HTMLLIElement | null>(null);
+  const [selfBelowFold, setSelfBelowFold] = useState(false);
+
+  // Observe the self row; when it scrolls below the fold, render a sticky copy
+  // pinned to the bottom of the viewport (spec: "pinned into view"). Re-attaches
+  // whenever the self row identity changes or the board reloads.
+  useEffect(() => {
+    const el = selfRowRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setSelfBelowFold(false); // eslint-disable-line react-hooks/set-state-in-effect
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) setSelfBelowFold(isSelfBelowFold(entry));
+      },
+      { threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [selfKey, loading]);
 
   const atCurrent = isCurrentPeriodOrLater(period, anchor, today);
   const noneLogged = !summary || summary.total_minutes === 0;
@@ -216,35 +284,32 @@ export function LeaderboardTab({
           No training logged this {period} yet. Be the first.
         </p>
       ) : (
-        <ul className="divide-y rounded-md border">
-          {rows.map((r) => {
-            const isSelf = r.profile_id === activeProfile.id || r.profile_id === viewerId;
-            return (
-              <li
-                key={r.profile_id + (r.team_id ?? "")}
-                className={`flex items-center gap-3 px-3 py-2 ${isSelf ? "bg-accent/50" : ""}`}
-              >
-                <span className="w-6 text-center text-sm font-semibold tabular-nums text-muted-foreground">
-                  {r.rank}
-                </span>
-                <Avatar className="h-8 w-8">
-                  {r.avatar_url && <AvatarImage src={r.avatar_url} alt={r.display_name} />}
-                  <AvatarFallback className="text-xs">
-                    {r.display_name.slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="flex-1 truncate text-sm font-medium">
-                  {r.display_name}
-                  {isSelf && <Badge variant="secondary" className="ml-2 align-middle">You</Badge>}
-                </span>
-                <span className="text-sm font-semibold tabular-nums">{r.total_minutes} min</span>
-                <span className="w-16 text-right text-xs text-muted-foreground tabular-nums">
-                  {r.session_count} {r.session_count === 1 ? "session" : "sessions"}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <ul className="divide-y rounded-md border">
+            {rows.map((r) => {
+              const isSelf = r.profile_id === activeProfile.id || r.profile_id === viewerId;
+              return (
+                <li
+                  key={r.profile_id + (r.team_id ?? "")}
+                  ref={isSelf ? selfRowRef : undefined}
+                  className={`flex items-center gap-3 px-3 py-2 ${isSelf ? "bg-accent/50" : ""}`}
+                >
+                  <LeaderboardRowContent r={r} isSelf={isSelf} />
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Pinned copy of the current user's row, shown only while the real
+              row is below the fold so their standing stays in view. */}
+          {selfRow && selfBelowFold && (
+            <div className="sticky bottom-2 z-10">
+              <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2 shadow-lg ring-2 ring-accent">
+                <LeaderboardRowContent r={selfRow} isSelf />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
