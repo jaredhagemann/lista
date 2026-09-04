@@ -192,7 +192,8 @@ export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: Trai
 
       {!canLog && (
         <p className="text-sm text-muted-foreground">
-          Only roster players can log training. Switch to a player profile to log sessions.
+          Only roster players can log their own training here. Coaches log for players from the{" "}
+          <strong className="font-medium">Team</strong> tab; parents can switch to a player profile above.
         </p>
       )}
 
