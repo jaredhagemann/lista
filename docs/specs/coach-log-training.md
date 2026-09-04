@@ -181,8 +181,9 @@ Replace the dead-end copy for non-players with a pointer instead of a "switch pr
 
 ### RLS — `tests/rls/training-sessions.test.ts` (extend)
 
-- Coach **inserts** and **updates** a session for a player on a team they admin; `created_by` is stamped as the
-  coach.
+- Coach **inserts** a session for a player on a team they admin; `created_by` is stamped as the coach.
+- Coach **updates** an editable (this-team) session; the change is accepted and `created_by` is **unchanged**
+  (a coach editing a player-created row leaves `created_by` = the player, per §4).
 - Coach is **denied** for: a player on a team they do **not** admin; a non-player subject (e.g. another coach)
   on their team.
 - **Edit-vs-delete scope for global sessions**: a coach may **delete** a session logged through a *different*
