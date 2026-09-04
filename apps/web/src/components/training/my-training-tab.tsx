@@ -15,16 +15,69 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   BACKDATE_WINDOW_DAYS,
   monthStartStr,
   todayInTz,
   MISSING_CATEGORY_LABEL,
+  OLD_SESSION_LOCKED_LABEL,
   weekStartStr,
 } from "@/lib/training";
 import { LogSessionDialog, type EditableSession } from "./log-session-dialog";
 import type { TrainingViewProps } from "./training-view";
+
+/**
+ * Per-row actions: edit/delete inside the 7-day window, or a disabled "Locked"
+ * control that explains why once the session has aged out (spec §"My Training").
+ * The reason is the control's accessible name (and its tooltip) so keyboard and
+ * screen-reader users get it, not just sighted users on hover.
+ */
+export function SessionActions({
+  editable,
+  onEdit,
+  onDelete,
+}: {
+  editable: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  if (editable) {
+    return (
+      <div className="flex shrink-0 gap-1">
+        <Button variant="ghost" size="icon" aria-label="Edit" onClick={onEdit}>
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            tabIndex={0}
+            aria-label={OLD_SESSION_LOCKED_LABEL}
+            className="flex shrink-0 cursor-not-allowed items-center gap-1 text-xs text-muted-foreground"
+          >
+            <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+            Locked
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{OLD_SESSION_LOCKED_LABEL}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 type SessionRow = {
   id: string;
@@ -170,26 +223,14 @@ export function MyTrainingTab({ activeProfile, activeTeam, eligibleTeams }: Trai
                   </div>
                   {s.notes && <div className="truncate text-xs text-muted-foreground">{s.notes}</div>}
                 </div>
-                {editable ? (
-                  <div className="flex shrink-0 gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Edit"
-                      onClick={() => {
-                        setEditing({ ...s, category_label: s.training_categories?.label ?? null });
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => setDeleteId(s.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <span className="shrink-0 text-xs text-muted-foreground">Locked</span>
-                )}
+                <SessionActions
+                  editable={editable}
+                  onEdit={() => {
+                    setEditing({ ...s, category_label: s.training_categories?.label ?? null });
+                    setDialogOpen(true);
+                  }}
+                  onDelete={() => setDeleteId(s.id)}
+                />
               </li>
             );
           })}

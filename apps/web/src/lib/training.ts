@@ -136,6 +136,14 @@ export const MAX_DAILY_MINUTES = 360; // per player-day (all teams)
 export const MAX_NOTES_LENGTH = 500;
 export const BACKDATE_WINDOW_DAYS = 7; // log/edit/delete window
 
+/**
+ * Explanatory copy shown when a session has aged out of the edit/delete window
+ * and is read-only to the player (spec: "the UI shows why — e.g. a disabled
+ * control with 'Older than 7 days — ask a coach to change this.'").
+ */
+export const OLD_SESSION_LOCKED_LABEL =
+  "Older than 7 days — ask a coach to change this.";
+
 /** Duration quick-pick chips for the log dialog. */
 export const DURATION_QUICK_PICKS = [15, 30, 45, 60] as const;
 
