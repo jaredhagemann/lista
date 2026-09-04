@@ -301,9 +301,15 @@ export function LeaderboardTab({
           </ul>
 
           {/* Pinned copy of the current user's row, shown only while the real
-              row is below the fold so their standing stays in view. */}
+              row is below the fold so their standing stays in view. Sticks to
+              the viewport bottom: the dashboard scrolls at the document level
+              (no overflow/height-capped ancestor), and this only renders while
+              the self row — and thus this element after the full list — is below
+              the fold, so its containing block always extends past the viewport.
+              aria-hidden because it duplicates a row already in the list (and
+              the header standing), so screen readers shouldn't announce it. */}
           {selfRow && selfBelowFold && (
-            <div className="sticky bottom-2 z-10">
+            <div className="sticky bottom-2 z-10" aria-hidden="true">
               <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2 shadow-lg ring-2 ring-accent">
                 <LeaderboardRowContent r={selfRow} isSelf />
               </div>

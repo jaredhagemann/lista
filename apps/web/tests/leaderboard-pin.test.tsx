@@ -140,6 +140,13 @@ describe("LeaderboardTab — pinned self row", () => {
 
     // Two "You" badges now: the real list row + the pinned copy.
     await waitFor(() => expect(screen.getAllByText("You")).toHaveLength(2));
+
+    // Exactly one of them — the pinned copy — is inside an aria-hidden subtree,
+    // so screen readers don't announce the same entry twice.
+    const hidden = screen
+      .getAllByText("You")
+      .filter((el) => el.closest('[aria-hidden="true"]') !== null);
+    expect(hidden).toHaveLength(1);
   });
 
   it("removes the pinned copy once the self row scrolls back into view", async () => {
