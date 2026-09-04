@@ -80,16 +80,26 @@ To honor "no 7-day window for coaches" (mirroring the admin delete-anytime moder
   archived-team, and category-belongs-to-team checks.
 
 So a coach may backfill an older session but can never create impossible data (future date, over-cap,
-wrong-team category, non-roster subject). `created_by` remains immutable on update. The coach dialog relaxes its
-client-side date floor to match this (§5a).
+wrong-team category, non-roster subject). `created_by` remains immutable on update (it is the original author,
+not an edit-audit field — see §4). The coach dialog relaxes its client-side date floor to match this (§5a).
 
 ## 4. Data model / attribution
 
-**No attribution is surfaced.** `created_by` continues to record the coach in the DB (for moderation/audit),
-but coach-logged sessions look identical to self-logged ones on every surface. A direct consequence: because
-the rows are indistinguishable, a player can still edit or delete a coach-logged session **within their own
-7-day window** (their `profile_id` matches the self/managed branch) — consistent with "it is simply the
-player's session."
+**No attribution is surfaced, and v1 tracks original authorship only — there is no edit audit.**
+
+- `created_by` records the **original author** and is immutable (the trigger forces `new.created_by :=
+  old.created_by` on update). So it is the coach on a **coach-created** row, and remains the **player** on a
+  player-created row a coach later edits. It answers "who first entered this row," not "who last changed it."
+- There is **no `updated_by`** column and no edit-history log. `updated_at` advances on every edit, so we know
+  *when* a row was last touched but not *by whom*. A coach editing a player-created session (or a player editing
+  a coach-created one) therefore leaves **no attribution trail** in v1. This is an accepted v1 limitation, not an
+  oversight; an `updated_by` / edit-audit trail is a follow-up (§8).
+- Nothing about authorship is shown in the UI regardless — coach-logged sessions render identically to
+  self-logged ones on every surface.
+
+A direct consequence of the "indistinguishable rows" choice: a player can still edit or delete a coach-logged
+session **within their own 7-day window** (their `profile_id` matches the self/managed branch) — consistent with
+"it is simply the player's session."
 
 ## 5. UI
 
@@ -203,5 +213,7 @@ Replace the dead-end copy for non-players with a pointer instead of a "switch pr
 ## 8. Out of scope (follow-ups)
 
 - **Bulk / multi-player** logging (one form applied to several players — e.g. a whole-team practice).
+- **Edit audit** — an `updated_by` column (and/or an edit-history log) to record *who* last changed a row, not
+  just when. v1 keeps only the immutable original `created_by` (§4).
 - **Visible coach attribution** (surfacing `created_by` on the player's and team views).
 - **Cross-team logging** from a single dialog.
