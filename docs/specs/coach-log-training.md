@@ -1,6 +1,6 @@
 # Coach-logged training sessions
 
-**Status:** Draft (pending review)
+**Status:** Implemented on branch `feature/coach-log-training`
 **Depends on:** [Individual Training Tracking & Leaderboard](./individual-training-tracking.md) — reuses its
 `training_sessions` / `training_categories` tables, RLS policies, validation trigger, and helper functions.
 
