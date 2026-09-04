@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   isCurrentPeriodOrLater,
   MISSING_CATEGORY_LABEL,
@@ -16,6 +16,7 @@ import {
   type LeaderboardPeriod,
 } from "@/lib/training";
 import { ManageCategoriesDialog } from "./manage-categories-dialog";
+import { LogSessionDialog, type EditableSession, type RosterPlayer } from "./log-session-dialog";
 import { Settings2 } from "lucide-react";
 import type { TrainingViewProps } from "./training-view";
 
@@ -33,6 +34,7 @@ type Session = {
   duration_minutes: number;
   category_id: string | null;
   notes: string | null;
+  team_id: string | null;
   training_categories: { label: string } | null;
 };
 
@@ -43,7 +45,7 @@ function periodEnd(period: LeaderboardPeriod, start: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function TeamTab({ activeTeam }: TrainingViewProps) {
+export function TeamTab({ activeTeam, viewerId }: TrainingViewProps) {
   const supabase = createClient();
   const today = todayInTz(activeTeam.timezone);
 
@@ -54,6 +56,36 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [manageOpen, setManageOpen] = useState(false);
+
+  // Coach logging dialog (log for a player / edit a this-team session).
+  const [logOpen, setLogOpen] = useState(false);
+  const [editing, setEditing] = useState<EditableSession | undefined>(undefined);
+  const [presetPlayerId, setPresetPlayerId] = useState<string | undefined>(undefined);
+
+  const rosterPlayers: RosterPlayer[] = players.map((p) => ({
+    id: p.id,
+    name: `${p.first_name}${p.last_name ? " " + p.last_name : ""}`,
+  }));
+
+  function openLog(playerId?: string) {
+    setEditing(undefined);
+    setPresetPlayerId(playerId);
+    setLogOpen(true);
+  }
+
+  function openEdit(s: Session) {
+    setEditing({
+      id: s.id,
+      session_date: s.session_date,
+      duration_minutes: s.duration_minutes,
+      category_id: s.category_id,
+      category_label: s.training_categories?.label ?? null,
+      notes: s.notes,
+      team_id: s.team_id ?? activeTeam.id,
+    });
+    setPresetPlayerId(s.profile_id);
+    setLogOpen(true);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,7 +107,7 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
     if (ids.length > 0) {
       const { data: sessionData } = await supabase
         .from("training_sessions")
-        .select("id, profile_id, session_date, duration_minutes, category_id, notes, training_categories(label)")
+        .select("id, profile_id, session_date, duration_minutes, category_id, notes, team_id, training_categories(label)")
         .in("profile_id", ids)
         .gte("session_date", start)
         .lt("session_date", end)
@@ -118,7 +150,10 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={() => openLog()} disabled={players.length === 0}>
+          <Plus className="mr-1.5 h-4 w-4" /> Log for player
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setManageOpen(true)}>
           <Settings2 className="mr-1.5 h-4 w-4" /> Manage categories
         </Button>
@@ -165,8 +200,9 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
             const name = `${p.first_name}${p.last_name ? " " + p.last_name : ""}`;
             return (
               <li key={p.id}>
+                <div className="flex items-center gap-1 pr-2">
                 <button
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent/50"
+                  className="flex flex-1 items-center gap-3 px-3 py-2 text-left hover:bg-accent/50"
                   onClick={() => setExpanded(isOpen ? null : p.id)}
                 >
                   <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "" : "-rotate-90"}`} />
@@ -185,6 +221,15 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
                     {t.count} {t.count === 1 ? "session" : "sessions"}
                   </span>
                 </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => openLog(p.id)}
+                  >
+                    <Plus className="mr-1 h-3.5 w-3.5" /> Log
+                  </Button>
+                </div>
                 {isOpen && (
                   <div className="bg-muted/30 px-10 py-2">
                     {playerSessions.length === 0 ? (
@@ -204,6 +249,21 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
                               {s.training_categories?.label ?? MISSING_CATEGORY_LABEL} · {s.duration_minutes} min
                               {s.notes && <span className="ml-1 text-muted-foreground">— {s.notes}</span>}
                             </span>
+                            {/* Edit is only offered for sessions logged through
+                                THIS team — the coach controls its categories and
+                                timezone (spec §5b). Other-team/global rows are
+                                delete-only. */}
+                            {s.team_id === activeTeam.id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label="Edit entry"
+                                onClick={() => openEdit(s)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -231,6 +291,21 @@ export function TeamTab({ activeTeam }: TrainingViewProps) {
           onOpenChange={setManageOpen}
           teamId={activeTeam.id}
           sport={activeTeam.sport}
+        />
+      )}
+
+      {logOpen && (
+        <LogSessionDialog
+          open={logOpen}
+          onOpenChange={setLogOpen}
+          profileId={viewerId}
+          eligibleTeams={[{ id: activeTeam.id, name: activeTeam.name, timezone: activeTeam.timezone }]}
+          defaultTeamId={activeTeam.id}
+          timezone={activeTeam.timezone}
+          session={editing}
+          players={rosterPlayers}
+          playerId={presetPlayerId}
+          onSaved={load}
         />
       )}
     </div>
