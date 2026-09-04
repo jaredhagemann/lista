@@ -8,6 +8,7 @@ import { PushSubscriptionButton } from "@/components/notifications/push-subscrip
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
+import { TrainingCategoriesSection } from "@/components/settings/training-categories-section";
 import { AccountSettings } from "@/components/settings/account-settings";
 import { PlanTabClient, type OrgPlanData } from "@/components/settings/plan-tab-client";
 
@@ -29,6 +30,7 @@ function computeTrialDaysRemaining(
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
+import type { Sport } from "@/lib/training";
 
 type NotifPrefs = Database["public"]["Tables"]["notification_preferences"]["Row"];
 
@@ -188,6 +190,21 @@ export default async function SettingsPage({
       });
   }
 
+  // Training categories are a club-tier feature managed by team admins. Mirror
+  // the Training → Team tab's "Manage categories" affordance in the Team
+  // settings tab, but only when the active team's org has club access — the same
+  // gate the Training route itself enforces.
+  let showTrainingCategories = false;
+  if (isAdmin && team?.organization_id) {
+    const { data: teamOrg } = await supabase
+      .from("organizations")
+      .select("plan, subscription_status")
+      .eq("id", team.organization_id)
+      .maybeSingle();
+    showTrainingCategories =
+      !!teamOrg && hasClubAccess(teamOrg.plan, teamOrg.subscription_status);
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
@@ -205,6 +222,12 @@ export default async function SettingsPage({
         {membership && team && (
           <TabsContent value="team" className="space-y-6">
             <TeamSettingsForm team={team} isAdmin={isAdmin} />
+            {showTrainingCategories && (
+              <TrainingCategoriesSection
+                teamId={team.id}
+                sport={(team.sport as Sport | null) ?? null}
+              />
+            )}
             {isOwner && (
               <>
                 <TransferOwnershipSection
