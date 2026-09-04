@@ -8,7 +8,10 @@ import { redirect } from "next/navigation";
 import type { Database } from "@/types/database";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
 import { getActiveProfileId } from "@/lib/get-active-membership";
-import { sendTeamDeletionNotifications } from "@/lib/notifications/team-deletion";
+import {
+  collectTeamDeletionRecipients,
+  sendTeamDeletionNotifications,
+} from "@/lib/notifications/team-deletion";
 import { isClubPlan } from "@/lib/plan";
 
 const BASE_DOMAIN = "lista.team";
@@ -349,10 +352,23 @@ export async function deleteTeam(teamId: string) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Fan out notifications to all members (best-effort — failures do not abort)
-  await sendTeamDeletionNotifications(teamId, teamRow.name);
+  // Snapshot notification recipients BEFORE the delete — the member list and
+  // push subscriptions cascade away when the team is removed.
+  const recipients = await collectTeamDeletionRecipients(teamId, teamRow.name);
 
-  // Delete all storage objects under team-images/{teamId}/
+  // Delete the team. Most child records cascade; training_sessions are NOT
+  // deleted — their team_id/category_id are SET NULL so a player's global
+  // training history survives (it still counts on their other teams). Nothing
+  // irreversible (notifications, image removal) has run yet, so a failure here
+  // leaves members un-notified and images intact.
+  const { error } = await admin.from("teams").delete().eq("id", teamId);
+  if (error) return { error: error.message };
+
+  // Only after the delete commits: notify members (best-effort) and remove the
+  // team's stored images. Running either before a failed delete would falsely
+  // tell members the team was deleted / strand it with its images gone.
+  await sendTeamDeletionNotifications(recipients);
+
   const { data: storageObjects } = await admin.storage
     .from("team-images")
     .list(teamId);
@@ -361,10 +377,6 @@ export async function deleteTeam(teamId: string) {
     const paths = storageObjects.map((obj) => `${teamId}/${obj.name}`);
     await admin.storage.from("team-images").remove(paths);
   }
-
-  // Delete the team — cascades handle all child records
-  const { error } = await admin.from("teams").delete().eq("id", teamId);
-  if (error) return { error: error.message };
 
   redirect("/dashboard");
 }

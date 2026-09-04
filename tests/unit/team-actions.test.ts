@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
   const mockAdminStorageRemove = vi.fn();
   const mockRedirect = vi.fn();
   const mockRevalidatePath = vi.fn();
+  const mockCollectDeletionRecipients = vi.fn();
   const mockSendDeletionNotifications = vi.fn();
   const mockGetActiveProfileId = vi.fn();
 
@@ -41,6 +42,7 @@ const mocks = vi.hoisted(() => {
     mockAdminStorageRemove,
     mockRedirect,
     mockRevalidatePath,
+    mockCollectDeletionRecipients,
     mockSendDeletionNotifications,
     mockGetActiveProfileId,
   };
@@ -83,6 +85,7 @@ vi.mock("next/dist/server/web/spec-extension/revalidate", () => ({
   revalidateTag: vi.fn(),
 }));
 vi.mock("@/lib/notifications/team-deletion", () => ({
+  collectTeamDeletionRecipients: mocks.mockCollectDeletionRecipients,
   sendTeamDeletionNotifications: mocks.mockSendDeletionNotifications,
 }));
 vi.mock("@/lib/get-active-membership", () => ({
@@ -115,6 +118,11 @@ function setupNoUser() {
 describe("deleteTeam", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.mockCollectDeletionRecipients.mockResolvedValue({
+      teamName: TEAM_NAME,
+      emails: [],
+      pushSubs: [],
+    });
     mocks.mockSendDeletionNotifications.mockResolvedValue(undefined);
     mocks.mockAdminStorageList.mockResolvedValue({ data: [], error: null });
     mocks.mockAdminStorageRemove.mockResolvedValue({ data: null, error: null });
@@ -138,19 +146,22 @@ describe("deleteTeam", () => {
     expect(result).toEqual({ error: "Not authorized" });
   });
 
-  it("dispatches deletion notifications before deleting the team", async () => {
+  it("snapshots recipients before the delete, then notifies only after it succeeds", async () => {
     setupUser(OWNER_ID);
     mocks.mockServerFrom.mockReturnValue(
       mocks.makeChain({ data: { owner_id: OWNER_ID, name: TEAM_NAME }, error: null })
     );
-    let notifyCalledBeforeDelete = false;
-    mocks.mockSendDeletionNotifications.mockImplementation(async () => {
-      notifyCalledBeforeDelete = true;
+    const order: string[] = [];
+    mocks.mockCollectDeletionRecipients.mockImplementation(async () => {
+      order.push("collect");
+      return { teamName: TEAM_NAME, emails: [], pushSubs: [] };
     });
-    let deleteCalledAfterNotify = false;
     mocks.mockAdminFrom.mockImplementation(() => {
-      if (notifyCalledBeforeDelete) deleteCalledAfterNotify = true;
+      order.push("delete");
       return mocks.makeChain({ data: null, error: null });
+    });
+    mocks.mockSendDeletionNotifications.mockImplementation(async () => {
+      order.push("send");
     });
 
     // redirect() in Next.js throws NEXT_REDIRECT to unwind the call stack;
@@ -159,29 +170,54 @@ describe("deleteTeam", () => {
       if (!String(e).includes("NEXT_REDIRECT")) throw e;
     });
 
-    expect(notifyCalledBeforeDelete).toBe(true);
-    expect(deleteCalledAfterNotify).toBe(true);
+    // recipients gathered first, team deleted, notifications sent last
+    expect(order).toEqual(["collect", "delete", "send"]);
   });
 
-  it("deletes storage objects before deleting the team", async () => {
+  it("removes storage objects only after the team is deleted", async () => {
     setupUser(OWNER_ID);
     mocks.mockServerFrom.mockReturnValue(
       mocks.makeChain({ data: { owner_id: OWNER_ID, name: TEAM_NAME }, error: null })
     );
-    mocks.mockAdminStorageList.mockResolvedValue({
-      data: [{ name: "logo.png" }, { name: "photo.jpg" }],
-      error: null,
+    const order: string[] = [];
+    mocks.mockAdminFrom.mockImplementation(() => {
+      order.push("delete");
+      return mocks.makeChain({ data: null, error: null });
+    });
+    mocks.mockAdminStorageList.mockImplementation(async () => {
+      order.push("storage-list");
+      return { data: [{ name: "logo.png" }, { name: "photo.jpg" }], error: null };
     });
 
     await deleteTeam(TEAM_ID).catch((e: unknown) => {
       if (!String(e).includes("NEXT_REDIRECT")) throw e;
     });
 
-    expect(mocks.mockAdminStorageList).toHaveBeenCalledWith(TEAM_ID);
+    expect(order).toEqual(["delete", "storage-list"]);
     expect(mocks.mockAdminStorageRemove).toHaveBeenCalledWith([
       `${TEAM_ID}/logo.png`,
       `${TEAM_ID}/photo.jpg`,
     ]);
+  });
+
+  it("does NOT notify or remove storage when the DB delete fails", async () => {
+    setupUser(OWNER_ID);
+    mocks.mockServerFrom.mockReturnValue(
+      mocks.makeChain({ data: { owner_id: OWNER_ID, name: TEAM_NAME }, error: null })
+    );
+    mocks.mockAdminStorageList.mockResolvedValue({
+      data: [{ name: "logo.png" }],
+      error: null,
+    });
+    mocks.mockAdminFrom.mockReturnValue(
+      mocks.makeChain({ data: null, error: { message: "DB error" } })
+    );
+
+    const result = await deleteTeam(TEAM_ID);
+
+    expect(result).toEqual({ error: "DB error" });
+    expect(mocks.mockSendDeletionNotifications).not.toHaveBeenCalled();
+    expect(mocks.mockAdminStorageRemove).not.toHaveBeenCalled();
   });
 
   it("redirects to /dashboard on success", async () => {

@@ -101,6 +101,7 @@ vi.mock("@/lib/get-active-membership", () => ({
   getActiveProfileId: vi.fn(),
 }));
 vi.mock("@/lib/notifications/team-deletion", () => ({
+  collectTeamDeletionRecipients: vi.fn(),
   sendTeamDeletionNotifications: vi.fn(),
 }));
 

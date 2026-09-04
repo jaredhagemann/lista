@@ -34,6 +34,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      availability: {
+        Row: {
+          created_at: string | null
+          event_id: string | null
+          id: string
+          profile_id: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          event_id?: string | null
+          id?: string
+          profile_id?: string | null
+          status: string
+        }
+        Update: {
+          created_at?: string | null
+          event_id?: string | null
+          id?: string
+          profile_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "availability_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_members: {
         Row: {
           channel_id: string
@@ -111,45 +150,6 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      availability: {
-        Row: {
-          created_at: string | null
-          event_id: string | null
-          id: string
-          profile_id: string | null
-          status: string
-        }
-        Insert: {
-          created_at?: string | null
-          event_id?: string | null
-          id?: string
-          profile_id?: string | null
-          status: string
-        }
-        Update: {
-          created_at?: string | null
-          event_id?: string | null
-          id?: string
-          profile_id?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "availability_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "availability_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -303,6 +303,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      feedback: {
+        Row: {
+          app_version: string | null
+          created_at: string | null
+          description: string
+          id: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string | null
+          description: string
+          id?: string
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string | null
+          description?: string
+          id?: string
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       invitations: {
         Row: {
@@ -687,6 +714,7 @@ export type Database = {
           gender: string | null
           id: string
           last_name: string
+          training_leaderboard_opt_out: boolean
         }
         Insert: {
           active_team_id?: string | null
@@ -699,6 +727,7 @@ export type Database = {
           gender?: string | null
           id: string
           last_name?: string
+          training_leaderboard_opt_out?: boolean
         }
         Update: {
           active_team_id?: string | null
@@ -711,6 +740,7 @@ export type Database = {
           gender?: string | null
           id?: string
           last_name?: string
+          training_leaderboard_opt_out?: boolean
         }
         Relationships: [
           {
@@ -877,6 +907,132 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "teams_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_categories: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          label: string
+          sort_order: number
+          team_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          label: string
+          sort_order: number
+          team_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          label?: string
+          sort_order?: number
+          team_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_categories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_categories_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_sessions: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          created_by: string
+          duration_minutes: number
+          id: string
+          notes: string | null
+          profile_id: string
+          session_date: string
+          team_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          created_by?: string
+          duration_minutes: number
+          id?: string
+          notes?: string | null
+          profile_id: string
+          session_date: string
+          team_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          created_by?: string
+          duration_minutes?: number
+          id?: string
+          notes?: string | null
+          profile_id?: string
+          session_date?: string
+          team_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_sessions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "training_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_sessions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_sessions_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -885,27 +1041,74 @@ export type Database = {
     }
     Functions: {
       create_club_team: {
-        Args: { org_id: string; team_name: string; season: string }
+        Args: { org_id: string; season: string; team_name: string }
         Returns: string
       }
       create_team: {
         Args: {
-          owner_profile_id: string
-          team_name: string
-          season: string
           org_name: string
+          owner_profile_id: string
+          season: string
+          team_name: string
         }
         Returns: string
       }
-      get_user_org_ids: { Args: Record<PropertyKey, never>; Returns: string[] }
+      get_user_org_ids: { Args: never; Returns: string[] }
+      has_club_access: { Args: { o_id: string }; Returns: boolean }
       is_admin_of_profile: { Args: { p_id: string }; Returns: boolean }
       is_channel_member: { Args: { c_id: string }; Returns: boolean }
+      is_event_team_member: {
+        Args: { e_id: string; p_id: string }
+        Returns: boolean
+      }
       is_managed_by_me: { Args: { p_id: string }; Returns: boolean }
       is_org_admin: { Args: { o_id: string }; Returns: boolean }
       is_org_owner: { Args: { o_id: string }; Returns: boolean }
       is_team_admin: { Args: { t_id: string }; Returns: boolean }
+      is_team_archived: { Args: { t_id: string }; Returns: boolean }
       is_team_member: { Args: { t_id: string }; Returns: boolean }
+      is_team_player: { Args: { p_id: string; t_id: string }; Returns: boolean }
+      is_training_admin_for_profile: {
+        Args: { p_id: string }
+        Returns: boolean
+      }
+      safe_team_tz: { Args: { t_id: string }; Returns: string }
       team_org_id: { Args: { t_id: string }; Returns: string }
+      training_leaderboard: {
+        Args: {
+          p_anchor?: string
+          p_org_id?: string
+          p_period?: string
+          p_scope: string
+          p_team_id?: string
+        }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          profile_id: string
+          rank: number
+          session_count: number
+          team_id: string
+          team_name: string
+          total_minutes: number
+        }[]
+      }
+      training_summary: {
+        Args: {
+          p_anchor?: string
+          p_org_id?: string
+          p_period?: string
+          p_profile_id: string
+          p_scope: string
+          p_team_id?: string
+        }
+        Returns: {
+          denominator: number
+          rank: number
+          session_count: number
+          total_minutes: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

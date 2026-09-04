@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { Toaster } from "@/components/ui/sonner";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
-import { isClubPlan } from "@/lib/plan";
+import { isClubPlan, hasClubAccess } from "@/lib/plan";
 import type { Database } from "@/types/database";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -111,6 +111,7 @@ export default async function DashboardLayout({
   const activeOrgId = (activeMembership?.teams as { organization_id?: string | null } | null)?.organization_id ?? null;
   let orgRole: "owner" | "director" | null = null;
   let activeOrgSubdomain: string | null = null;
+  let hasTrainingAccess = false;
   if (activeOrgId) {
     const [{ data: orgMembership }, { data: orgData }] = await Promise.all([
       supabase
@@ -121,7 +122,7 @@ export default async function DashboardLayout({
         .maybeSingle(),
       supabase
         .from("organizations")
-        .select("subdomain, subdomain_status, plan")
+        .select("subdomain, subdomain_status, plan, subscription_status")
         .eq("id", activeOrgId)
         .maybeSingle(),
     ]);
@@ -129,6 +130,9 @@ export default async function DashboardLayout({
     if (isClubPlan(orgData?.plan) && orgData?.subdomain_status === "active" && orgData?.subdomain) {
       activeOrgSubdomain = orgData.subdomain;
     }
+    // Training is a club-tier feature — gate the nav item on the same compound
+    // access check the route guard and DB policies use.
+    hasTrainingAccess = hasClubAccess(orgData?.plan, orgData?.subscription_status);
   }
 
   // Enforce that club-team users always land on their org's subdomain and
@@ -189,6 +193,7 @@ export default async function DashboardLayout({
         logoUrl={tenant?.logoUrl ?? null}
         orgName={tenant?.isWhiteLabel ? (tenant.orgNamePublic ?? undefined) : undefined}
         orgRole={orgRole}
+        hasTrainingAccess={hasTrainingAccess}
       />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {children}

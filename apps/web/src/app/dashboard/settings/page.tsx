@@ -1,11 +1,14 @@
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { hasClubAccess } from "@/lib/plan";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
+import { TrainingCategoriesSection } from "@/components/settings/training-categories-section";
 import { AccountSettings } from "@/components/settings/account-settings";
 import { PlanTabClient, type OrgPlanData } from "@/components/settings/plan-tab-client";
 
@@ -27,6 +30,7 @@ function computeTrialDaysRemaining(
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
+import type { Sport } from "@/lib/training";
 
 type NotifPrefs = Database["public"]["Tables"]["notification_preferences"]["Row"];
 
@@ -108,6 +112,46 @@ export default async function SettingsPage({
     }
   }
 
+  // Resolve the active profile (own or a managed child) for the training
+  // leaderboard opt-out toggle — shown only when the ACTIVE PROFILE's team's org
+  // has club access (training is a club-tier feature). Resolved independently of
+  // the Plan tab's `orgPlan`: that is scoped to organization_members
+  // (owners/directors), so reusing it would hide the toggle from ordinary
+  // players, who are the people the toggle is actually for. This mirrors the
+  // Training page — org derived from the active profile's active_team_id, so a
+  // parent viewing a managed child gets the CHILD's team/org, not the viewer's.
+  const cookieStore = await cookies();
+  const activeProfileId = cookieStore.get("active_profile_id")?.value ?? user.id;
+  let trainingProfile:
+    | { id: string; firstName: string | null; optedOut: boolean }
+    | null = null;
+  const { data: ap } = await supabase
+    .from("profiles")
+    .select("id, first_name, training_leaderboard_opt_out, active_team_id")
+    .eq("id", activeProfileId)
+    .maybeSingle();
+  if (ap?.active_team_id) {
+    const { data: apTeam } = await supabase
+      .from("teams")
+      .select("organization_id")
+      .eq("id", ap.active_team_id)
+      .maybeSingle();
+    if (apTeam?.organization_id) {
+      const { data: apOrg } = await supabase
+        .from("organizations")
+        .select("plan, subscription_status")
+        .eq("id", apTeam.organization_id)
+        .maybeSingle();
+      if (apOrg && hasClubAccess(apOrg.plan, apOrg.subscription_status)) {
+        trainingProfile = {
+          id: ap.id,
+          firstName: ap.first_name,
+          optedOut: ap.training_leaderboard_opt_out,
+        };
+      }
+    }
+  }
+
   const notifPrefs = rawNotifPrefs as NotifPrefs | null;
   const isAdmin =
     membership?.role === "coach" ||
@@ -146,6 +190,21 @@ export default async function SettingsPage({
       });
   }
 
+  // Training categories are a club-tier feature managed by team admins. Mirror
+  // the Training → Team tab's "Manage categories" affordance in the Team
+  // settings tab, but only when the active team's org has club access — the same
+  // gate the Training route itself enforces.
+  let showTrainingCategories = false;
+  if (isAdmin && team?.organization_id) {
+    const { data: teamOrg } = await supabase
+      .from("organizations")
+      .select("plan, subscription_status")
+      .eq("id", team.organization_id)
+      .maybeSingle();
+    showTrainingCategories =
+      !!teamOrg && hasClubAccess(teamOrg.plan, teamOrg.subscription_status);
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
@@ -163,6 +222,12 @@ export default async function SettingsPage({
         {membership && team && (
           <TabsContent value="team" className="space-y-6">
             <TeamSettingsForm team={team} isAdmin={isAdmin} />
+            {showTrainingCategories && (
+              <TrainingCategoriesSection
+                teamId={team.id}
+                sport={(team.sport as Sport | null) ?? null}
+              />
+            )}
             {isOwner && (
               <>
                 <TransferOwnershipSection
@@ -175,7 +240,7 @@ export default async function SettingsPage({
           </TabsContent>
         )}
         <TabsContent value="account" className="space-y-6">
-          <AccountSettings />
+          <AccountSettings trainingProfile={trainingProfile} />
         </TabsContent>
         <TabsContent value="plan" className="space-y-6">
           <PlanTabClient orgPlan={orgPlan} />

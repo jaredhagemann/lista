@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { execSync } from "node:child_process";
 import dotenv from "dotenv";
 
 dotenv.config({ path: ".env.test.local" });
@@ -147,6 +148,147 @@ export function trackIds({ orgId, teamId }: { orgId?: string; teamId?: string })
   if (orgId) createdOrgIds.push(orgId);
 }
 
+/** Set an org's plan + subscription status (defaults to an active club tier). */
+export async function setOrgPlan(
+  orgId: string,
+  plan: "free" | "club_small" | "club_large" = "club_small",
+  subscriptionStatus: "trialing" | "active" | "past_due" | "canceled" = "active"
+) {
+  const { error } = await adminClient
+    .from("organizations")
+    .update({ plan, subscription_status: subscriptionStatus })
+    .eq("id", orgId);
+  if (error) throw new Error(`Failed to set org plan: ${error.message}`);
+}
+
+/** Add an explicit organization_members row (owner/director). */
+export async function addOrgMember(
+  orgId: string,
+  profileId: string,
+  role: "owner" | "director" = "director"
+) {
+  const { error } = await adminClient
+    .from("organization_members")
+    .insert({ organization_id: orgId, profile_id: profileId, role });
+  if (error) throw new Error(`Failed to add org member: ${error.message}`);
+}
+
+/** Archive a team. */
+export async function archiveTeam(teamId: string) {
+  const { error } = await adminClient
+    .from("teams")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", teamId);
+  if (error) throw new Error(`Failed to archive team: ${error.message}`);
+}
+
+/** Today's date (YYYY-MM-DD) in UTC, matching the default team timezone fallback. */
+export function todayStr(offsetDays = 0): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Run raw SQL in the local Postgres container as the postgres superuser.
+ * Test seeding only — used to create edge-case rows (e.g. out-of-window dates)
+ * that the validation trigger would otherwise reject.
+ */
+export function rawSql(sql: string) {
+  execSync(
+    `docker exec supabase_db_lista psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "${sql.replace(/"/g, '\\"')}"`,
+    { stdio: "pipe" }
+  );
+}
+
+/** Fetch a team's seeded default ("General") category id. */
+export async function getDefaultCategoryId(teamId: string): Promise<string> {
+  const { data, error } = await adminClient
+    .from("training_categories")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("is_default", true)
+    .single();
+  if (error) throw new Error(`Failed to get default category: ${error.message}`);
+  return data.id;
+}
+
+/**
+ * Create a custom (non-default) category via the service role. A service-role
+ * custom insert must supply created_by (a real profile) — defaults to the
+ * team's owner. Returns the new category id.
+ */
+export async function createCategory(
+  teamId: string,
+  label: string,
+  opts: { createdBy?: string; sortOrder?: number; isActive?: boolean } = {}
+): Promise<string> {
+  let createdBy = opts.createdBy;
+  if (!createdBy) {
+    const { data } = await adminClient.from("teams").select("owner_id").eq("id", teamId).single();
+    createdBy = data!.owner_id as string;
+  }
+  const id = crypto.randomUUID();
+  const { error } = await adminClient.from("training_categories").insert({
+    id,
+    team_id: teamId,
+    label,
+    is_default: false,
+    sort_order: opts.sortOrder ?? 10,
+    is_active: opts.isActive ?? true,
+    created_by: createdBy,
+  });
+  if (error) throw new Error(`Failed to create category: ${error.message}`);
+  return id;
+}
+
+/**
+ * Seed a session with an arbitrary (possibly out-of-window) date, bypassing the
+ * validation trigger via session_replication_role = replica. Returns the row id.
+ * Defaults category_id to the team's "General" default via subquery.
+ */
+export function seedOldSession(opts: {
+  id?: string;
+  profileId: string;
+  teamId: string;
+  date: string;
+  minutes?: number;
+  categoryId?: string;
+}): string {
+  const id = opts.id ?? crypto.randomUUID();
+  const catExpr = opts.categoryId
+    ? `'${opts.categoryId}'`
+    : `(select id from training_categories where team_id='${opts.teamId}' and is_default limit 1)`;
+  rawSql(
+    `set session_replication_role = replica; ` +
+      `insert into training_sessions (id, profile_id, team_id, created_by, session_date, duration_minutes, category_id) ` +
+      `values ('${id}','${opts.profileId}','${opts.teamId}','${opts.profileId}','${opts.date}',${opts.minutes ?? 10}, ${catExpr}); ` +
+      `set session_replication_role = default;`
+  );
+  return id;
+}
+
+/** Seed a training session via the service role (bypasses RLS; trigger still runs). */
+export async function insertSession(opts: {
+  profileId: string;
+  teamId: string;
+  createdBy: string;
+  date?: string;
+  minutes?: number;
+  categoryId?: string;
+}): Promise<{ error: string | null }> {
+  const categoryId = opts.categoryId ?? (await getDefaultCategoryId(opts.teamId));
+  const { error } = await adminClient.from("training_sessions").insert({
+    profile_id: opts.profileId,
+    team_id: opts.teamId,
+    created_by: opts.createdBy,
+    session_date: opts.date ?? todayStr(),
+    duration_minutes: opts.minutes ?? 30,
+    category_id: categoryId,
+  });
+  return { error: error ? error.message : null };
+}
+
 /** Clean up all test data in correct FK order */
 export async function cleanupTestData() {
   // Delete managed profiles and their manager links
@@ -185,6 +327,9 @@ export async function cleanupTestData() {
     await adminClient.from("events").delete().eq("team_id", teamId);
     await adminClient.from("locations").delete().eq("team_id", teamId);
     await adminClient.from("invitations").delete().eq("team_id", teamId);
+    // training_sessions.team_id is RESTRICT — must go before the team delete;
+    // training_categories cascade with the team (guard allows cascade).
+    await adminClient.from("training_sessions").delete().eq("team_id", teamId);
     await adminClient.from("team_members").delete().eq("team_id", teamId);
     await adminClient.from("teams").delete().eq("id", teamId);
   }
