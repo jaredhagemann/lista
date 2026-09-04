@@ -80,7 +80,8 @@ To honor "no 7-day window for coaches" (mirroring the admin delete-anytime moder
   archived-team, and category-belongs-to-team checks.
 
 So a coach may backfill an older session but can never create impossible data (future date, over-cap,
-wrong-team category, non-roster subject). `created_by` remains immutable on update.
+wrong-team category, non-roster subject). `created_by` remains immutable on update. The coach dialog relaxes its
+client-side date floor to match this (§5a).
 
 ## 4. Data model / attribution
 
@@ -94,8 +95,9 @@ player's session."
 
 ### 5a. `LogSessionDialog` — coach mode
 
-Extend the existing dialog rather than forking it, so date-window, category-loading, and error logic stay
-single-sourced. New optional props:
+Extend the existing dialog rather than forking it, so category-loading, validation, and error logic stay
+single-sourced. Coach mode's one behavioral difference from the self-log flow is the date floor (see below).
+New optional props:
 
 - `players?: RosterPlayer[]` — the context team's roster players (including managed, no-auth players).
 - `playerId?: string` — preselected subject.
@@ -107,7 +109,14 @@ When `players` is provided:
   bounds the date; its active categories populate the picker) — **no team selector** in coach mode.
 - Title: **"Log for a player"**. Error copy is phrased for the subject, e.g. *"That would put Ava over the
   360-minute daily limit."*
-- Everything else (date, duration quick-picks, category, notes) is unchanged.
+- **Date bounds — the one intentional divergence.** The self-log dialog hard-codes a `min` of 7 days ago
+  (`BACKDATE_WINDOW_DAYS`) and clamps the selected date into `[minDate, today]`. Coach mode **removes the lower
+  floor** — admins may backdate beyond the window (§3d) — while **keeping `max = today`** in the team's
+  timezone, because future dates are still rejected for everyone (trigger rule 3). Concretely: gate `minDate`
+  (and the date `<input min>`) on `!coachMode`, and make the clamp effect enforce only the upper bound (`d >
+  today ? today : d`) in coach mode. A far-past floor isn't required, but if we want a sane guard the season/
+  team-creation date is a reasonable one — deferred; v1 simply drops the floor.
+- Duration quick-picks, category, and notes are unchanged.
 
 ### 5b. Team tab (coach-only) — primary home
 
@@ -179,7 +188,8 @@ Replace the dead-end copy for non-players with a pointer instead of a "switch pr
 ### Component
 
 - `LogSessionDialog` coach mode: player selector present and required; insert uses the selected `profile_id`;
-  no team selector.
+  no team selector; the date input has **no `min` floor** while `max === today`, and a date older than 7 days is
+  accepted (whereas the self-log dialog still enforces the 7-day floor).
 - Team tab: top-level and per-row entry points open the dialog with the correct preselection. In the expanded
   session list, **Edit** appears only on rows whose `team_id === activeTeam.id`; **Delete** appears on every
   row (including foreign-context and `team_id`-null rows).
