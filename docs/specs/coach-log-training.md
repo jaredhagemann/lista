@@ -59,6 +59,11 @@ in the context of a team they actually administer, never for a shared player thr
 
 Mirror the same admin addition in **both** the `using` and `with check` clauses of `training_sessions_update`.
 
+Note this keys coach *edit* to the session's **logging-context `team_id`**, which is narrower than *delete*
+(§3c, tied to the player across any of their teams). That asymmetry is intentional — editing changes content
+within a specific team's category vocabulary and timezone, so it should require controlling that team, whereas
+delete is a blunt moderation removal. The UI honors this in §5b (Edit is shown only for this-team rows).
+
 ### 3c. DELETE policy
 
 No change — `is_training_admin_for_profile(profile_id)` / `is_org_admin(...)` already grant admins delete with
@@ -108,8 +113,24 @@ When `players` is provided:
 
 - A top-level **"Log for player"** button that opens the dialog with an empty player selection.
 - A per-roster-row **"Log"** action that opens the dialog with that player preselected.
-- In the expanded per-player session list, add an **Edit** control alongside the existing **Delete** (both are
-  now coach-permitted with no window).
+- In the expanded per-player session list, add an **Edit** control **only on sessions logged through this team**
+  (`session.team_id === activeTeam.id`); **Delete** remains on every visible row.
+
+  This asymmetry is deliberate. The Team tab shows a player's **global** sessions (all teams — matching the
+  leaderboard's global totals), but the DB ties coach *edit* to the logging-context `team_id` (§3b), while
+  *delete* is a broad moderation lever tied to the player, not a team (§3c). Editing a session logged through
+  another team would also require that team's category vocabulary and timezone, which the coach may not be able
+  to read. So:
+  - **Edit** ⟺ the row's context team is the team you're viewing (which, to be on this coach tab, you
+    administer). The dialog's category picker and date window then use that team — exactly what the UPDATE
+    policy and trigger expect, so the control never offers an edit the DB would reject.
+  - **Delete** stays broad — a coach/admin of *any* of the player's current teams may remove a suspicious global
+    entry (no team-context or date bound), which the existing DELETE policy already allows.
+  - Contextless rows (`team_id` null, after a context team was hard-deleted) are therefore **Delete-only**.
+
+  The `team_id === activeTeam.id` rule is intentionally conservative: it may hide Edit on a same-org team's
+  session that an org director could technically update, but it keeps the client from ever surfacing an edit
+  that would fail, without the Team tab needing to know the full set of teams the viewer administers.
 
 ### 5c. Leaderboard CTA — second entry point
 
@@ -131,6 +152,9 @@ Replace the dead-end copy for non-players with a pointer instead of a "switch pr
 - **Daily cap** — sums across all of a player's sessions that day (any team, any author); a coach entry that
   would exceed 360 minutes is rejected with a clear message.
 - **Multi-team coach** — logs in the active team's context; switching the active team logs for another team.
+- **Global sessions on the Team tab** — a coach sees a player's sessions from all the player's teams. Foreign-
+  context and contextless rows are **Delete-only**; **Edit** is limited to this-team rows (§5b), matching the
+  DB's narrower update scope (§3b).
 - **Backdating** — admins are exempt from the 7-day floor (§3d), so a coach can catch up an older session; the
   leaderboard's historical periods reflect it, as intended for moderation.
 
@@ -142,6 +166,9 @@ Replace the dead-end copy for non-players with a pointer instead of a "switch pr
   coach.
 - Coach is **denied** for: a player on a team they do **not** admin; a non-player subject (e.g. another coach)
   on their team.
+- **Edit-vs-delete scope for global sessions**: a coach may **delete** a session logged through a *different*
+  team the player also belongs to (moderation), but may **not update** that same session unless they also admin
+  its context team — even for a player on their own roster.
 - Regression: a plain **player**/**parent** still cannot write for another player.
 - **Director/owner** of the org may insert/update for a team's player.
 - **Window exemption**: an admin may backdate beyond 7 days; **future** dates and the **daily cap** are still
@@ -153,8 +180,9 @@ Replace the dead-end copy for non-players with a pointer instead of a "switch pr
 
 - `LogSessionDialog` coach mode: player selector present and required; insert uses the selected `profile_id`;
   no team selector.
-- Team tab: top-level and per-row entry points open the dialog with the correct preselection; Edit/Delete on
-  expanded session rows.
+- Team tab: top-level and per-row entry points open the dialog with the correct preselection. In the expanded
+  session list, **Edit** appears only on rows whose `team_id === activeTeam.id`; **Delete** appears on every
+  row (including foreign-context and `team_id`-null rows).
 - Leaderboard CTA: correct affordance per viewer (player vs coach vs neither).
 - My Training: updated copy for coaches.
 
