@@ -37,15 +37,15 @@ were modified out of band, was **not** established by the review.
 
 ## Product decisions
 
-**D8 resolved — user decision, 2026-09-15:** children's photos may be viewed by **teammates and clubmates**,
-with no access outside the team/club. Shared with
+**D8 resolved — user decision, 2026-09-15:** children's photos may be viewed by **teammates**,
+with no access outside the team. Shared with
 [BUG-004](./004-profile-email-exposed-to-teammates.md).
 
 **This settles the fix direction: the buckets stay private.**
 
 A Supabase public URL is an unguessable but **unauthenticated** link — anyone holding it can open the image,
-including someone who has left the club or never belonged to it, and it keeps working after the child leaves.
-That is access outside the team/club, so `getPublicUrl()` is not a permitted serving path for avatars under
+including someone who has left the team or never belonged to it, and it keeps working after the child leaves.
+That is access outside the team, so `getPublicUrl()` is not a permitted serving path for avatars under
 D8. Serve them through authorized downloads or signed URLs instead.
 
 **Making the buckets public is now explicitly ruled out**, not merely discouraged — it was the tempting
@@ -53,13 +53,13 @@ one-line repair for the broken images, and it would contradict D8.
 
 | Asset | Serving path |
 | --- | --- |
-| Child/player avatars | Authorized download or signed URL, scoped to team/club |
+| Child/player avatars | Authorized download or signed URL, scoped to the team |
 | Team images | Same as avatars unless the club logo exception below applies |
-| Club logo | **Open** — see below |
+| Club logo | **Public** — permitted, see below |
 
-**Open sub-question — is a club logo public?** D8 covers personal data; a club logo is org branding, and a
-public club subdomain landing page would need it to load for signed-out visitors. Recommend treating the
-club logo as public identity, separate from personal assets. Confirm before implementing.
+**Club logo — decided public, user decision 2026-09-15.** It is org branding rather than personal
+data, and a public club subdomain landing page needs it to load for signed-out visitors. It may keep
+using a public URL. This exception covers the club logo only — not player or team photos.
 
 ## Cause
 
@@ -80,4 +80,5 @@ Assert upload-then-fetch round-trips against a database built from **migrations 
 checked-in configuration cannot drift apart again.
 
 Assert an avatar URL is **not** retrievable by an unauthenticated request or by a user outside the
-team/club — the D8 boundary — and that a teammate can retrieve it.
+team — the D8 boundary — and that a teammate can retrieve it. A clubmate on a different team is denied,
+matching BUG-004.

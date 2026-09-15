@@ -47,10 +47,9 @@ never specified.
 | Expired-link experience | Show a clear **request-a-new-invite** state, not a generic error or a dead end |
 | Order of work | Ship the recipient check **first**; expiry follows separately |
 
-**Open residual — existing pending invitations.** The decision is that a grace or reissue policy must
-be chosen *before* expiry is enforced, but not what it is. Recommend giving every invitation pending at
-deploy time a fresh 14 days from the deploy date, rather than expiring links that were valid when sent.
-Needs a yes/no before the expiry work ships; it does not block the recipient check.
+**Grace policy — accepted, user decision 2026-09-15.** Every invitation pending at deploy time gets a fresh
+14 days from the deploy date. Links that were valid when sent are not killed by the rollout. Expiry is
+measured from that reissue point, not from the original send.
 
 ## Cause
 
@@ -82,3 +81,5 @@ the right person must be safe, and concurrent acceptance must resolve to one mem
 
 For the D9 expiry work, separately: an invitation older than 14 days is rejected; a resend invalidates the
 previous link; an expired link renders the request-a-new-invite state rather than an error.
+Cover the grace policy: an invitation pending at deploy time remains valid for 14 days from deploy, not
+from its original send date.

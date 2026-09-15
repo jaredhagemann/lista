@@ -9,20 +9,20 @@
 
 **Severity note.** This was filed as a P1 data-boundary bypass: the privacy page promised email was
 admin-only, and a teammate could read it. **The D8 decision below inverts that** — teammate visibility is
-now the intended behavior, so the code is right and the published promise is wrong. What remains is a
-documentation correction plus a scope-widening feature, not an access-control bypass. Regraded P2.
+the intended behavior, so the code is right and the published promise is wrong. What remains is a
+documentation correction, not an access-control bypass. Regraded P2.
 
-The correction is still worth doing promptly: the app currently publishes a privacy statement that
-under-describes what it shares, for a product handling children's data.
+The correction is still worth doing promptly: the app publishes a privacy statement that under-describes
+what it shares, for a product handling children's data.
 
 ## Symptom
 
 `apps/web/src/app/privacy/page.tsx:48` tells users their email address is visible **only** to team admins
 (coaches, managers, directors) and profile managers. In fact any teammate can read it by querying
-`profiles` directly, which — per D8 — is what Lista intends to do. The published statement does not match
-the product.
+`profiles` directly, which — per D8 — is what Lista intends. The published statement does not match the
+product.
 
-The page is also silent on date of birth, which D8 now places in teammate/clubmate scope.
+The page is also silent on date of birth, which D8 places in teammate scope.
 
 ## Reproduction
 
@@ -32,7 +32,7 @@ The page is also silent on date of birth, which D8 now places in teammate/clubma
 2. `SELECT email FROM profiles WHERE id = '<coach profile uuid>'` via PostgREST.
 
 **Actual:** the coach's email is returned.
-**Expected under D8:** returned — this is now correct behavior for a teammate.
+**Expected under D8:** returned — correct behavior for a teammate.
 **Expected under the privacy page as written:** not returned.
 
 The defect is the disagreement between those last two lines.
@@ -43,47 +43,50 @@ The defect is the disagreement between those last two lines.
 
 - Privacy statement: `apps/web/src/app/privacy/page.tsx:48`
 - Profile visibility policy: `supabase/migrations/20260318000001_fix_profiles_select_for_profile_managers.sql:14`
-- `is_team_member` is **team**-scoped: `supabase/migrations/20260416000002_director_role_and_rls_helpers.sql:29`
+- `is_team_member`: `supabase/migrations/20260416000002_director_role_and_rls_helpers.sql:29`
 - Probe results: `docs/reviews/2026-09-04-local-probe-results.txt`
 
 ## Product decisions
 
 **D8 resolved — user decision, 2026-09-15:** date of birth, birth year, contact details and children's
-photos may be viewed by **teammates and clubmates**. No access outside the team/club.
+photos are visible to **teammates**. No access outside the team. **No cross-team clubmate widening** — the
+current team-scoped behavior is correct and stays as it is.
 
-| Field | Decision | Current behavior |
+| Viewer | Access | Status |
 | --- | --- | --- |
-| Email / contact details | Teammates and clubmates | Teammates only — **narrower** than decided |
-| Full DOB and birth year | Teammates and clubmates | Teammates only — **narrower** than decided |
-| Children's photos | Teammates and clubmates | See [BUG-016](./016-storage-buckets-private-vs-public-url.md) |
-| Anyone outside the team/club | **No access** | Denied by the profiles policy — but see the caveat below |
+| Self | Own data | Already correct |
+| Teammate (shares a team) | DOB, birth year, contact details, photos | Already correct |
+| Guardian of a managed player | Their child's data | Already correct |
+| Clubmate on a **different** team | **No access** | Already correct — do not widen |
+| Org director / owner | Club-wide, by existing design — see below | Already correct |
+| Anyone outside the team/club | **No access** | See the BUG-001 caveat below |
 
-**Open sub-question — does "clubmates" mean cross-team?** Profile reads are team-scoped today. Reading the
-decision literally, a parent on the U10 boys team would gain access to the DOB and phone number of every
-player on every other team in the club. That is net-new widening, not enforcement. Confirm before building
-it; the rest of this ticket does not depend on the answer.
+**Director and owner access is the one exception, and it is intentional.** `is_team_member` ends with
+`OR is_org_admin(team_org_id(t_id))` (`supabase/migrations/20260416000002_director_role_and_rls_helpers.sql:50`),
+so org admins have implicit access to every team in their club without a `team_members` row. That is
+deliberate, documented in the migration, and consistent with the multi-tenant spec. D8 does not change it.
+
+So "teammates only" is exact for ordinary members — players, parents, coaches and managers — and directors
+and owners see the whole club by design.
 
 ## Cause
 
-Two independent gaps, neither of which is the one originally filed:
+**The privacy page was written against a narrower intent than D8.** That is the whole defect. The data
+layer already implements the decided behavior.
 
-1. **The privacy page was written against a narrower intent than D8.** It is a documentation defect.
-2. **Club-wide visibility does not exist.** `is_team_member` scopes reads to shared teams, so clubmates on
-   different teams cannot see each other. This is narrower than D8 allows.
-
-**Caveat on the boundary.** D8's "no access outside the team/club" is **not currently enforced** — not
+**Caveat on the outer boundary.** D8's "no access outside the team" is **not currently enforced** — not
 because of the profiles policy, which is correctly scoped, but because
 [BUG-001](./001-team-members-self-insert-coach.md) lets any authenticated user insert themselves into any
 team and thereby become a "teammate." **Fixing BUG-001 is what actually enforces D8's outer boundary.**
-That dependency is the most important thing on this ticket.
+That dependency is the most important thing on this ticket; the privacy-page edit is the easy half.
 
 ## Proposed fix
 
-1. Correct the privacy page to describe what D8 decided, covering email, contact details and date of birth.
-2. Only if cross-team visibility is confirmed: widen the profiles policy from team scope to club scope.
-3. Preserve each user's access to their own private data.
+Correct the privacy page to describe what D8 decided — email and contact details, date of birth, and
+photos are visible to teammates; directors and owners see their whole club.
 
-Do not relax the outer boundary. Enforcing it is [BUG-001](./001-team-members-self-insert-coach.md)'s job.
+Change **no policy**. The data layer is already correct, and widening it to clubmates was explicitly
+declined.
 
 ## Regression test
 
@@ -91,7 +94,8 @@ Assert against **direct PostgREST queries** on the base table, not rendered scre
 
 - self reads own email and DOB — permitted
 - teammate reads email and DOB — permitted (D8)
-- clubmate on a different team — matches whatever the open sub-question resolves to
+- **clubmate on a different team — denied**, which is the case that must not silently widen
+- org director reads any profile in their club — permitted (existing design)
 - **unrelated user outside the team and club — denied**, which is the case that must not regress
 - guardian reads their managed child — permitted
 
