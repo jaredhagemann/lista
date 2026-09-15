@@ -4,14 +4,14 @@
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (finding 8)
 **Area:** infra / routing / notifications
-**Evidence class:** Reproduced against `updateSession` directly — **not** a deployed HTTP flow
-**Last verified:** `5acde1074`, local unit probe, 2026-09-04
+**Evidence class:** **Reproduced in production** (2026-09-15) and locally
+**Last verified:** production `www.lista.team`, 2026-09-15 — see Production confirmation below
 
 ## Symptom
 
 All three Vercel cron jobs — event reminders, trial expiration, subdomain quarantine — are redirected to
 `/login` by session middleware before their handler runs. Vercel cron requests do not follow redirects, so
-on a deployment matching this code none of these jobs would execute.
+**Confirmed in production on 2026-09-15:** none of these jobs can be executing.
 
 ## Reproduction
 
@@ -25,10 +25,47 @@ assertions in total — those 3 plus one recurrence and one email-formatting pro
 **Expected:** the request reaches the handler, which validates `CRON_SECRET`.
 **Actual:** **307 redirect to `/login`** for all three paths, before the secret check.
 
-**Important scope limit:** the probes invoke `updateSession` **directly**. They do not exercise a complete
-deployed HTTP flow including the Next.js middleware matcher, so they do not prove the deployed request path
-behaves identically. **Whether production reminders have in fact been failing is unverified** — see the
-question in the PR description.
+**Local scope limit:** the Sept 4 probes invoke `updateSession` **directly**, so they did not exercise a complete
+deployed HTTP flow. That gap has since been closed by the production probe below.
+
+## Production confirmation — 2026-09-15
+
+Probed with a **deliberately invalid** bearer token, so no job could execute: all three handlers
+return 401 before doing any work, and a wrong secret is rejected either way.
+
+```
+reminders              307 https://www.lista.team/login
+trial-expiration       307 https://www.lista.team/login
+subdomain-quarantine   307 https://www.lista.team/login
+```
+
+**Control probes**, to rule out "everything redirects":
+
+```
+/                                         200
+/login                                    200
+/api/invite/<uuid>                        404   <- reaches its handler
+/api/cron/reminders (no auth header)      307 -> /login
+```
+
+The `/api/invite/` 404 is the decisive control: it proves the middleware exemption mechanism works
+and that the March fix is still in place. Cron paths specifically are not exempted.
+
+**These jobs have never run in production.** Event reminders, trial expiration and subdomain
+quarantine have all been silently dead since deploy.
+
+### A second redirect in front of the first
+
+The apex domain redirects to `www` **before** middleware runs:
+
+```
+https://lista.team/api/cron/reminders  ->  307  https://www.lista.team/api/cron/reminders
+```
+
+So there are two independent redirects that each kill a cron request, since Vercel cron does not
+follow redirects. **Check which domain the cron jobs are actually configured against in the Vercel
+dashboard.** Exempting `/api/cron/*` in middleware fixes nothing if cron targets the apex and dies at
+canonicalization instead. Both have to be right.
 
 ## Evidence
 
@@ -66,6 +103,7 @@ Verify through the **deployed** middleware path, not only locally.
 
 Drive the path list off `vercel.json` so a newly added cron job cannot regress silently.
 
-**Deployment verification required:** confirm against the deployed middleware, using **staging/test data**.
+**Deployment verification required:** re-run the production probe above after deploying. A 401 replaces the
+307 when it is fixed. Use **staging/test data** for any probe that carries a *valid* secret.
 Trial-expiration and subdomain-quarantine jobs act destructively on real clubs; do not first exercise them
 against production data.
