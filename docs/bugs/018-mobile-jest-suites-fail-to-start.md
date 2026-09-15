@@ -4,6 +4,8 @@
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (verification results)
 **Area:** tests / mobile
+**Evidence class:** Reproduced in the **September 4 installed checkout only**
+**Last verified:** `5acde1074`, local run, 2026-09-04
 
 ## Symptom
 
@@ -18,7 +20,8 @@ verification.
 **Actual:** four suites fail at startup — installed dependency resolution lacks
 `@babel/runtime/helpers/interopRequireDefault`.
 
-**Environment:** observed in the Sept 4 checkout. This blocks verification; it does **not** establish that
+**Scope limit:** observed in the September 4 **installed checkout**. Dependencies were not reinstalled
+during that review, so this may be an artifact of that install state. It does **not** establish that
 distributed mobile builds crash.
 
 ## Evidence
@@ -27,15 +30,19 @@ distributed mobile builds crash.
 
 ## Cause
 
-A missing `@babel/runtime` dependency in the installed mobile tree. Whether this is a missing declared
-dependency or an artifact of that checkout's install state is unconfirmed — the report notes dependencies
-were not reinstalled during the review.
+Not yet determined. The missing `@babel/runtime` helper is the symptom; **why resolution failed** — a
+missing declared dependency, a hoisting problem in the monorepo, or a stale install — is unknown.
 
-## Fix
+## Proposed fix
 
-Reproduce on a clean install first. If it persists, add the missing dependency explicitly.
+**Reproduce on a clean install first.** Do not add the dependency before determining why resolution failed;
+adding it may paper over a hoisting problem that will resurface.
 
 ## Regression test
 
-Once suites run, wire the mobile suite into CI so a startup failure fails the build rather than passing
-silently with zero tests — this is the gap that let it go unnoticed.
+Jest **did** report failure here — it was not a silent zero-test pass, and the fix is not about making
+failure visible in the runner.
+
+The actual gap is **absent mobile CI coverage**: nothing runs this suite automatically, so the breakage
+persisted unnoticed between September 4 and now. Wire the mobile suite into CI, and assert that a
+startup failure fails the build rather than being reported only to whoever runs it locally.

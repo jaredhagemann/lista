@@ -4,6 +4,8 @@
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (finding 14)
 **Area:** performance / data integrity
+**Evidence class:** Static — production row limit **unverified**
+**Last verified:** `5acde1074`, code inspection, 2026-09-04
 
 ## Symptom
 
@@ -14,16 +16,18 @@ once older events fill the cap.
 
 ## Reproduction
 
-**Code-confirmed; production row limit unverified.**
+**Static.** Not yet run.
 
-1. Create a team with 20 players and 51 events (**20 × 51 = 1,020 responses**, past the 1,000 cap).
+1. Seed **1,020 actual availability records**. Note that creating 20 profiles and 51 events does *not*
+   create responses — the rows have to be written, or the cap is never reached and the test proves nothing.
 2. Open the availability matrix.
 
 **Expected:** every response renders, or an explicit "could not load" state.
 **Actual:** truncated rows render as "no response" — indistinguishable from a genuine non-reply.
 
-**Environment:** the 1,000 cap is from the checked-in `config.toml`. **The production cap has not been
-verified** — see "Questions".
+**Deployment status:** the 1,000 cap is from the checked-in `supabase/config.toml`. **The production cap has
+not been verified.** That verification is an operator/engineering evidence task, not a product decision —
+someone needs to check the deployed configuration.
 
 ## Evidence
 
@@ -37,12 +41,18 @@ verified** — see "Questions".
 No pagination or date-windowing on any of the three queries; the schedule additionally orders oldest-first,
 so truncation drops the *future* events that matter most.
 
-## Fix
+## Proposed fix
 
-Query bounded date windows, paginate on the server, fetch RSVPs only for the displayed window, and
+Query bounded date windows, paginate on the server, fetch availability only for the displayed window, and
 distinguish a failed or incomplete query from a genuinely empty result. Do not simply raise the cap.
+
+A failed-load state protects against a false "no response", but it is not the whole fix: **normal
+season-sized data must still load completely.** An honest error where a coach expects a roster is still a
+broken roster.
 
 ## Regression test
 
-Seed past the cap and assert completeness, plus that a truncated/failed fetch surfaces as an error state
-rather than as empty data.
+Seed past the cap with real availability rows and assert completeness.
+
+Assert a truncated or failed fetch surfaces as an error state rather than as empty data — and separately,
+that a normal season's data loads in full without hitting that state.

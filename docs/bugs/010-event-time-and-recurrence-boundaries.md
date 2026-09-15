@@ -4,6 +4,8 @@
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (finding 10)
 **Area:** events / notifications
+**Evidence class:** Reproduced (local unit probes) — 2 of the 5 assertions in the Sept 4 probe file
+**Last verified:** `5acde1074`, local unit probe, 2026-09-04
 
 ## Symptom
 
@@ -43,12 +45,32 @@ Email formatting:
 the boundary. The email builder formats using the server's local zone without supplying the team timezone.
 Event forms use the editing device's timezone even though a team timezone setting already exists.
 
-## Fix
+## Product decisions
 
-Use an explicit event/team timezone for both input and communication, make recurrence boundaries inclusive,
-and use actual event dates in reminders.
+**D5 resolved — September 15, 2026:** events must include their own timezone field. Default it to the
+team's timezone and allow an event-level override for events in other locations.
+
+- Store a named timezone (for example, `America/Denver`) alongside the event timestamps.
+- Interpret date/time inputs in the selected event timezone. Display the event's local time and a clear
+  timezone label in the UI and communications, regardless of the device/server timezone.
+- Changing the team's default timezone must not shift or reinterpret existing events.
+- Recurrence retains its local clock time across DST using the event timezone. Its end date is inclusive
+  in that zone; reminders use correct event-local dates and wording.
+- Preserve existing stored instants during backfill of the timezone field.
+- Scheduled-time changes follow D3 notification rules and leave availability unchanged under D4.
+
+See [D5 decision record](../reviews/2026-09-15-bug-backlog-review.md#d5--what-timezone-defines-an-event-010).
+No application or schema change has been implemented.
+
+## Proposed fix
+
+Add the event timezone field and use it consistently for input, UI display, communications and recurrence.
+Make recurrence boundaries inclusive and use actual event-local dates in reminders. Follow the accepted
+D5 rules for defaults, overrides, DST, existing events and migration.
 
 ## Regression test
 
-Cover DST transitions, a coach editing from a different timezone than the team, and recipients in a third
-timezone. Pin the suite's TZ rather than inheriting the runner's.
+Cover an event outside the team timezone, a coach editing from a third timezone, DST transitions,
+inclusive end dates and consistent UI/email/reminder dates. Assert changing the team default does not
+shift existing events and backfilling the event timezone preserves stored instants. Pin the suite's TZ
+rather than inheriting the runner's.

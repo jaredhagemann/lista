@@ -4,6 +4,8 @@
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (finding 11)
 **Area:** invites / identity / mobile
+**Evidence class:** Static — code inspection only
+**Last verified:** `5acde1074`, code inspection, 2026-09-04
 
 ## Symptom
 
@@ -41,15 +43,29 @@ The native screen has no player-vs-guardian branch. Web guardian acceptance alwa
 with no "select an existing child" path. Concurrent acceptance is not protected by an atomic claim of the
 invitation, and no merge/reconciliation workflow exists.
 
-## Fix
+## Product decisions
+
+**D6 resolved for historical repair — September 15, 2026:** the user confirms no duplicate identities
+exist and that they are the only mobile-app user. No historical cleanup or merge workflow is required.
+This is user-provided context; no production-data inspection has been performed.
+
+Retain the prevention work: distinguish player versus guardian acceptance on mobile, offer an explicit
+selection among already-managed children, and make concurrent/repeated acceptance safe. Do not match
+identities automatically by name or birthday.
+
+See [D6 decision record](../reviews/2026-09-15-bug-backlog-review.md#d6--how-should-existing-duplicate-identities-be-repaired-011).
+No application fix has been implemented.
+
+## Proposed fix
 
 Use one identity-aware, transactional acceptance workflow across both clients. Offer selection of an
 existing managed child, distinguish the child's identity from the recipient email, and make duplicate and
 concurrent acceptance safe.
 
-Related: [[012]] covers the missing recipient check on the same acceptance paths.
+Related: [BUG-012](./012-invite-server-actions-lack-recipient-check.md) covers the missing recipient check
+on the same acceptance paths. The two share acceptance boundaries and should be designed together.
 
-**Open question:** what should happen to child identities already duplicated in production? See "Questions".
+Historical duplicate repair is out of scope per the D6 clarification above.
 
 ## Regression test
 
