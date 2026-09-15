@@ -4,8 +4,8 @@
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (finding 14)
 **Area:** performance / data integrity
-**Evidence class:** Static — production row limit **unverified**
-**Last verified:** `5acde1074`, code inspection, 2026-09-04
+**Evidence class:** Static (queries) — production row cap **confirmed 1,000** on 2026-09-15
+**Last verified:** code `5acde1074`; production cap checked in the Supabase dashboard 2026-09-15
 
 ## Symptom
 
@@ -25,16 +25,17 @@ once older events fill the cap.
 **Expected:** every response renders, or an explicit "could not load" state.
 **Actual:** truncated rows render as "no response" — indistinguishable from a genuine non-reply.
 
-**Deployment status:** the 1,000 cap is from the checked-in `supabase/config.toml`. **The production cap has
-not been verified.** That verification is an operator/engineering evidence task, not a product decision —
-someone needs to check the deployed configuration.
+**Deployment status — confirmed 2026-09-15.** Production is **also set to 1,000 rows**, checked in the
+Supabase dashboard. The cap is no longer hypothetical: the arithmetic below applies to the live
+database, and any team that reaches 1,020 availability records will silently lose rows today.
 
 ## Evidence
 
 - Schedule query: `apps/web/src/app/dashboard/schedule/page.tsx:26`
 - Availability query: `apps/web/src/app/dashboard/availability/page.tsx:62`
 - Club member query: `apps/web/src/app/dashboard/club/members/page.tsx:100`
-- Configured cap: `supabase/config.toml:17`
+- Configured cap (local): `supabase/config.toml:17`
+- Production cap: Supabase dashboard, Project Settings → API → Max rows — **1,000**, confirmed 2026-09-15
 
 ## Cause
 

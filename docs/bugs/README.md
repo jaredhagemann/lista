@@ -30,12 +30,13 @@ A local reproduction against checked-in migrations does **not** establish produc
 ## Severity
 
 **P0 is deliberately narrow:** a *reproduced* defect that any authenticated user can trigger with no
-prerequisites beyond a guessable identifier, or that is actively destroying data in production. The point of
-the narrow definition is that P0 means "stop other work," and a P0 list of a dozen items means nothing.
+prerequisites beyond a guessable identifier; that is actively destroying data in production; or that
+leaves a core workflow **confirmed non-functional in production**. The point of the narrow definition is
+that P0 means "stop other work," and a P0 list of a dozen items means nothing.
 
 | | Meaning | Response |
 | --- | --- | --- |
-| **P0** | Reproduced, no-prerequisite authorization bypass, or active data loss in production | Fix now, ahead of feature work |
+| **P0** | Reproduced no-prerequisite authorization bypass; active data loss; or a core workflow confirmed dead in production | Fix now, ahead of feature work |
 | **P1** | A real workflow is broken or silently wrong, with no reasonable workaround | Fix before the next release |
 | **P2** | Wrong or confusing behavior with a workaround | Schedule it |
 | **P3** | Cosmetic, or an annoyance with no functional impact | Opportunistic |
@@ -44,6 +45,10 @@ An authorization bypass that needs a prerequisite — already holding an admin r
 else's invitation ID — is **P1, not P0**. It is still an authorization bug and still gets a hostile-path
 regression test; it just does not stop the line. Record that reasoning in the ticket so the grade is not
 re-litigated.
+
+The third clause was added on 2026-09-15 for [BUG-008](./008-cron-routes-redirected-to-login.md), after a
+production probe showed every scheduled job had been dead since deploy. A confirmed outage of a core
+workflow is a stop-other-work event even though nothing is bypassed and nothing is being destroyed.
 
 Severity is about response urgency, not blame. Do not regrade to make a backlog look better.
 

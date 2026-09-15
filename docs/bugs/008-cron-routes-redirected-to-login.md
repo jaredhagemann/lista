@@ -1,11 +1,16 @@
 # BUG-008 — Every scheduled job is redirected to /login and never runs
 
-**Severity:** P1
+**Severity:** P0 (raised from P1 on 2026-09-15 after production confirmation)
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (finding 8)
 **Area:** infra / routing / notifications
 **Evidence class:** **Reproduced in production** (2026-09-15) and locally
 **Last verified:** production `www.lista.team`, 2026-09-15 — see Production confirmation below
+
+**Severity note.** Raised to P0 on 2026-09-15 once the production probe confirmed every scheduled job
+has been dead since deploy. Nothing is bypassed and nothing is being destroyed, so this sits under the
+third P0 clause in `README.md` — a core workflow confirmed non-functional in production — which was
+added for this bug.
 
 ## Symptom
 
