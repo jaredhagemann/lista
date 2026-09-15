@@ -37,28 +37,47 @@ were modified out of band, was **not** established by the review.
 
 ## Product decisions
 
-Tracked as **D8** in `docs/reviews/2026-09-15-bug-backlog-review.md`, shared with
-[BUG-004](./004-profile-email-exposed-to-teammates.md):
+**D8 resolved — user decision, 2026-09-15:** children's photos may be viewed by **teammates and clubmates**,
+with no access outside the team/club. Shared with
+[BUG-004](./004-profile-email-exposed-to-teammates.md).
 
-| Question | Recommendation | Decision |
-| --- | --- | --- |
-| How are children's avatars served? | Through authorized access, not a public URL | **Open** |
-| May a club logo be public? | Yes, if it is intended as the public club identity | **Open** |
+**This settles the fix direction: the buckets stay private.**
 
-Do **not** make all buckets public merely to repair broken images. That would resolve the mismatch by
-discarding the privacy model rather than choosing one.
+A Supabase public URL is an unguessable but **unauthenticated** link — anyone holding it can open the image,
+including someone who has left the club or never belonged to it, and it keeps working after the child leaves.
+That is access outside the team/club, so `getPublicUrl()` is not a permitted serving path for avatars under
+D8. Serve them through authorized downloads or signed URLs instead.
+
+**Making the buckets public is now explicitly ruled out**, not merely discouraged — it was the tempting
+one-line repair for the broken images, and it would contradict D8.
+
+| Asset | Serving path |
+| --- | --- |
+| Child/player avatars | Authorized download or signed URL, scoped to team/club |
+| Team images | Same as avatars unless the club logo exception below applies |
+| Club logo | **Open** — see below |
+
+**Open sub-question — is a club logo public?** D8 covers personal data; a club logo is org branding, and a
+public club subdomain landing page would need it to load for signed-out visitors. Recommend treating the
+club logo as public identity, separate from personal assets. Confirm before implementing.
 
 ## Cause
 
 The migrations create private buckets while the app generates and stores public URLs. **The proven defect is
 this configuration/URL mismatch** — not that a privacy model was never decided, which is a stronger claim
-than the evidence supports. D8 supplies the serving policy.
+than the evidence supports.
 
 ## Proposed fix
 
-Choose a serving path per asset type under D8 and make the migrations and the app agree.
+Keep the buckets private and replace `getPublicUrl()` with an authorized serving path for personal assets,
+so the migrations and the app agree. Decide the club logo separately.
+
+Note that stored URLs already written into rows will need migrating, not just the upload path changing.
 
 ## Regression test
 
 Assert upload-then-fetch round-trips against a database built from **migrations alone**, so the app and the
 checked-in configuration cannot drift apart again.
+
+Assert an avatar URL is **not** retrievable by an unauthenticated request or by a user outside the
+team/club — the D8 boundary — and that a teammate can retrieve it.

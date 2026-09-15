@@ -35,18 +35,22 @@ acceptance, and proceeds.
 ## Product decisions
 
 **Split the authorization repair from the expiry policy.** The missing recipient check is a definite
-authorization bug and is ready to fix now. Expiry is **additional product behavior** that this ticket never
-specified — no lifetime, no resend semantics, no transition for existing pending links.
+authorization bug and is ready to fix now. Expiry is **additional product behavior** that this ticket
+never specified.
 
-Tracked as **D9** in `docs/reviews/2026-09-15-bug-backlog-review.md`:
+**D9 resolved — user decision, 2026-09-15**, accepting the review's recommendation:
 
-| Question | Recommendation | Decision |
-| --- | --- | --- |
-| Invitation lifetime | 14 days as a starting point — **proposed, not an existing requirement** | **Open** |
-| Resend semantics | Resend revokes/replaces the old invitation | **Open** |
-| Existing pending invitations | Needs a grace or reissue policy **before** expiry is enforced | **Open** |
+| Question | Decision |
+| --- | --- |
+| Invitation lifetime | **14 days** |
+| Resend semantics | A resend **revokes and replaces** the old invitation, so only the newest link works |
+| Expired-link experience | Show a clear **request-a-new-invite** state, not a generic error or a dead end |
+| Order of work | Ship the recipient check **first**; expiry follows separately |
 
-Do not enforce expiry as part of the recipient-check fix.
+**Open residual — existing pending invitations.** The decision is that a grace or reissue policy must
+be chosen *before* expiry is enforced, but not what it is. Recommend giving every invitation pending at
+deploy time a fresh 14 days from the deploy date, rather than expiring links that were valid when sent.
+Needs a yes/no before the expiry work ships; it does not block the recipient check.
 
 ## Cause
 
@@ -57,7 +61,10 @@ Bug 1), but the server actions were not covered by that fix.
 ## Proposed fix
 
 Centralize normalized recipient checks, role/type validation and atomic one-time acceptance **in the
-mutation itself**, shared with the API route rather than duplicated. Leave expiry out until D9 is settled.
+mutation itself**, shared with the API route rather than duplicated.
+
+Ship this first. The D9 expiry work — 14-day lifetime, revoke-on-resend, request-a-new-invite state — is a
+separate change that must not delay the authorization repair.
 
 Shares acceptance boundaries with [BUG-011](./011-identity-differs-web-vs-mobile.md) — design the two
 together.
@@ -72,3 +79,6 @@ through the self-acceptance path.
 
 Preserve legitimate retries without creating duplicate records: two acceptances of the same invitation by
 the right person must be safe, and concurrent acceptance must resolve to one membership.
+
+For the D9 expiry work, separately: an invitation older than 14 days is rejected; a resend invalidates the
+previous link; an expired link renders the request-a-new-invite state rather than an error.
