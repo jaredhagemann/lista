@@ -66,6 +66,18 @@ All new feature development must be test-driven: write tests before implementati
 - Changes reach `main` exclusively via pull request. Open a PR, get it reviewed/approved, then merge.
 - When a task is complete: commit changes on the feature branch, push, and open a PR to `main`.
 
+## Bug Tracking
+
+Bugs are tracked as markdown files in `docs/bugs/` — open bugs at the top level, resolved ones in
+`docs/bugs/fixed/`. See `docs/bugs/README.md` for the full process.
+
+- When the user reports a bug, file it (`docs/bugs/NNN-slug.md`, copied from `TEMPLATE.md`) before fixing
+  it, unless they ask for an immediate fix.
+- Fixes go on a `fix/<slug>` branch via PR, like any other change.
+- Every fix needs a regression test that fails against the unfixed code — write it first.
+- Move the bug file to `docs/bugs/fixed/` **in the same PR as the fix**, with **Cause**, **Fix**, and
+  **Regression test** filled in.
+
 ## Database Migrations
 
 **Never run `supabase db push` manually against the production (or staging) database.**
