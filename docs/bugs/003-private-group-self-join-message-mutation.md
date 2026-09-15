@@ -56,9 +56,19 @@ The removal contract plus team-scoped DMs together support **denying** DM access
 is lost. Letting former members keep a historical DM view would be a deliberate exception needing its own
 recorded decision. Preserving records internally is distinct from granting former members access.
 
-| Open question | Recommendation | Decision |
+| Question | Decision | Date |
 | --- | --- | --- |
-| Does a youth club need adult-to-child communication restrictions beyond the above? | Out of scope here; raise as its own spec | **Open** |
+| Does a youth club need adult-to-child communication restrictions? | **Deferred** — who may DM whom is unchanged for now; the user is still deciding how to handle it | 2026-09-15 |
+
+**Deferred, not declined.** DM permissions stay exactly as they are in this fix. Do not add, tighten
+or relax who may message whom, and do not treat the absence of restrictions as a settled position —
+it is an open question parked deliberately, to be specified on its own later.
+
+**One exception, flagged.** Defect 3 below — DM access surviving team removal — stays in scope. It is
+not a new restriction on who may DM whom; it is the existing removal contract
+(`docs/specs/archive/remove-team-member.md:25`) not being applied, so a person who left the club keeps
+reading DMs. If you would rather freeze all DM behavior until the policy work happens, say so and it
+drops out of this ticket.
 
 A moderation or child-communication policy must not silently broaden director access while fixing group
 admission.
