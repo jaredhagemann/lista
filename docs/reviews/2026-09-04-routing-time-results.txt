@@ -1,0 +1,10 @@
+
+ RUN  v4.0.18 C:/Users/jared/Projects/lista
+
+ ✓ docs/reviews/2026-09-04-routing-time-probes.test.ts (5 tests) 20ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  16:02:10
+   Duration  424ms (transform 67ms, setup 0ms, import 241ms, tests 20ms, environment 0ms)
+
