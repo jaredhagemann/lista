@@ -74,7 +74,7 @@ behavior and must be inverted as part of the fix.
 ## Fix as implemented
 
 **Branch:** `fix/001-team-members-self-insert`
-**PR:** see branch
+**PR:** #55
 **Migration:** `supabase/migrations/20260916000000_restrict_team_members_insert.sql`
 
 **Scope was wider than filed.** The INSERT policy had three branches, and two were open:
