@@ -94,7 +94,7 @@ denied); two guardians removing concurrently (the invariant must hold).
 ## Fix as implemented
 
 **Branch:** `fix/002-profile-managers-claim-child`
-**PR:** see branch
+**PR:** #56
 **Migration:** `supabase/migrations/20260917000000_protect_guardian_links.sql`
 
 **Scope was much wider than filed.** Mapping every place a guardian link is created, removed or used turned
