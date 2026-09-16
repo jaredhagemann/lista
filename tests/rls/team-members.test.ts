@@ -4,6 +4,7 @@ import {
   createTestTeam,
   addTeamMember,
   createManagedProfile,
+  addOrgMember,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -51,14 +52,54 @@ describe("team_members RLS", () => {
     expect(error).toBeNull();
   });
 
-  it("user can self-insert as team member", async () => {
-    const coach = await createTestUser();
-    const joiner = await createTestUser();
-    const { teamId } = await createTestTeam(coach.user.id);
+  // BUG-001: self-insertion used to succeed at any role, so knowing a team UUID
+  // was enough to become its coach. Membership must come from an admin, an
+  // accepted invitation, or a team-creation RPC — never a direct API insert.
+  it.each(["player", "parent", "coach", "manager", "director"] as const)(
+    "uninvited user cannot self-insert as %s",
+    async (role) => {
+      const coach = await createTestUser();
+      const joiner = await createTestUser();
+      const { teamId } = await createTestTeam(coach.user.id);
 
-    const { error } = await joiner.client
+      const { error } = await joiner.client
+        .from("team_members")
+        .insert({ team_id: teamId, profile_id: joiner.user.id, role });
+      expect(error).not.toBeNull();
+
+      const { data: isAdmin } = await joiner.client.rpc("is_team_admin", { t_id: teamId });
+      expect(isAdmin).toBe(false);
+      const { data: visible } = await joiner.client
+        .from("team_members")
+        .select()
+        .eq("team_id", teamId);
+      expect(visible).toHaveLength(0);
+    }
+  );
+
+  it("an org owner elsewhere cannot self-insert into another org's team", async () => {
+    const coach = await createTestUser();
+    const outsider = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const { orgId: otherOrgId } = await createTestTeam(outsider.user.id);
+    await addOrgMember(otherOrgId, outsider.user.id, "owner");
+
+    const { error } = await outsider.client
       .from("team_members")
-      .insert({ team_id: teamId, profile_id: joiner.user.id, role: "player" });
+      .insert({ team_id: teamId, profile_id: outsider.user.id, role: "coach" });
+    expect(error).not.toBeNull();
+  });
+
+  it("org director can INSERT a member into a team in their org (implicit admin)", async () => {
+    const coach = await createTestUser();
+    const director = await createTestUser();
+    const newPlayer = await createTestUser();
+    const { orgId, teamId } = await createTestTeam(coach.user.id);
+    await addOrgMember(orgId, director.user.id, "director");
+
+    const { error } = await director.client
+      .from("team_members")
+      .insert({ team_id: teamId, profile_id: newPlayer.user.id, role: "player" });
     expect(error).toBeNull();
   });
 

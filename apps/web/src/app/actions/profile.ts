@@ -80,8 +80,6 @@ export async function createManagedProfile({
   birthday,
   relationship,
   managerId,
-  teamId,
-  role = "player",
 }: {
   firstName: string;
   lastName?: string;
@@ -89,8 +87,6 @@ export async function createManagedProfile({
   birthday?: string;
   relationship?: string;
   managerId: string; // profiles.id of the account holder who will manage this profile
-  teamId?: string;  // if provided, immediately add to this team
-  role?: string;
 }) {
   const supabase = await createServerClient();
   const {
@@ -104,6 +100,9 @@ export async function createManagedProfile({
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
+  // Deliberately no team admission here: this client bypasses RLS, so adding a
+  // team_members row would sidestep the INSERT policy (BUG-001). Players join
+  // teams through an admin or an accepted invitation.
   // Create the managed profile (no auth_user_id)
   const profileId = crypto.randomUUID();
   const { error: profileError } = await admin.from("profiles").insert({
@@ -125,16 +124,6 @@ export async function createManagedProfile({
     // Clean up the profile if linking fails
     await admin.from("profiles").delete().eq("id", profileId);
     return { error: linkError.message };
-  }
-
-  // Optionally add to a team
-  if (teamId) {
-    const { error: memberError } = await admin.from("team_members").insert({
-      team_id: teamId,
-      profile_id: profileId,
-      role,
-    });
-    if (memberError) return { error: memberError.message };
   }
 
   // If the manager's email matches a pending invitation, try to link

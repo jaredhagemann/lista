@@ -76,7 +76,7 @@ layer already implements the decided behavior.
 
 **Caveat on the outer boundary.** D8's "no access outside the team" is **not currently enforced** — not
 because of the profiles policy, which is correctly scoped, but because
-[BUG-001](./001-team-members-self-insert-coach.md) lets any authenticated user insert themselves into any
+[BUG-001](./fixed/001-team-members-self-insert-coach.md) lets any authenticated user insert themselves into any
 team and thereby become a "teammate." **Fixing BUG-001 is what actually enforces D8's outer boundary.**
 That dependency is the most important thing on this ticket; the privacy-page edit is the easy half.
 

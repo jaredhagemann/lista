@@ -250,7 +250,7 @@ describe("is_team_member extended for managed profiles", () => {
 });
 
 describe("team_members: inserting managed profiles", () => {
-  it("manager can add their managed profile to a team they are on", async () => {
+  it("team admin can add their own managed profile to their team", async () => {
     const parent = await createTestUser();
     const { teamId } = await createTestTeam(parent.user.id);
     const managedId = await createManagedProfile(parent.user.id);
@@ -278,6 +278,44 @@ describe("team_members: inserting managed profiles", () => {
       role: "player",
     });
 
+    expect(error).not.toBeNull();
+  });
+
+  // BUG-001: a guardian could add their managed child to any team and, through
+  // is_team_member's manager branch, read that team's data. Managed profiles are
+  // free to create, so this was self-admission by another route.
+  it("guardian who is not a team member cannot add their managed child to that team", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const managedId = await createManagedProfile(parent.user.id);
+
+    const { error } = await parent.client.from("team_members").insert({
+      team_id: teamId,
+      profile_id: managedId,
+      role: "player",
+    });
+    expect(error).not.toBeNull();
+
+    const { data: visible } = await parent.client
+      .from("team_members")
+      .select()
+      .eq("team_id", teamId);
+    expect(visible).toHaveLength(0);
+  });
+
+  it("guardian who is only a player on a team cannot add their managed child to it", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, parent.user.id, "player");
+    const managedId = await createManagedProfile(parent.user.id);
+
+    const { error } = await parent.client.from("team_members").insert({
+      team_id: teamId,
+      profile_id: managedId,
+      role: "player",
+    });
     expect(error).not.toBeNull();
   });
 });
