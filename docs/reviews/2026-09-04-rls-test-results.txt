@@ -1,0 +1,271 @@
+
+ RUN  v4.0.18 C:/Users/jared/Projects/lista
+
+stdout | tests/rls/training-sessions.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+
+ ✓ tests/rls/training-sessions.test.ts (32 tests) 25750ms
+     ✓ player inserts own session on own team → allowed, created_by stamped  445ms
+     ✓ parent inserts for managed child → allowed; created_by = parent, profile_id = child  414ms
+     ✓ forged created_by is overwritten by the trigger  400ms
+     ✓ parent inserts for themselves (not a player) → denied  387ms
+     ✓ coach inserts for a roster player on a team they admin → allowed; created_by = coach  470ms
+     ✓ player inserts against a team they're not on → denied  382ms
+     ✓ free-tier org insert → denied; canceled → denied; past_due & trialing → allowed  439ms
+     ✓ player cannot SELECT a teammate's raw row; coach can; other-team coach cannot; director can  970ms
+     ✓ global coach visibility: a coach on any of the player's current teams reads all rows, incl. rows logged through another team  774ms
+     ✓ delete: own allowed, teammate denied, coach allowed  1352ms
+     ✓ delete window: player can delete in-window, not 8+ days old; coach can delete old  941ms
+     ✓ edit-vs-delete after leaving the logging-context team: in-window delete allowed, edit denied  1104ms
+     ✓ duration CHECK bounds: 999 and 3 denied; 5 and 300 accepted  419ms
+     ✓ opt-out toggle RLS: self allowed, parent-of-child allowed, non-manager denied  672ms
+     ✓ future date rejected; 8 days ago rejected; 7 days ago accepted  409ms
+     ✓ invalid teams.timezone still allows insert (UTC fallback)  460ms
+     ✓ category must belong to the logging-context team and be active (rule 6)  859ms
+     ✓ rule 6 is conditional: archiving a category does not freeze edits on its sessions  661ms
+     ✓ a client cannot null the logging context to bypass validation  650ms
+     ✓ created_by is immutable on update  626ms
+     ✓ archived team: insert & update rejected; director delete allowed; row still selectable  869ms
+     ✓ daily cap: 361 rejected, 360 accepted; across two teams  423ms
+     ✓ cap excludes the edited row on update  909ms
+     ✓ concurrent inserts race the cap: exactly one of 300+300 commits  384ms
+     ✓ coach updates a player-created session → allowed; created_by unchanged (still the player)  399ms
+     ✓ coach denied for a player on a team they do NOT admin  578ms
+     ✓ coach denied for a non-player subject on their own team  374ms
+     ✓ org director may log for a team's player; created_by = director  546ms
+     ✓ coach backdate exemption: >7 days allowed, but future and daily cap still enforced  397ms
+     ✓ coach logs for a managed (no-auth) roster player  397ms
+     ✓ player still edits/deletes a coach-logged session within their own window  410ms
+     ✓ global session edit scope: a coach can delete but NOT update a session logged through a team they don't admin  841ms
+stdout | tests/rls/training-leaderboard.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+
+ ✓ tests/rls/training-leaderboard.test.ts (16 tests) 14044ms
+     ✓ team scope: only that team's players, ranked; ties share rank and skip  999ms
+     ✓ opted-out and zero-minute players are absent from the board  756ms
+     ✓ club scope: cross-team totals a member cannot read raw; names masked  610ms
+     ✓ multi-team player: global total counts once on club and fully on each team board  431ms
+     ✓ hard-deleting a context team preserves the player's global sessions (SET NULL) — still counts on another team's board  608ms
+     ✓ player who left the team drops off the board but keeps history  621ms
+     ✓ archived team drops off club board but a director sees it in team scope  588ms
+     ✓ caller checks: non-member club → error; free-tier → error; team derives org  589ms
+     ✓ club filter team must belong to the org  591ms
+     ✓ parameter validation: bad scope/period/missing ids raise  412ms
+     ✓ week boundary: sessions in adjacent weeks bucket separately  424ms
+     ✓ summary: denominator excludes opted-out, counts zero-minute; own totals + rank  986ms
+     ✓ summary: zero-minute subject → null rank; opted-out subject still gets a rank  800ms
+     ✓ tie display order uses first name before profile_id  589ms
+     ✓ summary subject authorization: self/managed allowed, others denied  810ms
+stdout | tests/rls/team-deletion.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  enable debug logging with { debug: true }
+
+ ✓ tests/rls/team-deletion.test.ts (19 tests) 8981ms
+     ✓ non-owner coach can read owner_id  372ms
+     ✓ player can read owner_id  375ms
+     ✓ non-member cannot read owner_id  374ms
+     ✓ team owner cannot directly UPDATE owner_id via client  376ms
+     ✓ non-owner admin cannot directly UPDATE owner_id via client  376ms
+     ✓ player cannot directly UPDATE owner_id via client  380ms
+     ✓ non-owner admin cannot directly DELETE a team via client  377ms
+     ✓ player cannot directly DELETE a team via client  379ms
+     ✓ deleting a team cascades to team_members  361ms
+     ✓ deleting a team cascades to events and availability  412ms
+     ✓ deleting a team cascades to channels, channel_members, and messages  414ms
+     ✓ after team deletion, former members cannot access storage objects via RLS policies  528ms
+stdout | tests/rls/training-categories.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+
+ ✓ tests/rls/training-categories.test.ts (16 tests) 8227ms
+     ✓ a roster player can select their team's categories; a non-member cannot  591ms
+     ✓ coach/manager/director/owner can add; player/parent cannot  1002ms
+     ✓ a coach of another team in the same org cannot add to this team  388ms
+     ✓ duplicate labels within a team are rejected (case/space-insensitive); allowed across teams  389ms
+     ✓ rename propagates to sessions; created_by/created_at preserved, updated_at advances  417ms
+     ✓ a category's team_id is immutable  382ms
+     ✓ hard-deleting a non-default category with sessions nulls their category_id (SET NULL); archiving keeps the label  429ms
+stdout | tests/rls/messages.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+
+ ✓ tests/rls/messages.test.ts (14 tests) 8150ms
+     ✓ team member can SELECT messages in the team channel  407ms
+     ✓ non-member cannot INSERT to the team channel  382ms
+     ✓ non-member cannot SELECT messages from the team channel  396ms
+     ✓ cannot INSERT a message with a different sender_id (spoofing)  389ms
+     ✓ parent managing a team member can INSERT to that team's channel as themselves  395ms
+     ✓ parent can SELECT messages from their child's team channel  390ms
+     ✓ admin can soft-delete any message  387ms
+     ✓ non-sender non-admin cannot soft-delete a message  554ms
+     ✓ group channel member can INSERT and SELECT messages  391ms
+     ✓ non-member of group channel cannot INSERT or SELECT messages  570ms
+     ✓ DM participants can INSERT and SELECT messages  391ms
+     ✓ third party cannot SELECT DM messages  579ms
+stdout | tests/rls/profile-managers.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🛡️ auth for agents: https://vestauth.com
+
+ ✓ tests/rls/profile-managers.test.ts (14 tests) 7203ms
+     ✓ user cannot view another user's managed profiles  376ms
+     ✓ team admin can view managed profiles for members of their team  383ms
+     ✓ stranger cannot read a managed profile they don't manage  383ms
+     ✓ stranger cannot update a managed profile they don't manage  391ms
+     ✓ teammates can see a managed profile on their team  412ms
+     ✓ non-manager cannot insert availability for someone else's managed profile  407ms
+     ✓ parent can see events on a team their managed profile is on  406ms
+     ✓ stranger cannot see events on a team only accessible via managed profiles  583ms
+     ✓ non-admin cannot add another user's managed profile to a team  564ms
+stdout | tests/rls/availability.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+
+ ✓ tests/rls/availability.test.ts (12 tests) 7471ms
+     ✓ team member can SELECT availability  427ms
+     ✓ user can INSERT own availability  392ms
+     ✓ user cannot INSERT availability for others  406ms
+     ✓ user can UPDATE own availability  410ms
+     ✓ user cannot UPDATE others' availability  413ms
+     ✓ parent-only manager cannot INSERT own availability for a team they don't belong to  420ms
+     ✓ parent CAN INSERT managed child's availability when the child is a roster member  424ms
+     ✓ user can DELETE own availability  417ms
+     ✓ user cannot DELETE others' availability  584ms
+     ✓ admin (coach) can INSERT availability for any member  398ms
+     ✓ admin (coach) can UPDATE any member's availability  465ms
+     ✓ admin (coach) can DELETE any member's availability  441ms
+stdout | tests/rls/team-members.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  override existing env vars with { override: true }
+
+ ✓ tests/rls/team-members.test.ts (12 tests) 7475ms
+     ✓ team member can SELECT team members  411ms
+     ✓ non-member cannot SELECT team members  386ms
+     ✓ admin can INSERT team members  399ms
+     ✓ user can self-insert as team member  405ms
+     ✓ non-admin cannot INSERT other members  589ms
+     ✓ admin can UPDATE team members  417ms
+     ✓ non-admin cannot UPDATE team members  413ms
+     ✓ admin can DELETE team members  403ms
+     ✓ admin can DELETE another admin (coach)  394ms
+     ✓ player cannot DELETE a team member  578ms
+     ✓ after removal, ex-member cannot read team events  417ms
+     ✓ after removal, profile manager loses team access if no other managed member remains  414ms
+stdout | tests/rls/invitations.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+
+ ✓ tests/rls/invitations.test.ts (13 tests) 6358ms
+     ✓ non-admin cannot INSERT invitations  362ms
+     ✓ manager can INSERT invitations  373ms
+     ✓ player team member cannot INSERT invitations  374ms
+     ✓ second player team member cannot INSERT invitations  375ms
+     ✓ player team member cannot UPDATE invitations  391ms
+     ✓ player team member cannot DELETE invitations  379ms
+     ✓ invited user can view own invitation  374ms
+     ✓ player team member cannot read pending invitations for their own team  366ms
+     ✓ authenticated user cannot read pending invitations for a team they don't belong to  361ms
+     ✓ admin cannot read pending invitations for another team  379ms
+stdout | tests/rls/teams.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  enable debug logging with { debug: true }
+
+ ✓ tests/rls/teams.test.ts (16 tests) 6591ms
+     ✓ non-member cannot SELECT a team  394ms
+     ✓ org director can create a team via create_club_team() RPC  396ms
+     ✓ non-admin member cannot UPDATE a team  372ms
+     ✓ non-admin member cannot UPDATE season  373ms
+     ✓ non-admin cannot UPDATE new team fields  382ms
+     ✓ non-admin cannot UPDATE logo_url or team_photo_url  372ms
+stdout | tests/rls/organizations.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  write to custom object with { processEnv: myObject }
+
+ ✓ tests/rls/organizations.test.ts (15 tests) 6206ms
+     ✓ user cannot SELECT an org they have no membership in  422ms
+     ✓ org member (organization_members row) can SELECT the org  495ms
+     ✓ director can SELECT the club-tier billing columns  466ms
+     ✓ non-member cannot SELECT the club-tier billing columns  438ms
+stdout | tests/rls/channels.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  override existing env vars with { override: true }
+
+ ✓ tests/rls/channels.test.ts (11 tests) 4937ms
+     ✓ non-member cannot SELECT team channels  367ms
+     ✓ manager of a team member can SELECT the team channel  378ms
+     ✓ non-member cannot INSERT a group channel  363ms
+     ✓ non-creator non-admin cannot DELETE a group channel  379ms
+     ✓ admin can DELETE any group channel  371ms
+     ✓ non-member cannot see group channels they are not in  375ms
+     ✓ group channel member can see their channel  384ms
+stdout | tests/rls/storage.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+
+ ✓ tests/rls/storage.test.ts (10 tests) 4027ms
+       ✓ user cannot upload to avatars/{other_user_id}/  364ms
+       ✓ non-admin cannot upload to team-images/{team_id}/  371ms
+       ✓ non-owner org member cannot upload to org-images/{orgId}/  374ms
+       ✓ non-member cannot upload to org-images/{orgId}/  372ms
+stdout | tests/rls/organization_members.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+
+ ✓ tests/rls/organization_members.test.ts (6 tests) 3170ms
+     ✓ org director can SELECT the full org_members list  415ms
+     ✓ user with no org membership cannot SELECT organization_members for that org  410ms
+     ✓ non-owner cannot INSERT into organization_members  377ms
+     ✓ only one owner row is allowed per org (partial unique index)  371ms
+     ✓ multiple directors are allowed in the same org  530ms
+stdout | tests/rls/locations.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+
+ ✓ tests/rls/locations.test.ts (7 tests) 2992ms
+     ✓ team member can SELECT locations  393ms
+     ✓ non-member cannot SELECT locations  366ms
+     ✓ non-admin cannot INSERT locations  376ms
+     ✓ non-admin cannot modify locations  378ms
+stdout | tests/rls/events.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  write to custom object with { processEnv: myObject }
+
+ ✓ tests/rls/events.test.ts (7 tests) 2997ms
+     ✓ team member can SELECT events  400ms
+     ✓ non-member cannot SELECT events  370ms
+     ✓ non-admin cannot INSERT events  397ms
+     ✓ non-admin cannot modify events  367ms
+stdout | tests/rls/event-creation.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  enable debug logging with { debug: true }
+
+ ✓ tests/rls/event-creation.test.ts (8 tests) 2542ms
+stdout | tests/rls/profiles.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+
+ ✓ tests/rls/profiles.test.ts (6 tests) 2337ms
+     ✓ user can see teammate profiles  404ms
+     ✓ user cannot see non-teammate profiles  383ms
+     ✓ user cannot update another user's profile  392ms
+stdout | tests/rls/notification-preferences.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+
+ ✓ tests/rls/notification-preferences.test.ts (7 tests) 2164ms
+     ✓ user cannot see others' notification preferences  356ms
+     ✓ user cannot UPDATE others' notification preferences  360ms
+stdout | tests/rls/google-auth-trigger.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+
+ ✓ tests/rls/google-auth-trigger.test.ts (11 tests) 1613ms
+stdout | tests/rls/create-team-rpc.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+
+ ✓ tests/rls/create-team-rpc.test.ts (5 tests) 1416ms
+stdout | tests/rls/push-subscriptions.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+
+ ✓ tests/rls/push-subscriptions.test.ts (4 tests) 1209ms
+     ✓ user cannot see others' push subscriptions  354ms
+stdout | tests/rls/feedback.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  override existing env vars with { override: true }
+
+ ✓ tests/rls/feedback.test.ts (3 tests) 940ms
+     ✓ user cannot submit feedback on behalf of another user  347ms
+stdout | tests/rls/google-auth-linking.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+
+ ✓ tests/rls/google-auth-linking.test.ts (2 tests) 400ms
+stdout | tests/rls/training-parity.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  suppress all logs with { quiet: true }
+
+ ✓ tests/rls/training-parity.test.ts (1 test) 379ms
+
+ Test Files  25 passed (25)
+      Tests  267 passed (267)
+   Start at  15:57:29
+   Duration  143.08s (transform 246ms, setup 0ms, import 1.82s, tests 137.58s, environment 2ms)
+

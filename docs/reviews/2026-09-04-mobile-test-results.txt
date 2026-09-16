@@ -1,0 +1,67 @@
+FAIL __tests__/TabEmptyStates.test.tsx
+  ● Test suite failed to run
+
+    Cannot find module '@babel/runtime/helpers/interopRequireDefault' from '__tests__/TabEmptyStates.test.tsx'
+
+      88 | jest.mock("../contexts/AppContext", () => ({
+      89 |   useAppContext: () => mockNoTeamContext,
+    > 90 | }));
+         |     ^
+      91 |
+      92 | import ScheduleScreen from "../app/(app)/schedule/index";
+      93 | import TeamScreen from "../app/(app)/team/index";
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.require (__tests__/TabEmptyStates.test.tsx:90:5)
+
+FAIL __tests__/create-team-logic.test.ts
+  ● Test suite failed to run
+
+    Cannot find module '@babel/runtime/helpers/interopRequireDefault' from '__tests__/create-team-logic.test.ts'
+
+    > 1 | /**
+        |    ^
+      2 |  * Unit tests for the iOS CreateTeamScreen submit logic.
+      3 |  *
+      4 |  * Covers test-plan sections:
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (__tests__/create-team-logic.test.ts:1:132)
+
+FAIL __tests__/SwitcherSheet.test.tsx
+  ● Test suite failed to run
+
+    Cannot find module '@babel/runtime/helpers/interopRequireDefault' from '__tests__/SwitcherSheet.test.tsx'
+
+      56 | jest.mock("../contexts/AppContext", () => ({
+      57 |   useAppContext: () => mockCtxWithTeam,
+    > 58 | }));
+         |     ^
+      59 |
+      60 | import { SwitcherSheet } from "../components/SwitcherSheet";
+      61 |
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.require (__tests__/SwitcherSheet.test.tsx:58:5)
+
+FAIL __tests__/HomeScreen.test.tsx
+  ● Test suite failed to run
+
+    Cannot find module '@babel/runtime/helpers/interopRequireDefault' from '__tests__/HomeScreen.test.tsx'
+
+      60 | jest.mock("../contexts/AppContext", () => ({
+      61 |   useAppContext: () => mockDefaultContext,
+    > 62 | }));
+         |     ^
+      63 |
+      64 | import HomeScreen from "../app/(app)/index";
+      65 |
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.require (__tests__/HomeScreen.test.tsx:62:5)
+
+Test Suites: 4 failed, 4 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        4.924 s
+Ran all test suites.

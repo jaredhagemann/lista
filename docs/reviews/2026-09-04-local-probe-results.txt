@@ -1,0 +1,97 @@
+BEGIN
+SELECT 1
+GRANT
+INSERT 0 3
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 2
+INSERT 0 2
+INSERT 0 1
+SET
+ outsider_session 
+------------------
+ t
+(1 row)
+
+ outsider_teams_before 
+-----------------------
+                     0
+(1 row)
+
+INSERT 0 1
+ outsider_self_granted_admin 
+-----------------------------
+ t
+(1 row)
+
+ teammate_push_tokens_visible 
+------------------------------
+                            0
+(1 row)
+
+ claimant_session 
+------------------
+ t
+(1 row)
+
+INSERT 0 1
+UPDATE 1
+ claimant_gained_team_access 
+-----------------------------
+ t
+(1 row)
+
+INSERT 0 1
+ self_joined_private_groups 
+----------------------------
+                          1
+(1 row)
+
+ owner_session 
+---------------
+ t
+(1 row)
+
+UPDATE 1
+    plan    | client_written_billing_status 
+------------+-------------------------------
+ club_large | active
+(1 row)
+
+RESET
+    claimed_player_name    
+---------------------------
+ Unauthorized audit change
+(1 row)
+
+UPDATE 1
+SET
+ ordinary_player_session 
+-------------------------
+ t
+(1 row)
+
+ ordinary_player_can_read_coach_email 
+--------------------------------------
+                                    1
+(1 row)
+
+RESET
+SELECT 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+ child_rsvps_before_series_rebuild 
+-----------------------------------
+                                 1
+(1 row)
+
+DELETE 1
+ child_rsvps_after_series_rebuild 
+----------------------------------
+                                0
+(1 row)
+
+ROLLBACK
