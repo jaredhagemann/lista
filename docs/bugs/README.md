@@ -56,7 +56,7 @@ Severity is about response urgency, not blame. Do not regrade to make a backlog 
 
 Bug fixes follow the same rules as features — branch, PR, no direct commits to `main`:
 
-1. Branch `fix/<slug>` off `main`.
+1. Branch `fix/<NNN>-<slug>` off `main` — one bug per branch.
 2. Settle any open row in the ticket's **Product decisions** table first. A fix that changes a product
    contract needs the decision recorded before the code is written, not discovered at review.
 3. **Write the failing regression test first** (per the test-driven rule in `CLAUDE.md`), confirm it fails

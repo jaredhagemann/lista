@@ -73,10 +73,11 @@ Bugs are tracked as markdown files in `docs/bugs/` — open bugs at the top leve
 
 - When the user reports a bug, file it (`docs/bugs/NNN-slug.md`, copied from `TEMPLATE.md`) before fixing
   it, unless they ask for an immediate fix.
-- Fixes go on a `fix/<slug>` branch via PR, like any other change.
+- Fixes go on a `fix/<NNN>-<slug>` branch via PR, like any other change — one bug per branch.
+- Settle any open row in the ticket's **Product decisions** table before writing code.
 - Every fix needs a regression test that fails against the unfixed code — write it first.
-- Move the bug file to `docs/bugs/fixed/` **in the same PR as the fix**, with **Cause**, **Fix**, and
-  **Regression test** filled in.
+- Move the bug file to `docs/bugs/fixed/` **in the same PR as the fix**, with **Fix as implemented** and
+  **Verification** filled in and **Status** set to `Fixed`.
 
 ## Database Migrations
 
