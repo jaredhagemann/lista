@@ -53,12 +53,20 @@ remain forbidden.
 
 `profile_managers` permits INSERT whenever `manager_id = auth.uid()`, with no proof that the caller is
 authorized to manage `managed_id`. This is an independent path from
-[BUG-001](./001-team-members-self-insert-coach.md) — fixing team self-insertion does not close it.
+[BUG-001](./fixed/001-team-members-self-insert-coach.md) — fixing team self-insertion does not close it.
 
 **Revocation has the mirror-image flaw.** `removeProfileManager` (`apps/web/src/app/actions/managers.ts:20`)
 lets any coach/manager/director sharing **any** team with the child delete the global guardian link. For a
 child in two clubs, a coach at club A can sever the parent's relationship used to access club B. This is a
 static finding, not a live reproduction, and it contradicts the D1 decision above.
+
+**A third path, found while fixing BUG-001 (static, 2026-09-16).** The `createManagedProfile` server action
+(`apps/web/src/app/actions/profile.ts`) takes `managerId` from the caller and inserts the
+`profile_managers` link through the **service role**, so RLS never sees it. Any signed-in user can create a
+managed profile and attach **someone else** as its manager. The only caller passes the signed-in user's own
+id, but server actions are callable directly. The mobile equivalent (`/api/managed-profiles`) derives the
+manager from the authenticated user and is not affected. BUG-001 removed this action's team-admission
+inputs but left `managerId` for this ticket.
 
 ## Proposed fix
 
