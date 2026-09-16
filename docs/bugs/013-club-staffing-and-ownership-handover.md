@@ -15,6 +15,10 @@ change:
 1. **Missing director routes** — already specified, owner-only, and shippable on its own.
 2. **Organization succession** — ownership transfer with recipient acceptance, club closure, admin recovery.
 3. **Sole-guardian deletion** — the D1 login invariant, which changes an existing product contract.
+   **Delivered by [BUG-002](./fixed/002-profile-managers-claim-child.md) (2026-09-16):** the database refuses to
+   remove a player's last guardian with a login, including through account deletion, and
+   `/api/account/delete` returns `409 sole_guardian`. `docs/test-plans/account-deletion.md` was reconciled in
+   the same PR.
 
 Area 1 should not wait on the D7 policy work in areas 2 and 3.
 

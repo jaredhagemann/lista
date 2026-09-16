@@ -97,8 +97,11 @@ export default async function MemberProfilePage({
   const managers = (rawManagers ?? []) as ProfileManagerRow[];
   const pendingInvites = (rawPendingInvites ?? []) as InvitationRow[];
 
+  // Includes the player's own Self link, so a player with a login counts too.
   const isManagerOfProfile = managers.some((m) => m.manager_id === user.id);
   const canEdit = isOwnProfile || isAdmin || isManagerOfProfile;
+  // Removing a guardian is for the player or a guardian — not staff (D1, BUG-002).
+  const canRemoveManagers = isManagerOfProfile;
 
   return (
     <RosterProfile
@@ -106,6 +109,7 @@ export default async function MemberProfilePage({
       managers={managers}
       pendingInvites={pendingInvites}
       canEdit={canEdit}
+      canRemoveManagers={canRemoveManagers}
       isAdmin={isAdmin}
       isOwnProfile={isOwnProfile}
       teamId={member.team_id!}

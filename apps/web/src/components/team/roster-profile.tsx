@@ -53,6 +53,7 @@ interface RosterProfileProps {
   managers: ProfileManagerRow[];
   pendingInvites: InvitationRow[];
   canEdit: boolean;
+  canRemoveManagers: boolean;
   isAdmin: boolean;
   isOwnProfile: boolean;
   teamId: string;
@@ -63,6 +64,7 @@ export function RosterProfile({
   managers,
   pendingInvites,
   canEdit,
+  canRemoveManagers,
   isAdmin,
   isOwnProfile,
   teamId,
@@ -137,6 +139,7 @@ export function RosterProfile({
           member={member}
           managers={managers}
           pendingInvites={pendingInvites}
+          canRemoveManagers={canRemoveManagers}
           isAdmin={isAdmin}
           teamId={teamId}
         />
@@ -287,12 +290,14 @@ function EditMode({
   member,
   managers,
   pendingInvites,
+  canRemoveManagers,
   isAdmin,
   teamId,
 }: {
   member: TeamMemberWithProfile;
   managers: ProfileManagerRow[];
   pendingInvites: InvitationRow[];
+  canRemoveManagers: boolean;
   isAdmin: boolean;
   teamId: string;
 }) {
@@ -468,6 +473,7 @@ function EditMode({
         managers={managers}
         pendingInvites={pendingInvites}
         canEdit={true}
+        canRemove={canRemoveManagers}
       />
 
       {/* Admin actions */}

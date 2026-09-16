@@ -102,6 +102,23 @@ export default function SettingsHubScreen() {
     setCheckingDelete(false);
 
     if (res.status === 409) {
+      const data = await res.json().catch(() => ({}));
+      if (data.error === "sole_guardian") {
+        // A player with no login of their own must keep a guardian who can sign in.
+        const players: string[] = data.players ?? [];
+        Alert.alert(
+          "Cannot Delete Account",
+          `You are the only guardian who can sign in for ${players.join(", ")}. Invite another guardian before deleting your account.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Managed Players",
+              onPress: () => router.push("/(app)/settings/managed-players" as any),
+            },
+          ]
+        );
+        return;
+      }
       Alert.alert(
         "Cannot Delete Account",
         "You are the owner of one or more teams. Transfer or delete your team(s) before deleting your account.",

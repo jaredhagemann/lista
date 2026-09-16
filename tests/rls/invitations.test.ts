@@ -3,6 +3,7 @@ import {
   createTestUser,
   createTestTeam,
   addTeamMember,
+  createManagedProfile,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -259,5 +260,112 @@ describe("invitations RLS", () => {
       .is("accepted_at", null);
     expect(error).toBeNull();
     expect(data!.length).toBe(0);
+  });
+});
+
+// ── BUG-002 ───────────────────────────────────────────────────────────────────
+// A guardian invitation (managed_profile_id set) grants guardianship of that
+// player on acceptance. Per D1 it may come from the player, an existing
+// guardian, or staff of a team the player is on. Anyone can create a team, so
+// "staff of any team" was a claim path.
+
+describe("invitations RLS: guardian invitations (BUG-002)", () => {
+  afterAll(async () => {
+    await cleanupTestData();
+  });
+
+  it("coach of an unrelated team cannot invite a guardian for a player not on that team", async () => {
+    const realCoach = await createTestUser();
+    const parent = await createTestUser();
+    const attacker = await createTestUser();
+    const { teamId: realTeamId } = await createTestTeam(realCoach.user.id);
+    const { teamId: attackerTeamId } = await createTestTeam(attacker.user.id);
+    const childId = await createManagedProfile(parent.user.id);
+    await addTeamMember(realTeamId, childId, "player");
+
+    const { error } = await attacker.client.from("invitations").insert({
+      team_id: attackerTeamId,
+      email: "attacker@test.local",
+      role: "manager",
+      managed_profile_id: childId,
+      invited_by: attacker.user.id,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("coach can invite a guardian for a player on their team", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const childId = await createManagedProfile(parent.user.id);
+    await addTeamMember(teamId, childId, "player");
+
+    const { error } = await coach.client.from("invitations").insert({
+      team_id: teamId,
+      email: "grandparent@test.local",
+      role: "manager",
+      managed_profile_id: childId,
+      invited_by: coach.user.id,
+    });
+    expect(error).toBeNull();
+  });
+
+  it("existing guardian can invite another guardian for their child", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const childId = await createManagedProfile(parent.user.id);
+    await addTeamMember(teamId, childId, "player");
+
+    const { error } = await parent.client.from("invitations").insert({
+      team_id: teamId,
+      email: "coparent@test.local",
+      role: "manager",
+      managed_profile_id: childId,
+      invited_by: parent.user.id,
+    });
+    expect(error).toBeNull();
+  });
+
+  it("player with their own login can invite a guardian for themselves", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const { error } = await player.client.from("invitations").insert({
+      team_id: teamId,
+      email: "mom@test.local",
+      role: "manager",
+      managed_profile_id: player.user.id,
+      invited_by: player.user.id,
+    });
+    expect(error).toBeNull();
+  });
+
+  it("coach cannot re-point an existing invitation at a player not on their team", async () => {
+    const coach = await createTestUser();
+    const otherParent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const outsideChildId = await createManagedProfile(otherParent.user.id);
+    const inviteId = crypto.randomUUID();
+    await adminClient.from("invitations").insert({
+      id: inviteId,
+      team_id: teamId,
+      email: "plain@test.local",
+      role: "player",
+    });
+
+    await coach.client
+      .from("invitations")
+      .update({ managed_profile_id: outsideChildId, role: "manager" })
+      .eq("id", inviteId);
+
+    const { data } = await adminClient
+      .from("invitations")
+      .select("managed_profile_id")
+      .eq("id", inviteId)
+      .single();
+    expect(data!.managed_profile_id).toBeNull();
   });
 });

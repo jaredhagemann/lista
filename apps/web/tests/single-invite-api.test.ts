@@ -286,3 +286,49 @@ describe("POST /api/invitations/send — manager email duplicate", () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ── Guardian invitations (BUG-002) ────────────────────────────────────────────
+// Accepting a guardian invitation (managedProfileId set) makes the recipient that
+// player's guardian. Per D1 staff may only send one for a player on their own
+// team. Anyone can create a team, so "admin of any team" was a claim path.
+
+describe("POST /api/invitations/send — guardian invitations (BUG-002)", () => {
+  const GUARDIAN_BODY = {
+    teamId: TEAM_ID,
+    email: "grandparent@example.com",
+    role: "manager",
+    managedProfileId: "child-1",
+    relationship: "Guardian",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupBaseAuth();
+  });
+
+  it("returns 403 when a team admin invites a guardian for a player not on that team", async () => {
+    const { insertMock } = setupFromRouting({ teamMembersResponses: [null] });
+
+    const res = await POST(makeRequest(GUARDIAN_BODY));
+
+    expect(res.status).toBe(403);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a team admin to invite a guardian for a player on that team", async () => {
+    setupFromRouting({ teamMembersResponses: [{ id: "tm-child" }] });
+
+    const res = await POST(makeRequest(GUARDIAN_BODY));
+
+    expect(res.status).not.toBe(403);
+  });
+
+  it("allows an existing guardian who is not a team admin to invite for their child", async () => {
+    mocks.mockAssertTeamAdmin.mockResolvedValue(false);
+    setupFromRouting({ managerLinks: [{ managed_id: "child-1" }] });
+
+    const res = await POST(makeRequest(GUARDIAN_BODY));
+
+    expect(res.status).not.toBe(403);
+  });
+});
