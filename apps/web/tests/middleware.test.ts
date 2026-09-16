@@ -9,6 +9,7 @@ vi.mock("@supabase/ssr", () => ({
 import { createServerClient } from "@supabase/ssr";
 import { updateSession } from "@/lib/supabase/middleware";
 import { config as middlewareConfig } from "@/middleware";
+import vercelConfig from "../vercel.json";
 
 const mockGetUser = vi.fn();
 
@@ -107,5 +108,39 @@ describe("middleware matcher — PWA asset exclusion (Bug 3 fix)", () => {
 
   it("includes /api/invite/some-id so that route reaches its handler", () => {
     expect(matcherPattern.test("/api/invite/some-id")).toBe(true);
+  });
+});
+
+describe("updateSession — Vercel cron routes (BUG-008)", () => {
+  // Vercel cron calls these paths with no session cookie and does not follow
+  // redirects, so a login redirect here means the job silently never runs.
+  // Each route handler authenticates the request itself with CRON_SECRET.
+  // Paths come from vercel.json so a newly scheduled job is covered automatically.
+  const cronPaths = vercelConfig.crons.map((cron) => cron.path);
+
+  it("vercel.json declares at least one cron job (guards the data-driven cases below)", () => {
+    expect(cronPaths.length).toBeGreaterThan(0);
+  });
+
+  it.each(cronPaths)("passes %s through to its handler when unauthenticated", async (path) => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const response = await updateSession(req(path));
+    expect(locationOf(response)).toBeNull();
+  });
+
+  it.each(cronPaths)("includes %s in the middleware matcher, so the exemption must live in updateSession", (path) => {
+    expect(new RegExp(middlewareConfig.matcher[0]).test(path)).toBe(true);
+  });
+
+  it("still redirects an unrelated protected API route to /login", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const response = await updateSession(req("/api/notifications/send"));
+    expect(locationOf(response)).toContain("/login");
+  });
+
+  it("does not exempt a path that only shares the /api/cron prefix without the slash", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const response = await updateSession(req("/api/cronjobs"));
+    expect(locationOf(response)).toContain("/login");
   });
 });

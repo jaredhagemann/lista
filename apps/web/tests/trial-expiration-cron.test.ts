@@ -251,6 +251,16 @@ describe("trial-expiration cron — authentication", () => {
     expect(mocks.customersRetrieve).not.toHaveBeenCalled();
   });
 
+  // BUG-008: once cron paths are exempt from the login redirect, this check is the
+  // only protection. Interpolating an unset CRON_SECRET yields "Bearer undefined",
+  // which a caller can send verbatim.
+  it("returns 401 for a literal 'Bearer undefined' when CRON_SECRET is unset", async () => {
+    vi.stubEnv("CRON_SECRET", undefined);
+    const res = await POST(makeRequest({ secret: "undefined" }));
+    expect(res.status).toBe(401);
+    expect(mocks.mockFrom).not.toHaveBeenCalled();
+  });
+
   it("accepts a valid Bearer secret and runs (200 with empty stats)", async () => {
     const res = await POST(makeRequest({ secret: CRON_SECRET }));
     expect(res.status).toBe(200);

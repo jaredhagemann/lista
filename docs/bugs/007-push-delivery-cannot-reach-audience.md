@@ -91,7 +91,7 @@ Gaps 1, 2, 4 and the caller-scoped token lookup can all be fixed **without** wai
 migration in D2.
 
 Related: [BUG-006](./006-schedule-changes-do-not-notify.md) (mutations that never dispatch) and
-[BUG-008](./008-cron-routes-redirected-to-login.md) (the reminder cron never runs).
+[BUG-008](./fixed/008-cron-routes-redirected-to-login.md) (the reminder cron never runs).
 
 ## Regression test
 

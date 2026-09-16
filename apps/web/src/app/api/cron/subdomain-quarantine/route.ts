@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { adminClient } from "@/lib/api-auth";
 import { invalidateTenantCache } from "@/lib/supabase/tenant";
 
@@ -38,8 +39,7 @@ const BASE_DOMAIN = "lista.team";
 type ReleaseStats = { released: number; failed: number };
 
 async function handler(request: Request): Promise<Response> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
