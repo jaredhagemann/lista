@@ -169,7 +169,7 @@ Full `apps/web` suite: 694 passed. `tsc --noEmit`: clean. ESLint on changed file
 **Coverage gap, not fixed here:** CI (`.github/workflows/test.yml`) runs only the root unit tests and the RLS
 suite, not `apps/web/tests`. These regression tests protect against a regression only when run locally.
 
-**Before merge — required:**
+**Before merge — done 2026-09-16:** both checks below passed. `CRON_SECRET` is set in all Vercel environments, and the trial-expiration backlog query returned **no rows** in production, so the first run has nothing to process.
 
 1. **`CRON_SECRET` is set in Vercel's Production environment.** Vercel attaches `Authorization: Bearer <CRON_SECRET>`
    to cron requests only when the variable exists. If it is missing, every job now returns 401. That's safe,
