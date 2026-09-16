@@ -55,7 +55,7 @@ self-insertion.
 the existing RPCs, an admin adding a member, and invitation acceptance must all keep working. The fix is
 not "deny self-insertion"; it is "membership and role come from an authorized operation."
 
-Shares an admission/identity boundary with [BUG-002](../002-profile-managers-claim-child.md),
+Shares an admission/identity boundary with [BUG-002](./002-profile-managers-claim-child.md),
 [BUG-011](../011-identity-differs-web-vs-mobile.md) and
 [BUG-012](../012-invite-server-actions-lack-recipient-check.md).
 
@@ -110,7 +110,7 @@ No application code inserts `team_members` through a user-scoped client. The mob
 **Left for other tickets:**
 - The same server action also takes `managerId` from the caller, so a caller can make **someone else** a new
   child's guardian. That is a guardian-link problem, recorded on
-  [BUG-002](../002-profile-managers-claim-child.md).
+  [BUG-002](./002-profile-managers-claim-child.md).
 - Invitation acceptance checks are [BUG-012](../012-invite-server-actions-lack-recipient-check.md).
 
 ## Verification
@@ -151,3 +151,10 @@ where tablename = 'team_members' and cmd = 'INSERT';
 
 Expected: one policy, `Team members managed by admins`, whose `with_check` is only `is_team_admin(team_id)`.
 The same query on **staging** verifies the PR's migration before merge.
+
+**Deployed verification — done 2026-09-16** (merge `44b8c0e6a`, PR #55):
+- The staging `pg_policies` check passed before merge.
+- The production migration job logged `Applying migration 20260916000000_restrict_team_members_insert.sql...`
+  and the Vercel production deploy succeeded.
+- The production `pg_policies` check passed: a single INSERT policy, `Team members managed by admins`,
+  checking only `is_team_admin(team_id)`.
