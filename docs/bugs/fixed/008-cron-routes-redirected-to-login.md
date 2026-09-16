@@ -194,3 +194,17 @@ suite, not `apps/web/tests`. These regression tests protect against a regression
 **After deploy — required:** re-run the invalid-secret probe against `lista-umber.vercel.app`, the host cron
 calls. Each cron path must return **401** instead of 307. Then confirm each job's next scheduled run in the
 Vercel Cron Jobs view or logs: 02:00 UTC quarantine, 12:00 UTC reminders and trial expiration.
+
+**Deployed verification — done 2026-09-16** (merge `eceaceac9`, PR #54). Invalid-secret probe against
+`lista-umber.vercel.app`:
+
+```
+/api/cron/reminders             wrong secret       401   (was 307 -> /login)
+/api/cron/trial-expiration      wrong secret       401   (was 307 -> /login)
+/api/cron/subdomain-quarantine  wrong secret       401   (was 307 -> /login)
+/api/cron/reminders             Bearer undefined   401
+/dashboard                      control            307 -> /login
+```
+
+Still to confirm: the first scheduled runs succeed — 02:00 UTC quarantine and 12:00 UTC reminders and trial
+expiration on 2026-09-17.
