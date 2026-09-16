@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import type Stripe from "stripe";
 import { adminClient } from "@/lib/api-auth";
 import { getStripe } from "@/lib/stripe";
@@ -76,8 +77,7 @@ type ExpirationStats = {
 type AdminClient = ReturnType<typeof adminClient>;
 
 async function handler(request: Request): Promise<Response> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail, buildEventEmailHtml } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
@@ -16,9 +17,7 @@ type MemberWithProfile = {
 
 // Vercel Cron: runs daily, sends reminders for events happening in the next 24h
 export async function GET(request: Request) {
-  // Verify cron secret to prevent unauthorized access
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

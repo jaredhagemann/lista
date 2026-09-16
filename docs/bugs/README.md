@@ -46,7 +46,7 @@ else's invitation ID — is **P1, not P0**. It is still an authorization bug and
 regression test; it just does not stop the line. Record that reasoning in the ticket so the grade is not
 re-litigated.
 
-The third clause was added on 2026-09-15 for [BUG-008](./008-cron-routes-redirected-to-login.md), after a
+The third clause was added on 2026-09-15 for [BUG-008](./fixed/008-cron-routes-redirected-to-login.md), after a
 production probe showed every scheduled job had been dead since deploy. A confirmed outage of a core
 workflow is a stop-other-work event even though nothing is bypassed and nothing is being destroyed.
 

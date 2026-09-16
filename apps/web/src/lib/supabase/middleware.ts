@@ -59,7 +59,9 @@ export async function updateSession(
   } = await supabase.auth.getUser();
 
   // Redirect unauthenticated users to login (except for public routes)
-  const publicRoutes = ["/login", "/signup", "/forgot-password", "/invite", "/auth/callback", "/auth/confirm", "/api/auth/", "/api/invite/", "/api/invitations", "/api/managed-profiles", "/api/account/", "/api/teams", "/api/billing/webhook", "/privacy", "/support"];
+  // /api/cron/ is public because Vercel cron sends no session cookie and does not
+  // follow redirects; each cron handler authenticates with CRON_SECRET instead.
+  const publicRoutes = ["/login", "/signup", "/forgot-password", "/invite", "/auth/callback", "/auth/confirm", "/api/auth/", "/api/invite/", "/api/invitations", "/api/managed-profiles", "/api/account/", "/api/teams", "/api/billing/webhook", "/api/cron/", "/privacy", "/support"];
   const isPublicRoute = publicRoutes.some((route) =>
     request.nextUrl.pathname.startsWith(route)
   );
