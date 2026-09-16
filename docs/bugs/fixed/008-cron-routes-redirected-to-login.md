@@ -127,7 +127,7 @@ against production data.
 ## Fix as implemented
 
 **Branch:** `fix/008-cron-routing`
-**PR:** see branch
+**PR:** #54
 **Migration:** none
 
 Two changes, which have to ship together:
