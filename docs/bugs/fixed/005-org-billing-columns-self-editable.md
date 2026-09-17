@@ -77,7 +77,7 @@ operation from a raw billing-column write:
 ## Fix as implemented
 
 **Branch:** `fix/005-org-billing-columns`
-**PR:** see branch
+**PR:** #59
 **Migration:** `supabase/migrations/20260917000003_org_updates_service_role_only.sql`
 
 **The organizations UPDATE policy is dropped, for every role**, rather than restricted column by column.
