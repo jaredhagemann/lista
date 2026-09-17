@@ -1,7 +1,7 @@
 # BUG-005 — Club admins can edit their own subscription state directly
 
 **Severity:** P1
-**Status:** Fixed (pending deploy verification — see Verification)
+**Status:** Fixed — verified in production 2026-09-17
 **Reported:** 2026-09-04 by readiness review (finding 5)
 **Area:** billing / rls
 **Evidence class:** Reproduced (local stack, re-confirmed 2026-09-16) — **unverified in deployment**
@@ -144,3 +144,9 @@ select policyname, cmd from pg_policies where tablename = 'organizations' order 
 ```
 
 Expected: `Orgs deletable by org owner` (DELETE) and `Orgs visible to members` (SELECT) — **no UPDATE row**.
+
+**Deployed and verified 2026-09-17** (merge `58cf4f8a2`, PR #59):
+- The staging check passed before merge.
+- The production migration job logged `Applying migration 20260917000003_org_updates_service_role_only.sql...`
+  and the Vercel production deploy succeeded.
+- The production check passed (user): no UPDATE policy on `organizations`.

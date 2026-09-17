@@ -4,8 +4,43 @@
 **Status:** Open
 **Reported:** 2026-09-04 by readiness review (finding 10)
 **Area:** events / notifications
-**Evidence class:** Reproduced (local unit probes) — 2 of the 5 assertions in the Sept 4 probe file
-**Last verified:** `5acde1074`, local unit probe, 2026-09-04
+**Evidence class:** **Email times reproduced in production** (2026-09-17); recurrence boundary reproduced locally (unit probe)
+**Last verified:** production reminder email, 2026-09-17 — see Reproduced in production
+
+## Reproduced in production — 2026-09-17
+
+Reported by the user from the first real reminder run after [BUG-008](./fixed/008-cron-routes-redirected-to-login.md)
+was fixed. Event: **Practice**, team AYSO Girls U10, Islay Park, scheduled **4:00–5:30 PM Pacific** on
+Thursday, September 17, 2026. The reminder email showed:
+
+```
+Event Reminder
+
+Practice
+Team      AYSO Girls U10
+Type      Practice
+Date      Thursday, September 17, 2026
+Time      11:00 PM – 12:30 AM
+Location  Islay Park
+```
+
+4:00 PM Pacific Daylight Time is 23:00 UTC, and 5:30 PM is 00:30 UTC. **The email shows the correct instant
+formatted in the server's UTC zone.** This is exactly the defect the September 4 review predicted.
+
+### Everything the same code produces wrong (static, confirmed in code 2026-09-17)
+
+| Output | Where | Defect |
+| --- | --- | --- |
+| Email **time** | `apps/web/src/lib/notifications/email.ts:91` | `toLocaleTimeString` with no `timeZone`, so the server zone (UTC) is used |
+| Email **date** | `email.ts:90` | Same formatting. Correct for this event only by coincidence: an event after **5:00 PM Pacific** shows the **next day's** date |
+| Email **arrival time** | `email.ts:93` | Same formatting |
+| **Every** event email, not just reminders | `buildEventEmailHtml` is shared with `/api/notifications/send` (new, updated, cancelled) | Same defect on all of them |
+| Reminder **subject** | `apps/web/src/app/api/cron/reminders/route.ts:130` | Hardcoded `Reminder: {title} tomorrow`. The job runs at 12:00 UTC (5:00 AM Pacific), so a same-day event is called "tomorrow" |
+| Reminder **push** text | `reminders/route.ts:148` | `Tomorrow at {time}`: both "tomorrow" and the UTC time are wrong |
+
+Teams already have a `timezone` column. Events do not yet; D5 adds one.
+
+**Evidence class for the email defect upgraded:** reproduced in production.
 
 ## Symptom
 
