@@ -94,7 +94,7 @@ reference does not break.
 ## Fix as implemented
 
 **Branch:** `fix/009-series-edit-history`
-**PR:** see branch
+**PR:** #62
 **Migration:** `supabase/migrations/20260917000005_series_edits_preserve_history.sql`
 
 Editing and deleting now change occurrences in place. Rows are never destroyed and rebuilt.
