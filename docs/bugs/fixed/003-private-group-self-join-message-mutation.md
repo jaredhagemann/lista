@@ -111,7 +111,7 @@ org directors, and directors are not to be enrolled in groups without an invitat
 ## Fix as implemented
 
 **Branch:** `fix/003-chat-private-groups`
-**PR:** see branch
+**PR:** #61
 **Migration:** `supabase/migrations/20260917000004_chat_access_control.sql`
 
 Mapping the live chat policies found more than the three filed defects. All are closed in one migration; no
