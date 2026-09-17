@@ -236,10 +236,11 @@ describe("migrated routes — 200 when valid Bearer token (§2.1.1)", () => {
   });
 
   it("POST /api/invite/[id]/accept returns 404 (not 401) when Bearer token is valid but invite is missing", async () => {
-    // After auth succeeds, the route fetches the invitation — mock .single() to
-    // simulate a missing invite → 404.
-    mocks.mockEq.mockReturnValue({
-      single: vi.fn().mockResolvedValue({ data: null, error: { message: "not found" } }),
+    // After auth succeeds, the route calls the accept_invitation function —
+    // mock it reporting a missing invite → 404.
+    mocks.mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: "INVITATION_NOT_FOUND", code: "P0001" },
     });
     const { POST } = await import("@/app/api/invite/[id]/accept/route");
     const req = new Request("http://localhost:3000/api/invite/missing-id/accept", {

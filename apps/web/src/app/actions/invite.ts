@@ -5,7 +5,12 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
+import { acceptInvitation } from "@/lib/invitations/accept";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
+
+// These actions are callable directly from the browser, so every check lives in
+// acceptInvitation (the accept_invitation database function), not in the invite
+// page: recipient, invitation kind, and one-time acceptance (BUG-012).
 
 function adminClient() {
   return createSupabaseClient<Database>(
@@ -27,57 +32,15 @@ export async function acceptInvitationAsSelf(invitationId: string) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const admin = adminClient();
-
-  const { data: invitation, error: inviteError } = await admin
-    .from("invitations")
-    .select("*")
-    .eq("id", invitationId)
-    .single();
-
-  if (inviteError || !invitation) return { error: "Invitation not found" };
-  if (invitation.accepted_at) return { error: "Invitation already accepted" };
-
-  // Add to team
-  const { error: memberError } = await admin.from("team_members").insert({
-    team_id: invitation.team_id!,
-    profile_id: user.id,
-    role: invitation.role as Database["public"]["Tables"]["team_members"]["Row"]["role"],
+  const result = await acceptInvitation(adminClient(), {
+    invitationId,
+    userId: user.id,
+    mode: "self",
   });
-
-  if (memberError && memberError.code !== "23505") {
-    return { error: memberError.message };
-  }
-
-  const { data: memberRow } = await admin
-    .from("team_members")
-    .select("id")
-    .eq("team_id", invitation.team_id!)
-    .eq("profile_id", user.id)
-    .single();
-
-  // Apply birthday/gender from invitation to user's profile
-  const profileUpdate: Record<string, string | null> = {};
-  if (invitation.birthday) profileUpdate.birthday = invitation.birthday;
-  if (invitation.gender) profileUpdate.gender = invitation.gender;
-  if (Object.keys(profileUpdate).length > 0) {
-    await admin.from("profiles").update(profileUpdate).eq("id", user.id);
-  }
-
-  // Set active_team_id
-  await admin
-    .from("profiles")
-    .update({ active_team_id: invitation.team_id })
-    .eq("id", user.id);
-
-  // Mark invitation accepted
-  await admin
-    .from("invitations")
-    .update({ accepted_at: new Date().toISOString() })
-    .eq("id", invitationId);
+  if (!result.ok) return { error: result.message };
 
   revalidatePath("/dashboard", "layout");
-  return { success: true, memberId: memberRow?.id ?? null };
+  return { success: true, memberId: result.teamMemberId };
 }
 
 /**
@@ -102,77 +65,18 @@ export async function acceptInvitationAsGuardian(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const admin = adminClient();
-
-  const { data: invitation, error: inviteError } = await admin
-    .from("invitations")
-    .select("*")
-    .eq("id", invitationId)
-    .single();
-
-  if (inviteError || !invitation) return { error: "Invitation not found" };
-  if (invitation.accepted_at) return { error: "Invitation already accepted" };
-
-  // Create managed profile for the player using invitation data
-  const profileId = crypto.randomUUID();
-  const { error: profileError } = await admin.from("profiles").insert({
-    id: profileId,
-    first_name: invitation.first_name ?? "",
-    last_name: invitation.last_name ?? "",
-    email: `managed-${profileId}@lista.internal`,
-    birthday: invitation.birthday ?? null,
-    gender: invitation.gender ?? null,
+  const result = await acceptInvitation(adminClient(), {
+    invitationId,
+    userId: user.id,
+    mode: "guardian",
+    relationship,
+    firstName,
+    lastName,
   });
-  if (profileError) return { error: profileError.message };
-
-  // Link current user as manager
-  const { error: linkError } = await admin.from("profile_managers").insert({
-    manager_id: user.id,
-    managed_id: profileId,
-    relationship: relationship ?? null,
-  });
-  if (linkError) {
-    await admin.from("profiles").delete().eq("id", profileId);
-    return { error: linkError.message };
-  }
-
-  // Add managed profile to team
-  const { error: memberError } = await admin.from("team_members").insert({
-    team_id: invitation.team_id!,
-    profile_id: profileId,
-    role: invitation.role as Database["public"]["Tables"]["team_members"]["Row"]["role"],
-  });
-  if (memberError) return { error: memberError.message };
-
-  const { data: memberRow } = await admin
-    .from("team_members")
-    .select("id")
-    .eq("team_id", invitation.team_id!)
-    .eq("profile_id", profileId)
-    .single();
-
-  // Update current user's own profile name if provided
-  const userProfileUpdate: Record<string, string> = {};
-  if (firstName) userProfileUpdate.first_name = firstName;
-  if (lastName) userProfileUpdate.last_name = lastName;
-  if (Object.keys(userProfileUpdate).length > 0) {
-    await admin.from("profiles").update(userProfileUpdate).eq("id", user.id);
-  }
-
-  // Set active_team_id on user's own profile
-  await admin
-    .from("profiles")
-    .update({ active_team_id: invitation.team_id })
-    .eq("id", user.id);
-
-  // Mark invitation accepted
-  await admin
-    .from("invitations")
-    .update({ accepted_at: new Date().toISOString() })
-    .eq("id", invitationId);
+  if (!result.ok) return { error: result.message };
 
   revalidatePath("/dashboard", "layout");
-  return { success: true, memberId: memberRow?.id ?? null };
+  return { success: true, memberId: result.teamMemberId };
 }
 
 /**
@@ -188,46 +92,26 @@ export async function acceptManagerInvitation(invitationId: string) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const admin = adminClient();
-
-  const { data: invitation, error: inviteError } = await admin
-    .from("invitations")
-    .select("*")
-    .eq("id", invitationId)
-    .single();
-
-  if (inviteError || !invitation) return { error: "Invitation not found" };
-  if (invitation.accepted_at) return { error: "Invitation already accepted" };
-  if (!invitation.managed_profile_id) return { error: "Invalid invitation type" };
-
-  // Link current user as a manager of the existing player profile
-  const { error: linkError } = await admin.from("profile_managers").insert({
-    manager_id: user.id,
-    managed_id: invitation.managed_profile_id,
-    relationship: invitation.relationship ?? null,
+  const result = await acceptInvitation(adminClient(), {
+    invitationId,
+    userId: user.id,
+    mode: "manager",
   });
-
-  if (linkError && linkError.code !== "23505") {
-    return { error: linkError.message };
-  }
-
-  // Mark invitation accepted
-  await admin
-    .from("invitations")
-    .update({ accepted_at: new Date().toISOString() })
-    .eq("id", invitationId);
+  if (!result.ok) return { error: result.message };
 
   // Switch the session to view as the managed player so the dashboard works.
   // Use a long-lived cookie (1 year) so it survives browser restarts — a parent
   // with no direct team membership has no meaningful "self" view anyway.
-  const cookieStore = await cookies();
-  cookieStore.set(ACTIVE_PROFILE_COOKIE, invitation.managed_profile_id, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+  if (result.managedProfileId) {
+    const cookieStore = await cookies();
+    cookieStore.set(ACTIVE_PROFILE_COOKIE, result.managedProfileId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
 
   revalidatePath("/dashboard", "layout");
   return { success: true };

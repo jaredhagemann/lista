@@ -62,7 +62,7 @@ Use one identity-aware, transactional acceptance workflow across both clients. O
 existing managed child, distinguish the child's identity from the recipient email, and make duplicate and
 concurrent acceptance safe.
 
-Related: [BUG-012](./012-invite-server-actions-lack-recipient-check.md) covers the missing recipient check
+Related: [BUG-012](./fixed/012-invite-server-actions-lack-recipient-check.md) covers the missing recipient check
 on the same acceptance paths. The two share acceptance boundaries and should be designed together.
 
 Historical duplicate repair is out of scope per the D6 clarification above.

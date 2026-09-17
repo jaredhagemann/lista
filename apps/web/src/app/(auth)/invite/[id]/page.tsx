@@ -5,6 +5,7 @@ import { WrongEmailClient } from "@/components/invite/wrong-email-client";
 import { DirectAcceptClient } from "@/components/invite/direct-accept-client";
 import { IdentityConfirmation } from "@/components/invite/identity-confirmation";
 import { ManagerInviteClient } from "@/components/invite/manager-invite-client";
+import { sameEmail } from "@/lib/invitations/accept";
 import type { Database } from "@/types/database";
 
 type Invitation = Database["public"]["Tables"]["invitations"]["Row"] & {
@@ -69,7 +70,7 @@ export default async function InvitePage({
   }
 
   // Signed in as wrong email — sign out and redirect to invite-specific login
-  if (user.email !== invitation.email) {
+  if (!sameEmail(user.email, invitation.email)) {
     return <WrongEmailClient inviteId={id} />;
   }
 

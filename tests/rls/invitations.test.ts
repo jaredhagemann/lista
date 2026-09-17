@@ -369,3 +369,45 @@ describe("invitations RLS: guardian invitations (BUG-002)", () => {
     expect(data!.managed_profile_id).toBeNull();
   });
 });
+
+// ── BUG-012 ───────────────────────────────────────────────────────────────────
+// A guardian invitation grants guardianship only. Its role is always "manager"
+// (the string the web and mobile clients send), so it can never carry a team
+// role such as coach. Checked at creation, on every path.
+
+describe("invitations: guardian invitations cannot carry a team role (BUG-012)", () => {
+  afterAll(async () => {
+    await cleanupTestData();
+  });
+
+  it("guardian cannot create a guardian invitation with role coach", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const childId = await createManagedProfile(parent.user.id);
+
+    const { error } = await parent.client.from("invitations").insert({
+      team_id: teamId,
+      email: parent.user.email,
+      role: "coach",
+      managed_profile_id: childId,
+      invited_by: parent.user.id,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("the service role cannot create one either", async () => {
+    const coach = await createTestUser();
+    const parent = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const childId = await createManagedProfile(parent.user.id);
+
+    const { error } = await adminClient.from("invitations").insert({
+      team_id: teamId,
+      email: "someone@test.local",
+      role: "player",
+      managed_profile_id: childId,
+    });
+    expect(error).not.toBeNull();
+  });
+});
