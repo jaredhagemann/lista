@@ -65,7 +65,7 @@ Bug 1), but the server actions were not covered by that fix.
 ## Fix as implemented
 
 **Branch:** `fix/012-invite-recipient-check`
-**PR:** see branch
+**PR:** #57
 **Migration:** `supabase/migrations/20260917000001_accept_invitation.sql`
 
 **One acceptance operation for every entry point.** The new `accept_invitation` database function
