@@ -4,10 +4,16 @@ import { createServerClient } from "@supabase/ssr";
 import { sendEmail, buildEventEmailHtml } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
+import {
+  formatEventTime,
+  formatShortEventDate,
+  relativeEventDay,
+  resolveTimeZone,
+} from "@/lib/notifications/event-time";
 import type { Database } from "@/types/database";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
-  teams: { name: string };
+  teams: { name: string; timezone: string | null };
   locations: { name: string } | null;
 };
 type MemberWithProfile = {
@@ -34,7 +40,7 @@ export async function GET(request: Request) {
   // Find events in the next 24 hours that aren't cancelled
   const { data: rawEvents, error } = await supabase
     .from("events")
-    .select("*, teams(name), locations(name)")
+    .select("*, teams(name, timezone), locations(name)")
     .eq("is_cancelled", false)
     .gte("start_time", now.toISOString())
     .lte("start_time", in24h.toISOString());
@@ -50,7 +56,12 @@ export async function GET(request: Request) {
   let sent = 0;
 
   for (const event of events) {
-    const teamName = (event.teams as { name: string })?.name ?? "Unknown";
+    const teamName = event.teams?.name ?? "Unknown";
+    // The server runs in UTC: format in the team's timezone, and name the event's
+    // actual day rather than assuming "tomorrow" (BUG-020).
+    const timeZone = resolveTimeZone(event.teams?.timezone);
+    const relativeDay = relativeEventDay(event.start_time, timeZone);
+    const dayLabel = relativeDay ?? formatShortEventDate(event.start_time, timeZone);
 
     // Get team members
     const { data: rawMembers } = await supabase
@@ -109,6 +120,7 @@ export async function GET(request: Request) {
       action: "reminder",
       arrivalTime: event.arrival_time,
       eventUrl: `${appUrl}/dashboard/schedule/${event.id}`,
+      timeZone,
     });
 
     // Send emails to members who have email enabled
@@ -127,7 +139,7 @@ export async function GET(request: Request) {
         try {
           await sendEmail({
             to: email,
-            subject: `Reminder: ${event.title} tomorrow`,
+            subject: `Reminder: ${event.title} ${relativeDay ?? `on ${dayLabel}`}`,
             html: emailHtml,
           });
           sent++;
@@ -145,7 +157,7 @@ export async function GET(request: Request) {
 
     const reminderPayload = {
       title: `Reminder: ${event.title}`,
-      body: `Tomorrow at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
+      body: `${dayLabel.charAt(0).toUpperCase()}${dayLabel.slice(1)} at ${formatEventTime(event.start_time, timeZone)}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
       url: `/dashboard/schedule/${event.id}`,
     };
 

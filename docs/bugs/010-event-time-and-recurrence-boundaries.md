@@ -7,6 +7,10 @@
 **Evidence class:** **Email times reproduced in production** (2026-09-17); recurrence boundary reproduced locally (unit probe)
 **Last verified:** production reminder email, 2026-09-17 — see Reproduced in production
 
+**Split 2026-09-17 (user decision):** the notification formatting defects below — email times and dates, the
+"tomorrow" wording, and push text — moved to [BUG-020](./fixed/020-notification-times-in-utc.md) to ship first, using
+the team's timezone. BUG-010 keeps the event-level timezone field, timezone-aware forms, recurrence and backfill (D5).
+
 ## Reproduced in production — 2026-09-17
 
 Reported by the user from the first real reminder run after [BUG-008](./fixed/008-cron-routes-redirected-to-login.md)
@@ -109,3 +113,7 @@ Cover an event outside the team timezone, a coach editing from a third timezone,
 inclusive end dates and consistent UI/email/reminder dates. Assert changing the team default does not
 shift existing events and backfilling the event timezone preserves stored instants. Pin the suite's TZ
 rather than inheriting the runner's.
+
+**Also for D5's form work (noted 2026-09-17, from BUG-020):** series-update notifications list changed times as
+formatted in the coach's browser (`apps/web/src/components/calendar/event-detail.tsx:272`), in the device's zone
+with no label. Timezone-aware event forms should format these in the event's timezone.
