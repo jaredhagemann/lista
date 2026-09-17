@@ -94,3 +94,12 @@ round-trip successfully.
 Also cover accepted ownership transfer and club closure: archived history remains readable only within
 existing authorization boundaries, operational writes are blocked, revoked members cannot regain access,
 and shared player identities/guardian links remain intact.
+
+## Related finding — direct organization deletion (2026-09-16, found during BUG-005)
+
+The policy `Orgs deletable by org owner` lets an owner delete their organization through the data API. The
+delete cascades to `teams` and `organization_members`, and from teams on to memberships, events, availability
+and chat. No application code deletes organizations. It contradicts **D7**: club closure archives the club and
+keeps its history read-only rather than erasing it. When implementing club closure, drop this policy (or replace
+it) so closure goes only through the archive path. BUG-005 dropped the matching UPDATE policy for the same
+reason: no app code used it.
