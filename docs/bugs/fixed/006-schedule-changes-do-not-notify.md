@@ -93,7 +93,7 @@ Drive the tests off the D3 matrix rather than asserting unconditional dispatch. 
 ## Fix as implemented
 
 **Branch:** `fix/006-schedule-change-notifications`
-**PR:** see branch
+**PR:** #64
 **Migration:** `supabase/migrations/20260917000007_notification_jobs.sql`
 
 **Decisions taken, 2026-09-17 (user):** enqueue from the database, fold BUG-007's *event* fan-out into this
