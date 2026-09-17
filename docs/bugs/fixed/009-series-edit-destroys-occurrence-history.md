@@ -1,10 +1,10 @@
 # BUG-009 — Editing a recurring series destroys availability responses, results and exceptions
 
 **Severity:** P1
-**Status:** Fixed (pending deploy verification — see Verification)
+**Status:** Fixed — verified in production 2026-09-17
 **Reported:** 2026-09-04 by readiness review (finding 9)
 **Area:** events
-**Evidence class:** Mixed — FK cascade loss and head-delete loss Reproduced (local stack, 2026-09-17); full editor workflow Static — **unverified in deployment**
+**Evidence class:** Mixed — FK cascade loss and head-delete loss Reproduced (local stack, 2026-09-17); full editor workflow Static. Fix verified in production 2026-09-17
 **Last verified:** `5acde1074`, local stack + code inspection, 2026-09-04
 
 ## Symptom
@@ -169,3 +169,9 @@ Expected:
 - Change "Repeat until" to an earlier date. A preview appears, and the dropped dates show as cancelled.
 - Delete the first occurrence. The rest of the series remains.
 - Delete the **Entire series…**. The confirmation shows counts, and everything is gone.
+
+**Deployed and verified 2026-09-17** (PR #62):
+- The staging checks passed before merge.
+- The production SQL checks passed (user).
+- The manual check passed (user): editing a series, shortening it, deleting the first occurrence and deleting
+  a whole series all behaved as described, with availability responses kept.
