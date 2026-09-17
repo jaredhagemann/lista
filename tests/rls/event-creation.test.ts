@@ -342,7 +342,7 @@ describe("event creation", () => {
       }
     });
 
-    it("deleting parent event cascades to child events", async () => {
+    it("deleting the parent event directly does not cascade to child events (BUG-009)", async () => {
       const coach = await createTestUser();
       const { teamId } = await createTestTeam(coach.user.id);
 
@@ -396,19 +396,19 @@ describe("event creation", () => {
         .eq("team_id", teamId);
       expect(beforeDelete!.length).toBeGreaterThan(1);
 
-      // Delete parent — should cascade to children (ON DELETE CASCADE)
+      // Deleting the head used to cascade to every occurrence. It is now refused;
+      // delete_event_occurrence and delete_event_series are the supported paths.
       const { error: deleteError } = await coach.client
         .from("events")
         .delete()
         .eq("id", parentEvent!.id);
-      expect(deleteError).toBeNull();
+      expect(deleteError).not.toBeNull();
 
-      // All events should be gone
       const { data: afterDelete } = await coach.client
         .from("events")
         .select()
         .eq("team_id", teamId);
-      expect(afterDelete).toHaveLength(0);
+      expect(afterDelete).toHaveLength(beforeDelete!.length);
     });
 
     it("recurring event with Sunday start uses correct day mapping", async () => {

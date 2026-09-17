@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { buildRRule, expandRecurrenceFromLocalString } from "@/lib/utils/rrule";
+import { buildRRule, expandRecurrenceFromLocalString, untilEndOfDay } from "@/lib/utils/rrule";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -200,7 +200,9 @@ export function EventFormDialog({
             ? customInterval
             : (frequencyMode as "weekly" | "biweekly"),
         daysOfWeek,
-        until: new Date(recurUntil),
+        // "Repeat until" includes that day; the pattern start is stored with the rule.
+        until: untilEndOfDay(recurUntil),
+        dtstart: new Date(`${startTime}:00.000Z`),
       });
 
       const { data: rawParentEvent, error: parentError } = await supabase
