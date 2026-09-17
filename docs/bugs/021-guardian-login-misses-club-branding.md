@@ -15,7 +15,8 @@ plan, so the guardian should see the club's branding.
 
 ## Reproduction
 
-Reported from production; not yet reproduced locally, and not yet isolated to guardians specifically.
+Reported from production, then reproduced on a local stack (see Evidence). It affects any guardian whose
+only link to a club-tier org is a managed child.
 
 1. Sign in as a guardian whose managed child is on a club-tier team with an active subdomain.
 2. Open the dashboard.
