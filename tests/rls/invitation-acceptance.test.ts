@@ -362,6 +362,50 @@ describe("invitation acceptance — one time only (BUG-012)", () => {
   });
 });
 
+// ── Complete admission → invitation → acceptance sequence ─────────────────────
+
+describe("guardianship cannot be manufactured through a fabricated roster row (BUG-002 review, finding 1)", () => {
+  it("a coach cannot add someone else's child to their team, invite themselves as guardian, and accept", async () => {
+    const { teamId: realTeamId } = await teamWithCoach();
+    const parent = await createTestUser();
+    const attacker = await createTestUser();
+    const { teamId: attackerTeamId } = await createTestTeam(attacker.user.id);
+    const childId = await createManagedProfile(parent.user.id);
+    await addTeamMember(realTeamId, childId, "player");
+
+    // 1. Fabricate the membership the staff invitation check trusts.
+    const { error: admissionError } = await attacker.client
+      .from("team_members")
+      .insert({ team_id: attackerTeamId, profile_id: childId, role: "player" });
+    expect(admissionError).not.toBeNull();
+
+    // 2. Re-point the attacker's own roster row at the child instead.
+    await attacker.client
+      .from("team_members")
+      .update({ profile_id: childId })
+      .eq("team_id", attackerTeamId)
+      .eq("profile_id", attacker.user.id);
+    expect(await membership(attackerTeamId, childId)).toBeNull();
+
+    // 3. Invite themselves as the child's guardian.
+    const invitationId = crypto.randomUUID();
+    const { error: inviteError } = await attacker.client.from("invitations").insert({
+      id: invitationId,
+      team_id: attackerTeamId,
+      email: attacker.user.email,
+      role: "manager",
+      managed_profile_id: childId,
+      invited_by: attacker.user.id,
+    });
+    expect(inviteError).not.toBeNull();
+
+    // 4. No guardianship, and no access to the child's real team.
+    expect(await guardianLinksFrom(attacker.user.id)).toHaveLength(0);
+    const { data: canSeeRealTeam } = await attacker.client.rpc("is_team_member", { t_id: realTeamId });
+    expect(canSeeRealTeam).toBe(false);
+  });
+});
+
 // ── Database function ─────────────────────────────────────────────────────────
 
 describe("accept_invitation — service role only (BUG-012)", () => {

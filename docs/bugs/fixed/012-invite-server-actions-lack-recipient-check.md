@@ -98,7 +98,7 @@ to `Jane@…` no longer sends a signed-in `jane@…` to the wrong-email screen.
 - Mobile still accepts every non-guardian invitation as `self`, including when a parent accepts a player
   invitation → [BUG-011](../011-identity-differs-web-vs-mobile.md). The acceptance function is where 011's
   identity-aware flow should extend.
-- BUG-002 review findings 1 and 3 remain open; see [BUG-002](../002-profile-managers-claim-child.md).
+- BUG-002 review findings 1 and 3 remain open; see [BUG-002](./002-profile-managers-claim-child.md).
 
 ## Verification
 
@@ -173,4 +173,8 @@ means rows were written that way, and each should be reviewed.
    (`alter table invitations validate constraint invitations_guardian_role_check`). Run query 3 in production
    after deploy before doing so; a zero on staging says nothing about production rows.
 
-**Production checks:** still to be run after deploy.
+**Deployed and verified 2026-09-16** (merge `d1cd964b6`, PR #57): the production migration job logged
+`Applying migration 20260917000001_accept_invitation.sql...`, the Vercel production deploy succeeded, and the
+production checks passed (user). The function is not executable by `authenticated`, the constraint exists and is
+not yet validated, and zero guardian invitations carry a team role, so
+`alter table invitations validate constraint invitations_guardian_role_check` is safe to run when convenient.

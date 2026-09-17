@@ -167,6 +167,17 @@ describe("removeProfileManager — who may remove a guardian (BUG-002, D1)", () 
     expect(mocks.deletes).toHaveLength(0);
   });
 
+  // BUG-002 review, finding 3: a Self link is the account holder's own record. Deleting
+  // it removed the player's authority to invite guardians and could not be undone.
+  it("refuses the player removing their own Self link", async () => {
+    signedInAs("teen-1");
+
+    const result = await removeProfileManager("row-teen-self");
+
+    expect(result).toEqual({ error: "Not authorized" });
+    expect(mocks.deletes).toHaveLength(0);
+  });
+
   it("refuses an unrelated user", async () => {
     signedInAs("stranger-1");
 

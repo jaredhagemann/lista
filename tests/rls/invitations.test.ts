@@ -4,6 +4,7 @@ import {
   createTestTeam,
   addTeamMember,
   createManagedProfile,
+  rawSql,
   cleanupTestData,
   adminClient,
 } from "./helpers";
@@ -409,5 +410,36 @@ describe("invitations: guardian invitations cannot carry a team role (BUG-012)",
       managed_profile_id: childId,
     });
     expect(error).not.toBeNull();
+  });
+});
+
+// ── BUG-002 review, finding 3 ─────────────────────────────────────────────────
+// A player's authority to invite their own guardian comes from owning the
+// profile (their login), not from the optional Self link.
+
+describe("invitations: player authority does not depend on a Self link (BUG-002 review, finding 3)", () => {
+  afterAll(async () => {
+    await cleanupTestData();
+  });
+
+  it("player with a login but no Self link can still invite a guardian for themselves", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+    // Simulate an account whose Self link was removed before it became
+    // undeletable: bypass triggers for this fixture only.
+    rawSql(
+      `set session_replication_role = replica; delete from profile_managers where manager_id = '${player.user.id}' and managed_id = '${player.user.id}';`
+    );
+
+    const { error } = await player.client.from("invitations").insert({
+      team_id: teamId,
+      email: "mom@test.local",
+      role: "manager",
+      managed_profile_id: player.user.id,
+      invited_by: player.user.id,
+    });
+    expect(error).toBeNull();
   });
 });

@@ -65,7 +65,7 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 import { createManagedProfile, removeManagedProfile } from "@/app/actions/profile";
-import { LAST_GUARDIAN_MESSAGE } from "@/lib/guardians";
+import { LAST_GUARDIAN_MESSAGE, SELF_LINK_MESSAGE } from "@/lib/guardians";
 
 type Args = Parameters<typeof createManagedProfile>[0];
 
@@ -137,6 +137,15 @@ describe("removeManagedProfile — last guardian (BUG-002, D1)", () => {
     const result = await removeManagedProfile("child-1");
 
     expect(result).toEqual({ error: LAST_GUARDIAN_MESSAGE });
+  });
+
+  // BUG-002 review, finding 3: the managed-players list included the caller's
+  // own Self link with a Remove button.
+  it("refuses removing the caller's own Self link without touching the database", async () => {
+    const result = await removeManagedProfile("user-1");
+
+    expect(result).toEqual({ error: SELF_LINK_MESSAGE });
+    expect(mocks.userFrom).not.toHaveBeenCalled();
   });
 
   it("still succeeds when the database allows the removal", async () => {

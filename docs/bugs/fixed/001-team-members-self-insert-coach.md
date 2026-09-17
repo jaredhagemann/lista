@@ -55,7 +55,7 @@ self-insertion.
 the existing RPCs, an admin adding a member, and invitation acceptance must all keep working. The fix is
 not "deny self-insertion"; it is "membership and role come from an authorized operation."
 
-Shares an admission/identity boundary with [BUG-002](../002-profile-managers-claim-child.md),
+Shares an admission/identity boundary with [BUG-002](./002-profile-managers-claim-child.md),
 [BUG-011](../011-identity-differs-web-vs-mobile.md) and
 [BUG-012](./012-invite-server-actions-lack-recipient-check.md).
 
@@ -110,7 +110,7 @@ No application code inserts `team_members` through a user-scoped client. The mob
 **Left for other tickets:**
 - The same server action also takes `managerId` from the caller, so a caller can make **someone else** a new
   child's guardian. That is a guardian-link problem, recorded on
-  [BUG-002](../002-profile-managers-claim-child.md).
+  [BUG-002](./002-profile-managers-claim-child.md).
 - Invitation acceptance checks are [BUG-012](./012-invite-server-actions-lack-recipient-check.md).
 
 ## Verification
@@ -158,3 +158,10 @@ The same query on **staging** verifies the PR's migration before merge.
   and the Vercel production deploy succeeded.
 - The production `pg_policies` check passed: a single INSERT policy, `Team members managed by admins`,
   checking only `is_team_admin(team_id)`.
+
+**Addendum — 2026-09-16, BUG-002 review finding 1.** This fix deliberately kept `is_team_admin(team_id)` as the
+remaining INSERT branch so admins could add members. That turned out to be a route to guardianship: an admin
+could add someone else's child to their own team, which authorizes a staff guardian invitation. Per decision A,
+[BUG-002](./002-profile-managers-claim-child.md)'s reopened fix drops the INSERT policy entirely and locks
+`team_id` and `profile_id` on updates. The "team admin adding a member" row in the table above no longer applies;
+no application code used it.
