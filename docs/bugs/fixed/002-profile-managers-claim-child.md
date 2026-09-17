@@ -1,7 +1,7 @@
 # BUG-002 — A user can claim another player's profile as their managed child
 
 **Severity:** P0
-**Status:** Fixed (pending deploy verification of the reopened fix — see Reopened fix as implemented)
+**Status:** Fixed — reopened findings fixed and verified in production 2026-09-16
 **Reported:** 2026-09-04 by readiness review (finding 2)
 **Area:** auth / rls / managed profiles
 **Evidence class:** Reproduced (local stack) — **unverified in deployment**
@@ -367,3 +367,9 @@ Expected:
 2. One row.
 3. `0`.
 4. `true`.
+
+**Reopened fix deployed and verified 2026-09-16** (merge `798494b4c`, PR #58):
+- The staging checks passed before merge.
+- The production migration job logged `Applying migration 20260917000002_close_guardian_authorization_gaps.sql...`
+  and the Vercel production deploy succeeded.
+- The production checks passed (user).
