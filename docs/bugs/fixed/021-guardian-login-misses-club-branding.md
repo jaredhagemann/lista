@@ -1,10 +1,10 @@
 # BUG-021 — A guardian signing in to a club-tier team gets the default Lista experience, not the club's
 
 **Severity:** P1
-**Status:** Fixed (pending deploy verification — see Verification)
+**Status:** Fixed — verified in production 2026-09-17
 **Reported:** 2026-09-17 by the user, while testing in production
 **Area:** tenancy / branding
-**Evidence class:** **Reproduced** (local stack, 2026-09-17) from the production account shape; symptom reported in production the same day — fix **unverified in deployment**
+**Evidence class:** **Reproduced** (local stack, 2026-09-17) from the production account shape; symptom reported in production the same day; fix verified in production 2026-09-17
 **Last verified:** `f28b0d5fa`, code inspection, 2026-09-17
 
 ## Symptom
@@ -233,3 +233,10 @@ Expected:
 **After deploy, the manual check that reproduces the report:** sign in as the guardian. The browser should
 land on `slofc.lista.team` with the club's logo, name and colors, and the **Training** item should appear in
 the nav.
+
+**Deployed and verified 2026-09-17** (PR #63):
+- The staging checks passed before merge.
+- The production SQL checks passed (user): the policy carries the guardian branch, and the reported
+  guardian now resolves the club org (`club_large`, `slofc`, `active`).
+- The manual check passed (user): signing in as the guardian lands on the club subdomain with its branding,
+  and the Training nav item appears.
