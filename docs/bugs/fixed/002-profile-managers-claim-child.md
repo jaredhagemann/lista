@@ -263,7 +263,7 @@ Expected:
 ## Reopened fix as implemented
 
 **Branch:** `fix/002-guardian-authorization-gaps`
-**PR:** see branch
+**PR:** #58
 **Migration:** `supabase/migrations/20260917000002_close_guardian_authorization_gaps.sql`
 
 ### Finding 1 — no client-session roster admissions (option A)
