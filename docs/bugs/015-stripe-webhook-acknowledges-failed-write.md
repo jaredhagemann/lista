@@ -56,7 +56,7 @@ or it will have to be rewritten the moment durable ingestion lands.
 Check every write, retry or reconcile against current provider state, and deduplicate side effects.
 
 Protects the opposite side of billing integrity from
-[BUG-005](./005-org-billing-columns-self-editable.md).
+[BUG-005](./fixed/005-org-billing-columns-self-editable.md).
 
 ## Regression test
 
