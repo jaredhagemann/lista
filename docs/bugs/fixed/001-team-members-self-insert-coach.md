@@ -55,9 +55,9 @@ self-insertion.
 the existing RPCs, an admin adding a member, and invitation acceptance must all keep working. The fix is
 not "deny self-insertion"; it is "membership and role come from an authorized operation."
 
-Shares an admission/identity boundary with [BUG-002](./002-profile-managers-claim-child.md),
+Shares an admission/identity boundary with [BUG-002](../002-profile-managers-claim-child.md),
 [BUG-011](../011-identity-differs-web-vs-mobile.md) and
-[BUG-012](../012-invite-server-actions-lack-recipient-check.md).
+[BUG-012](./012-invite-server-actions-lack-recipient-check.md).
 
 ## Regression test
 
@@ -110,8 +110,8 @@ No application code inserts `team_members` through a user-scoped client. The mob
 **Left for other tickets:**
 - The same server action also takes `managerId` from the caller, so a caller can make **someone else** a new
   child's guardian. That is a guardian-link problem, recorded on
-  [BUG-002](./002-profile-managers-claim-child.md).
-- Invitation acceptance checks are [BUG-012](../012-invite-server-actions-lack-recipient-check.md).
+  [BUG-002](../002-profile-managers-claim-child.md).
+- Invitation acceptance checks are [BUG-012](./012-invite-server-actions-lack-recipient-check.md).
 
 ## Verification
 

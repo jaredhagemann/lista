@@ -1040,6 +1040,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_invitation: {
+        Args: {
+          p_first_name?: string
+          p_invitation_id: string
+          p_last_name?: string
+          p_mode: string
+          p_relationship?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       can_invite_guardian_for: {
         Args: { p_managed_profile_id: string; p_team_id: string }
         Returns: boolean

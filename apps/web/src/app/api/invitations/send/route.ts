@@ -47,6 +47,11 @@ export async function POST(request: Request) {
     );
   }
 
+  // A guardian invitation grants guardianship only — never a team role (BUG-012).
+  if (managedProfileId && role !== "manager") {
+    return NextResponse.json({ error: "Invalid invitation type" }, { status: 400 });
+  }
+
   const admin = adminClient();
 
   // Verify caller is a team admin OR a profile manager for the managed profile

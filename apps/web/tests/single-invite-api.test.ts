@@ -332,3 +332,21 @@ describe("POST /api/invitations/send — guardian invitations (BUG-002)", () => 
     expect(res.status).not.toBe(403);
   });
 });
+
+describe("POST /api/invitations/send — guardian invitation role (BUG-012)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupBaseAuth();
+  });
+
+  it("returns 400 when a guardian invitation carries a team role", async () => {
+    const { insertMock } = setupFromRouting({ teamMembersResponses: [{ id: "tm-child" }] });
+
+    const res = await POST(
+      makeRequest({ teamId: TEAM_ID, email: "x@example.com", role: "coach", managedProfileId: "child-1" })
+    );
+
+    expect(res.status).toBe(400);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+});

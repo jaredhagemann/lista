@@ -6,6 +6,9 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "apps/web/src"),
       "next/server": path.resolve(__dirname, "apps/web/node_modules/next/server"),
+      // Server actions import these; aliasing lets vi.mock() in root tests match them.
+      "next/cache": path.resolve(__dirname, "apps/web/node_modules/next/cache"),
+      "next/headers": path.resolve(__dirname, "apps/web/node_modules/next/headers"),
     },
   },
   test: {
