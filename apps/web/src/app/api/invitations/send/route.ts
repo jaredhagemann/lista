@@ -52,6 +52,22 @@ export async function POST(request: Request) {
   // Verify caller is a team admin OR a profile manager for the managed profile
   const isTeamAdmin = await assertTeamAdmin(admin, user.id, teamId);
 
+  if (isTeamAdmin && managedProfileId) {
+    // A guardian invitation makes the recipient that player's guardian. Staff may
+    // only send one for a player on their own team (D1, BUG-002) — anyone can
+    // create a team, so "admin of some team" is not enough.
+    const { data: playerMembership } = await admin
+      .from("team_members")
+      .select("id")
+      .eq("team_id", teamId)
+      .eq("profile_id", managedProfileId)
+      .maybeSingle();
+
+    if (!playerMembership) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+  }
+
   if (!isTeamAdmin) {
     // Allow if they manage the specific profile being invited for
     if (!managedProfileId) {

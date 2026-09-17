@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 
-export function CreateManagedPlayerForm({ managerId }: { managerId: string }) {
+export function CreateManagedPlayerForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -41,7 +41,6 @@ export function CreateManagedPlayerForm({ managerId }: { managerId: string }) {
       email: form.email.trim() || undefined,
       birthday: form.birthday || undefined,
       relationship: form.relationship.trim() || undefined,
-      managerId,
     });
 
     setLoading(false);

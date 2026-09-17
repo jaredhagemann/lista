@@ -22,7 +22,9 @@ const mocks = vi.hoisted(() => {
   const mockEq = vi.fn();
   const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
   const mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
-  return { mockCookieGetUser, mockBearerGetUser, mockFrom, mockEq, mockSelect };
+  // account/delete checks guardian_dependents; none here, so auth is what's tested.
+  const mockRpc = vi.fn().mockResolvedValue({ data: [], error: null });
+  return { mockCookieGetUser, mockBearerGetUser, mockFrom, mockEq, mockSelect, mockRpc };
 });
 
 // Mock the server Supabase client (used for cookie-session auth)
@@ -38,6 +40,7 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => ({
     auth: { getUser: mocks.mockBearerGetUser },
     from: mocks.mockFrom,
+    rpc: mocks.mockRpc,
   })),
 }));
 

@@ -14,6 +14,11 @@ Spec: `docs/specs/app-store-feedback-mitigations.md` — Issue 1 (Guideline 5.1.
 | 1.4 | Valid token, user owns no teams | Authenticated user with no `teams.owner_id` rows | `200 { "eligible": true }` |
 | 1.5 | Valid token, user owns one team | Authenticated user with one `teams.owner_id` row | `409 { "error": "owns_teams", "teams": ["<name>"] }` |
 | 1.6 | Valid token, user owns multiple teams | Authenticated user with two or more `teams.owner_id` rows | `409 { "error": "owns_teams", "teams": ["<name1>", "<name2>"] }` |
+| 1.7 | Valid token, sole guardian of a player with no login | User is the only guardian with a login of a managed profile (`auth_user_id = NULL`) | `409 { "error": "sole_guardian", "players": ["<first> <last>"] }` |
+| 1.8 | Valid token, guardian with a co-guardian who can sign in | Managed profile has a second guardian whose profile has an `auth_user_id` | `200 { "eligible": true }` |
+| 1.9 | Valid token, guardian of a player with their own login | Guarded profile has an `auth_user_id` | `200 { "eligible": true }` |
+
+Owned teams are reported before sole guardianship. Every player profile must keep a login path (decisions D1/D7 in `docs/reviews/2026-09-15-bug-backlog-review.md`, implemented in BUG-002).
 
 ---
 
@@ -27,6 +32,9 @@ Spec: `docs/specs/app-store-feedback-mitigations.md` — Issue 1 (Guideline 5.1.
 | 2.4 | Valid token, user owns a team (race guard) | User acquired team ownership between GET and DELETE | `409 { "error": "owns_teams", "teams": ["<name>"] }` |
 | 2.5 | Valid token, eligible user | Authenticated user with no owned teams | `200 { "deleted": true }` |
 | 2.6 | Supabase admin deletion fails | Mock `auth.admin.deleteUser()` to return an error | `500 { "error": "deletion_failed" }` |
+| 2.7 | Valid token, sole guardian (race guard) | User became a player's only guardian between GET and DELETE | `409 { "error": "sole_guardian", "players": [...] }`; user still exists |
+| 2.8 | Sole-guardian check fails | Mock the `guardian_dependents` RPC to return an error | `500 { "error": "deletion_failed" }`; user still exists |
+| 2.9 | Database backstop | Delete a sole guardian's auth user directly with the service role, bypassing the route | Deletion fails; the guardian's profile and guardian link still exist |
 
 ### 2.5 — Deletion cascade verification (sub-cases for scenario 2.5)
 
@@ -40,7 +48,7 @@ After a successful `200`, assert that each of the following is gone from the dat
 | `notification_preferences` | No rows referencing the deleted profile |
 | `push_subscriptions` | No rows referencing the deleted profile |
 | `availability` records | No rows referencing the deleted profile |
-| Managed player profiles | Fixture: before deletion, insert a `profiles` row with `auth_user_id = NULL` and a `team_members` row linking it to a shared team; record the profile ID. After deletion, assert by that profile ID that the `profiles` row and its `team_members` row still exist. Do not rely on implicit "created by" linkage — the fixture ID is the only reliable handle. |
+| Managed player profiles | Fixture: before deletion, insert a `profiles` row with `auth_user_id = NULL` and a `team_members` row linking it to a shared team; record the profile ID. After deletion, assert by that profile ID that the `profiles` row and its `team_members` row still exist. Do not rely on implicit "created by" linkage — the fixture ID is the only reliable handle. If the fixture links the deleted user as its guardian, it must also have another guardian with a login — otherwise the deletion is refused (see 1.7). |
 
 ---
 
@@ -78,9 +86,10 @@ After a successful `200`, assert that each of the following is gone from the dat
 | 3.5.7 | User is not accessible after deletion | After 3.5.6, attempt to sign in with the deleted credentials | Sign-in fails |
 | 3.5.8 | signOut failure after successful DELETE still redirects | Mock `supabase.auth.signOut()` to throw; confirm deletion | DELETE returns `200`; signOut error is silently ignored; user is still redirected to `/login` |
 | 3.5.9 | Backend deletion failure (`500`) | Confirm deletion while mocking a `500` from DELETE | Inline error: "Something went wrong. Please try again or contact support@lista.team."; user remains signed in; no redirect |
-| 3.5.10 | Unexpected `409` from DELETE | Confirm deletion while mocking a `409` from DELETE | Same inline error as 3.5.9; user remains signed in; no redirect |
+| 3.5.10 | `409` from DELETE (state changed after the GET) | Confirm deletion while mocking a `409` from DELETE with `owns_teams` or `sole_guardian` | Dialog closes; the same blocker message as 3.5.1 / 3.5.13 is shown for that error; user remains signed in; no redirect. (Changed 2026-09-16, BUG-002: previously a generic error.) |
 | 3.5.11 | GET returns `401` — generic error, no sign-out, no redirect | Click "Delete Account" while mocking GET to return `401` | Generic inline error shown; no confirmation dialog opened; `supabase.auth.signOut()` is not called; user remains on the Account tab |
 | 3.5.12 | DELETE returns `401` — generic error, no sign-out, no redirect | Reach the confirmation dialog normally; mock DELETE to return `401`; confirm deletion | Generic inline error shown; `supabase.auth.signOut()` is not called; no redirect to `/login`; user remains on the Account tab |
+| 3.5.13 | Sole guardian of a player with no login | Click "Delete Account" as a user who is the only guardian with a login of a managed player | Inline error naming the player(s) and asking the user to invite another guardian first, with a "Go to Managed Players" button (navigates to `/dashboard/settings/managed-players`); no confirmation dialog shown |
 
 ---
 

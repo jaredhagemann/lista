@@ -33,7 +33,7 @@ export default async function ManagedPlayersPage() {
         </p>
       </div>
 
-      <CreateManagedPlayerForm managerId={user.id} />
+      <CreateManagedPlayerForm />
 
       {managedProfiles.length > 0 && (
         <ManagedPlayersList managedProfiles={managedProfiles} />

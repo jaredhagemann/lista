@@ -51,6 +51,7 @@ export function ManagersCard({
   pendingInvites: initialPendingInvites,
   canEdit,
   canAdd,
+  canRemove = false,
 }: {
   profileId: string;
   teamId: string;
@@ -58,6 +59,8 @@ export function ManagersCard({
   pendingInvites: InvitationRow[];
   canEdit: boolean;
   canAdd?: boolean;
+  /** Only the player or a guardian may remove a guardian (D1) — not staff. */
+  canRemove?: boolean;
 }) {
   const showAddButton = canEdit || canAdd;
   const router = useRouter();
@@ -254,22 +257,26 @@ export function ManagersCard({
                       {[m.profiles.email, m.phone].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  {canEdit && (
+                  {(canEdit || canRemove) && (
                     <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEdit(m)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteRow(m)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(m)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canRemove && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteRow(m)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

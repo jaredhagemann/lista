@@ -139,6 +139,9 @@ function DeleteAccountSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [ownedTeams, setOwnedTeams] = useState<string[] | null>(null);
+  // Players with no login of their own for whom this account is the only
+  // guardian who can sign in. Deletion is refused until they have another.
+  const [dependentPlayers, setDependentPlayers] = useState<string[] | null>(null);
 
   async function getToken(): Promise<string | null> {
     const {
@@ -147,9 +150,19 @@ function DeleteAccountSection() {
     return session?.access_token ?? null;
   }
 
+  async function showBlocker(res: Response) {
+    const data = await res.json();
+    if (data.error === "sole_guardian") {
+      setDependentPlayers(data.players ?? []);
+    } else {
+      setOwnedTeams(data.teams ?? []);
+    }
+  }
+
   async function handleDeleteClick() {
     setInlineError(null);
     setOwnedTeams(null);
+    setDependentPlayers(null);
     setChecking(true);
 
     const token = await getToken();
@@ -167,8 +180,7 @@ function DeleteAccountSection() {
     setChecking(false);
 
     if (res.status === 409) {
-      const data = await res.json();
-      setOwnedTeams(data.teams ?? []);
+      await showBlocker(res);
       return;
     }
 
@@ -210,6 +222,13 @@ function DeleteAccountSection() {
 
     setDeleting(false);
     setDialogOpen(false);
+
+    // Something changed between the eligibility check and confirmation.
+    if (res.status === 409) {
+      await showBlocker(res);
+      return;
+    }
+
     setInlineError("Something went wrong. Please try again or contact support@lista.team.");
   }
 
@@ -223,7 +242,8 @@ function DeleteAccountSection() {
           <p className="text-sm text-muted-foreground">
             Permanently delete your account, profile, and team memberships. This
             cannot be undone. Note: managed player profiles you have created are
-            retained as roster entries on their teams.
+            retained as roster entries on their teams, and each must keep at
+            least one guardian who can sign in.
           </p>
 
           {ownedTeams && (
@@ -240,6 +260,25 @@ function DeleteAccountSection() {
                 onClick={() => router.push("/dashboard/settings?tab=team")}
               >
                 Go to Team Settings
+              </Button>
+            </div>
+          )}
+
+          {dependentPlayers && (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">
+                You are the only guardian who can sign in for{" "}
+                <strong>{dependentPlayers.join(", ")}</strong>. Invite another
+                guardian for {dependentPlayers.length !== 1 ? "each player" : "this player"}{" "}
+                before deleting your account, so they keep someone who can
+                manage their profile.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/dashboard/settings/managed-players")}
+              >
+                Go to Managed Players
               </Button>
             </div>
           )}

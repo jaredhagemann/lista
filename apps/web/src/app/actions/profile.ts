@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
+import { LAST_GUARDIAN_MESSAGE, isLastGuardianError } from "@/lib/guardians";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
 
 /**
@@ -68,10 +69,15 @@ export async function setActiveProfile(profileId: string, teamId: string) {
 }
 
 /**
- * Create a managed profile (no auth account). Used by both the Settings page
- * (parent creating their own managed profile) and the Team Roster (admin adding
- * a player directly). Always uses service role since managed profiles cannot be
- * inserted via the normal profiles INSERT policy.
+ * Create a managed profile (no auth account) guarded by the signed-in user.
+ * Always uses service role since managed profiles cannot be inserted via the
+ * normal profiles INSERT policy.
+ *
+ * Because this client bypasses RLS, the action decides every link itself:
+ *   - no team admission (BUG-001): players join teams through an admin or an
+ *     accepted invitation
+ *   - the guardian is always the signed-in user, never a caller-supplied id, and
+ *     no one else is linked without accepting an invitation (BUG-002, D1)
  */
 export async function createManagedProfile({
   firstName,
@@ -79,14 +85,12 @@ export async function createManagedProfile({
   email,
   birthday,
   relationship,
-  managerId,
 }: {
   firstName: string;
   lastName?: string;
   email?: string;
   birthday?: string;
   relationship?: string;
-  managerId: string; // profiles.id of the account holder who will manage this profile
 }) {
   const supabase = await createServerClient();
   const {
@@ -100,9 +104,6 @@ export async function createManagedProfile({
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Deliberately no team admission here: this client bypasses RLS, so adding a
-  // team_members row would sidestep the INSERT policy (BUG-001). Players join
-  // teams through an admin or an accepted invitation.
   // Create the managed profile (no auth_user_id)
   const profileId = crypto.randomUUID();
   const { error: profileError } = await admin.from("profiles").insert({
@@ -114,9 +115,9 @@ export async function createManagedProfile({
   });
   if (profileError) return { error: profileError.message };
 
-  // Link the manager
+  // Link the signed-in user as guardian
   const { error: linkError } = await admin.from("profile_managers").insert({
-    manager_id: managerId,
+    manager_id: user.id,
     managed_id: profileId,
     relationship: relationship ?? null,
   });
@@ -124,26 +125,6 @@ export async function createManagedProfile({
     // Clean up the profile if linking fails
     await admin.from("profiles").delete().eq("id", profileId);
     return { error: linkError.message };
-  }
-
-  // If the manager's email matches a pending invitation, try to link
-  if (email) {
-    await admin
-      .from("profiles")
-      .select("auth_user_id")
-      .eq("email", email)
-      .neq("id", profileId)
-      .maybeSingle()
-      .then(async ({ data: existingProfile }) => {
-        if (existingProfile?.auth_user_id) {
-          // An account with this email already exists — link it as an additional manager
-          await admin.from("profile_managers").insert({
-            manager_id: existingProfile.auth_user_id,
-            managed_id: profileId,
-            relationship: relationship ?? null,
-          }).then(() => {});
-        }
-      });
   }
 
   revalidatePath("/dashboard", "layout");
@@ -167,6 +148,7 @@ export async function removeManagedProfile(managedId: string) {
     .eq("manager_id", user.id)
     .eq("managed_id", managedId);
 
+  if (isLastGuardianError(error)) return { error: LAST_GUARDIAN_MESSAGE };
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard", "layout");

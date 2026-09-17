@@ -1040,6 +1040,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_invite_guardian_for: {
+        Args: { p_managed_profile_id: string; p_team_id: string }
+        Returns: boolean
+      }
       create_club_team: {
         Args: { org_id: string; season: string; team_name: string }
         Returns: string
@@ -1054,6 +1058,14 @@ export type Database = {
         Returns: string
       }
       get_user_org_ids: { Args: never; Returns: string[] }
+      guardian_dependents: {
+        Args: { p_manager_id: string }
+        Returns: {
+          first_name: string
+          last_name: string
+          profile_id: string
+        }[]
+      }
       has_club_access: { Args: { o_id: string }; Returns: boolean }
       is_admin_of_profile: { Args: { p_id: string }; Returns: boolean }
       is_channel_member: { Args: { c_id: string }; Returns: boolean }
