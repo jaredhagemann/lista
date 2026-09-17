@@ -22,6 +22,12 @@ export interface RecurrenceConfig {
   frequency: "weekly" | "biweekly";
   daysOfWeek: number[]; // 0=Monday, 1=Tuesday, ..., 6=Sunday (rrule convention)
   until: Date;
+  /**
+   * Where the pattern starts, as a wall-clock time labeled UTC (rrule's convention).
+   * Stored as DTSTART so the pattern does not depend on the head event's current
+   * start time, which single-event edits and head promotion can change (BUG-009).
+   */
+  dtstart?: Date;
 }
 
 export function buildRRule(config: RecurrenceConfig): string {
@@ -30,8 +36,14 @@ export function buildRRule(config: RecurrenceConfig): string {
     interval: config.frequency === "biweekly" ? 2 : 1,
     byweekday: config.daysOfWeek,
     until: config.until,
+    ...(config.dtstart ? { dtstart: config.dtstart } : {}),
   });
   return rule.toString();
+}
+
+/** The inclusive end of a "repeat until" date, in rrule's wall-clock convention (BUG-010). */
+export function untilEndOfDay(date: string): Date {
+  return new Date(`${date}T23:59:59.000Z`);
 }
 
 export function expandRecurrence(

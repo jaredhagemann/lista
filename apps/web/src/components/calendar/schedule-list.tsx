@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { EventFormDialog } from "./event-form-dialog";
 import { toast } from "sonner";
+import { pinnedStartRule } from "@/lib/events/series-edit";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -236,11 +237,13 @@ export function ScheduleList({
     }
   }
 
+  // Deletes only this occurrence; the first occurrence of a series hands the
+  // series on to the next one (BUG-009).
   async function handleDelete(event: EventWithLocation) {
-    const { error } = await supabase
-      .from("events")
-      .delete()
-      .eq("id", event.id);
+    const { error } = await supabase.rpc("delete_event_occurrence", {
+      p_event_id: event.id,
+      p_promoted_head_rule: event.recurrence_rule ? pinnedStartRule(event) : undefined,
+    });
 
     if (error) {
       toast.error(error.message);
@@ -634,7 +637,7 @@ export function ScheduleList({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete event?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{deletingEvent ? getEventTitle(deletingEvent) : ""}&rdquo; will be permanently deleted. This cannot be undone.
+              &ldquo;{deletingEvent ? getEventTitle(deletingEvent) : ""}&rdquo; will be permanently deleted. This cannot be undone.{deletingEvent && (deletingEvent.parent_event_id || deletingEvent.recurrence_rule) ? " Other events in the series are not affected." : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

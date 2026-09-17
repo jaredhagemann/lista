@@ -1051,6 +1051,10 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_series_edit: {
+        Args: { p_plan: Json; p_series_head_id: string }
+        Returns: string
+      }
       can_access_channel: { Args: { p_channel_id: string }; Returns: boolean }
       can_access_dm: { Args: { p_dm_channel_id: string }; Returns: boolean }
       can_add_channel_member: {
@@ -1074,6 +1078,11 @@ export type Database = {
         }
         Returns: string
       }
+      delete_event_occurrence: {
+        Args: { p_event_id: string; p_promoted_head_rule?: string }
+        Returns: undefined
+      }
+      delete_event_series: { Args: { p_event_id: string }; Returns: number }
       get_user_org_ids: { Args: never; Returns: string[] }
       guardian_dependents: {
         Args: { p_manager_id: string }

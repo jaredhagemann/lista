@@ -50,15 +50,12 @@ import {
   User,
 } from "lucide-react";
 import { toast } from "sonner";
-import { EditRecurringPrompt } from "./edit-recurring-prompt";
+import { EditRecurringPrompt, type RecurringEditScope } from "./edit-recurring-prompt";
+import { SeriesEditForm } from "./series-edit-form";
 import { RsvpButtons } from "@/components/availability/rsvp-buttons";
 import { ResponseList } from "@/components/availability/response-list";
-import {
-  buildRRule,
-  expandRecurrenceFromLocalString,
-  parseRRule,
-  getRecurrenceDescription,
-} from "@/lib/utils/rrule";
+import { getRecurrenceDescription } from "@/lib/utils/rrule";
+import { pinnedStartRule } from "@/lib/events/series-edit";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -66,9 +63,7 @@ type Location = Database["public"]["Tables"]["locations"]["Row"];
 type EventWithLocation = Event & {
   locations: { name: string; address: string | null } | null;
 };
-type EditState = null | "prompt" | "single" | "series";
-
-const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+type EditState = null | "prompt" | RecurringEditScope;
 
 function toLocalDatetime(date: Date): string {
   const offset = date.getTimezoneOffset();
@@ -76,15 +71,10 @@ function toLocalDatetime(date: Date): string {
   return local.toISOString().slice(0, 16);
 }
 
-function jsToRRuleDay(jsDay: number): number {
-  return jsDay === 0 ? 6 : jsDay - 1;
-}
-
 // ── Inline edit form ──────────────────────────────────────────────────────────
 
 function EventEditForm({
   editingEvent,
-  editMode,
   teamId,
   homeUniform,
   awayUniform,
@@ -92,7 +82,6 @@ function EventEditForm({
   onCancel,
 }: {
   editingEvent: Event;
-  editMode: "single" | "series";
   teamId: string;
   homeUniform?: string | null;
   awayUniform?: string | null;
@@ -100,11 +89,6 @@ function EventEditForm({
   onCancel: () => void;
 }) {
   const supabase = createClient();
-
-  const parsedRRule =
-    editMode === "series" && editingEvent.recurrence_rule
-      ? parseRRule(editingEvent.recurrence_rule)
-      : null;
 
   const [title, setTitle] = useState(editingEvent.title);
   const [eventType, setEventType] = useState<"practice" | "game" | "other">(
@@ -137,25 +121,6 @@ function EventEditForm({
   const [newLocationName, setNewLocationName] = useState("");
   const [newLocationAddress, setNewLocationAddress] = useState("");
 
-  // Recurrence (series edit only)
-  const [frequencyMode, setFrequencyMode] = useState<
-    "weekly" | "biweekly" | "custom"
-  >(() => {
-    if (!parsedRRule) return "weekly";
-    if (parsedRRule.daysOfWeek.length > 1) return "custom";
-    return parsedRRule.interval === 2 ? "biweekly" : "weekly";
-  });
-  const [customInterval, setCustomInterval] = useState<"weekly" | "biweekly">(
-    () => (parsedRRule?.interval === 2 ? "biweekly" : "weekly")
-  );
-  const [customDays, setCustomDays] = useState<number[]>(
-    () => parsedRRule?.daysOfWeek ?? []
-  );
-  const [recurUntil, setRecurUntil] = useState(() => {
-    if (parsedRRule?.until) return parsedRRule.until.toISOString().slice(0, 10);
-    return "";
-  });
-
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -175,12 +140,6 @@ function EventEditForm({
         new Date(endTime).getTime() - new Date(startTime).getTime();
       setEndTime(
         toLocalDatetime(new Date(new Date(newStart).getTime() + durationMs))
-      );
-    }
-    if (frequencyMode === "custom" && newStart) {
-      const rruleDay = jsToRRuleDay(new Date(newStart).getDay());
-      setCustomDays((prev) =>
-        prev.includes(rruleDay) ? prev : [...prev, rruleDay]
       );
     }
     setStartTime(newStart);
@@ -240,174 +199,31 @@ function EventEditForm({
       arrival_time: arrivalTime !== "" ? parseInt(arrivalTime, 10) : null,
     };
 
-    if (editMode === "series") {
-      // Build new rrule
-      const startDate = new Date(startTime);
-      const endDate = new Date(endTime);
-      const durationMs = endDate.getTime() - startDate.getTime();
-      const startDayRRule = jsToRRuleDay(startDate.getDay());
-
-      let newRruleString: string | null = editingEvent.recurrence_rule;
-      if (recurUntil) {
-        const daysOfWeek =
-          frequencyMode === "custom"
-            ? [...new Set([startDayRRule, ...customDays])]
-            : [startDayRRule];
-        newRruleString = buildRRule({
-          frequency:
-            frequencyMode === "custom"
-              ? customInterval
-              : (frequencyMode as "weekly" | "biweekly"),
-          daysOfWeek,
-          until: new Date(recurUntil),
-        });
-      }
-
-      // Compute diff for notification
-      type FieldChange = { field: string; before: string; after: string };
-      const formatValue = (field: string, val: unknown): string => {
-        if (val == null || val === "") return "—";
-        if (field === "start_time" || field === "end_time") {
-          const d = new Date(val as string);
-          return `${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-        }
-        if (field === "arrival_time") return `${val} min early`;
-        if (field === "location_id")
-          return locations.find((l) => l.id === val)?.name ?? String(val);
-        if (field === "recurrence_rule")
-          return getRecurrenceDescription(val as string);
-        return String(val);
-      };
-      const before = {
-        title: editingEvent.title,
-        start_time: editingEvent.start_time,
-        end_time: editingEvent.end_time,
-        arrival_time: editingEvent.arrival_time,
-        location_id: editingEvent.location_id,
-        notes: editingEvent.notes,
-        recurrence_rule: editingEvent.recurrence_rule,
-      };
-      const after = {
-        title: eventData.title,
-        start_time: eventData.start_time,
-        end_time: eventData.end_time,
-        arrival_time: eventData.arrival_time,
-        location_id: eventData.location_id,
-        notes: eventData.notes,
-        recurrence_rule: newRruleString,
-      };
-      const fieldLabels: Record<string, string> = {
-        title: "Title",
-        start_time: "Start time",
-        end_time: "End time",
-        arrival_time: "Arrival time",
-        location_id: "Location",
-        notes: "Notes",
-        recurrence_rule: "Recurrence",
-      };
-      const changes: FieldChange[] = [];
-      for (const key of Object.keys(before) as Array<keyof typeof before>) {
-        const b = before[key];
-        const a = after[key as keyof typeof after];
-        if ((b == null ? "" : String(b)) !== (a == null ? "" : String(a))) {
-          changes.push({
-            field: fieldLabels[key],
-            before: formatValue(key, b),
-            after: formatValue(key, a),
-          });
-        }
-      }
-
-      // Update parent event
-      const { error: updateError } = await supabase
-        .from("events")
-        .update({ ...eventData, recurrence_rule: newRruleString })
-        .eq("id", editingEvent.id);
-      if (updateError) {
-        toast.error(updateError.message);
-        setSaving(false);
-        return;
-      }
-
-      // Delete all children
-      const { error: deleteError } = await supabase
-        .from("events")
-        .delete()
-        .eq("parent_event_id", editingEvent.id);
-      if (deleteError) {
-        toast.error(deleteError.message);
-        setSaving(false);
-        return;
-      }
-
-      // Re-expand and re-insert children
-      if (newRruleString) {
-        const occurrences = expandRecurrenceFromLocalString(
-          startTime,
-          newRruleString
-        );
-        const childEvents = occurrences.slice(1).map((date) => ({
-          ...eventData,
-          game_result: null,
-          score_for: null,
-          score_against: null,
-          start_time: date.toISOString(),
-          end_time: new Date(date.getTime() + durationMs).toISOString(),
-          parent_event_id: editingEvent.id,
-        }));
-        if (childEvents.length > 0) {
-          const { error: childError } = await supabase
-            .from("events")
-            .insert(childEvents);
-          if (childError) {
-            toast.error(childError.message);
-            setSaving(false);
-            return;
-          }
-        }
-      }
-
-      fetch("/api/notifications/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId: editingEvent.id,
-          action: "series_updated",
-          changes,
-        }),
-      }).catch(() => {});
-
-      toast.success("Series updated");
-    } else {
-      const { error } = await supabase
-        .from("events")
-        .update(eventData)
-        .eq("id", editingEvent.id);
-      if (error) {
-        toast.error(error.message);
-        setSaving(false);
-        return;
-      }
-      toast.success("Event updated");
+    // A series head carries the pattern. Pin its start before this occurrence
+    // moves, so the other occurrences keep their dates (BUG-009).
+    const { error } = await supabase
+      .from("events")
+      .update(
+        editingEvent.recurrence_rule
+          ? { ...eventData, recurrence_rule: pinnedStartRule(editingEvent) }
+          : eventData
+      )
+      .eq("id", editingEvent.id);
+    if (error) {
+      toast.error(error.message);
+      setSaving(false);
+      return;
     }
+    toast.success("Event updated");
 
     setSaving(false);
     onSave();
   }
 
-  const startDayRRule = jsToRRuleDay(new Date(startTime).getDay());
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          {editMode === "series" ? "Edit series" : "Edit event"}
-        </CardTitle>
-        {editMode === "series" && (
-          <p className="text-sm text-muted-foreground">
-            Changes will apply to all events in this series.
-          </p>
-        )}
+        <CardTitle>Edit event</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -595,134 +411,41 @@ function EventEditForm({
                   </Select>
                 </div>
               </div>
-              {editMode === "single" && (
-                <>
+                <div className="space-y-2">
+                  <Label>Result</Label>
+                  <Select value={gameResult} onValueChange={setGameResult}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select result" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="win">Win</SelectItem>
+                      <SelectItem value="loss">Loss</SelectItem>
+                      <SelectItem value="tie">Tie</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Result</Label>
-                    <Select value={gameResult} onValueChange={setGameResult}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select result" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="win">Win</SelectItem>
-                        <SelectItem value="loss">Loss</SelectItem>
-                        <SelectItem value="tie">Tie</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="scoreFor">Score (us)</Label>
-                      <Input
-                        id="scoreFor"
-                        type="number"
-                        min="0"
-                        value={scoreFor}
-                        onChange={(e) => setScoreFor(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="scoreAgainst">Score (them)</Label>
-                      <Input
-                        id="scoreAgainst"
-                        type="number"
-                        min="0"
-                        value={scoreAgainst}
-                        onChange={(e) => setScoreAgainst(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Recurrence controls — series edit only */}
-          {editMode === "series" && (
-            <div className="space-y-4 rounded-md border p-4">
-              <h4 className="text-sm font-medium">Recurrence</h4>
-              <div className="space-y-2">
-                <Label>Frequency</Label>
-                <Select
-                  value={frequencyMode}
-                  onValueChange={(v) =>
-                    setFrequencyMode(v as "weekly" | "biweekly" | "custom")
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Every 2 weeks</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {frequencyMode === "custom" && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Repeat every</Label>
-                    <Select
-                      value={customInterval}
-                      onValueChange={(v) =>
-                        setCustomInterval(v as "weekly" | "biweekly")
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="weekly">1 week</SelectItem>
-                        <SelectItem value="biweekly">2 weeks</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="scoreFor">Score (us)</Label>
+                    <Input
+                      id="scoreFor"
+                      type="number"
+                      min="0"
+                      value={scoreFor}
+                      onChange={(e) => setScoreFor(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>On days</Label>
-                    <div className="flex gap-1.5">
-                      {DAY_LABELS.map((label, idx) => {
-                        const isStartDay = idx === startDayRRule;
-                        const isSelected =
-                          customDays.includes(idx) || isStartDay;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => {
-                              if (isStartDay) return;
-                              setCustomDays((prev) =>
-                                prev.includes(idx)
-                                  ? prev.filter((d) => d !== idx)
-                                  : [...prev, idx]
-                              );
-                            }}
-                            className={`h-8 w-8 rounded-full text-sm font-medium transition-colors ${
-                              isSelected
-                                ? "bg-primary text-primary-foreground"
-                                : "border hover:bg-muted text-muted-foreground"
-                            } ${isStartDay ? "cursor-default" : "cursor-pointer"}`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <Label htmlFor="scoreAgainst">Score (them)</Label>
+                    <Input
+                      id="scoreAgainst"
+                      type="number"
+                      min="0"
+                      value={scoreAgainst}
+                      onChange={(e) => setScoreAgainst(e.target.value)}
+                    />
                   </div>
-                </>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="recurUntil">Repeat until</Label>
-                <Input
-                  id="recurUntil"
-                  type="date"
-                  value={recurUntil}
-                  onChange={(e) => setRecurUntil(e.target.value)}
-                  required
-                />
-              </div>
+                </div>
             </div>
           )}
 
@@ -777,17 +500,36 @@ export function EventDetail({
     if (!initialEdit || !isAdmin || event.is_cancelled) return null;
     return isRecurring ? "prompt" : "single";
   });
-  const [parentEvent, setParentEvent] = useState<Event | null>(null);
+  // Every occurrence of this event's series, loaded for a bulk edit or delete.
+  const [series, setSeries] = useState<Event[] | null>(null);
+  const [deleteSummary, setDeleteSummary] = useState<{ occurrences: number; responses: number } | null>(null);
+  const [confirmSeriesDelete, setConfirmSeriesDelete] = useState(false);
 
   const startDate = new Date(event.start_time);
   const endDate = new Date(event.end_time);
 
+  async function loadSeries(): Promise<Event[] | null> {
+    const headId = event.parent_event_id ?? event.id;
+    const { data, error } = await supabase
+      .from("events")
+      .select("*")
+      .or(`id.eq.${headId},parent_event_id.eq.${headId}`)
+      .order("start_time");
+    if (error || !data || data.length === 0) {
+      toast.error("Could not load the series.");
+      return null;
+    }
+    return data;
+  }
+
+  // Deletes only this event. Deleting the first occurrence of a series hands
+  // the series on to the next one (BUG-009).
   async function handleDelete() {
     setDeleting(true);
-    const { error } = await supabase
-      .from("events")
-      .delete()
-      .eq("id", event.id);
+    const { error } = await supabase.rpc("delete_event_occurrence", {
+      p_event_id: event.id,
+      p_promoted_head_rule: event.recurrence_rule ? pinnedStartRule(event) : undefined,
+    });
 
     if (error) {
       toast.error(error.message);
@@ -796,6 +538,42 @@ export function EventDetail({
     }
 
     toast.success("Event deleted");
+    router.push("/dashboard/schedule");
+    router.refresh();
+  }
+
+  async function handleAskDeleteSeries() {
+    setDeleting(true);
+    const rows = await loadSeries();
+    if (!rows) {
+      setDeleting(false);
+      return;
+    }
+    const { count } = await supabase
+      .from("availability")
+      .select("*", { count: "exact", head: true })
+      .in(
+        "event_id",
+        rows.map((r) => r.id)
+      );
+    setDeleteSummary({ occurrences: rows.length, responses: count ?? 0 });
+    setConfirmSeriesDelete(true);
+    setDeleting(false);
+  }
+
+  async function handleDeleteSeries() {
+    setDeleting(true);
+    const { data, error } = await supabase.rpc("delete_event_series", {
+      p_event_id: event.id,
+    });
+
+    if (error) {
+      toast.error(error.message);
+      setDeleting(false);
+      return;
+    }
+
+    toast.success(`Series deleted (${data} events)`);
     router.push("/dashboard/schedule");
     router.refresh();
   }
@@ -834,34 +612,25 @@ export function EventDetail({
     setEditState(isRecurring ? "prompt" : "single");
   }
 
-  async function handleEditSeries() {
-    let parent: Event | null = null;
-    if (event.parent_event_id) {
-      const { data } = await supabase
-        .from("events")
-        .select("*")
-        .eq("id", event.parent_event_id)
-        .single();
-      parent = data as Event | null;
-    } else {
-      parent = event;
+  async function handleChooseScope(scope: RecurringEditScope) {
+    if (scope === "single") {
+      setEditState("single");
+      return;
     }
-
-    if (!parent) {
-      toast.error("Could not find the series.");
+    const rows = await loadSeries();
+    if (!rows) {
       setEditState(null);
       return;
     }
-
-    setParentEvent(parent);
-    setEditState("series");
+    setSeries(rows);
+    setEditState(scope);
   }
 
   function handleEditSave() {
-    const wasSeries = editState === "series";
+    const wasBulk = editState === "following" || editState === "series";
     setEditState(null);
-    setParentEvent(null);
-    if (wasSeries) {
+    setSeries(null);
+    if (wasBulk) {
       router.push("/dashboard/schedule");
     } else {
       router.refresh();
@@ -870,7 +639,7 @@ export function EventDetail({
 
   function handleEditCancel() {
     setEditState(null);
-    setParentEvent(null);
+    setSeries(null);
   }
 
   const eventTypeColor: Record<string, string> = {
@@ -880,7 +649,8 @@ export function EventDetail({
   };
 
   // ── Edit mode ──────────────────────────────────────────────────────────────
-  if (editState === "single" || (editState === "series" && parentEvent)) {
+  const bulkScope = editState === "following" || editState === "series" ? editState : null;
+  if (editState === "single" || (bulkScope && series)) {
     return (
       <div className="mx-auto max-w-2xl space-y-6">
         <Link
@@ -890,15 +660,27 @@ export function EventDetail({
           <ArrowLeft className="h-4 w-4" />
           Back to schedule
         </Link>
-        <EventEditForm
-          editingEvent={editState === "series" ? parentEvent! : event}
-          editMode={editState === "series" ? "series" : "single"}
-          teamId={event.team_id!}
-          homeUniform={homeUniform}
-          awayUniform={awayUniform}
-          onSave={handleEditSave}
-          onCancel={handleEditCancel}
-        />
+        {bulkScope && series ? (
+          <SeriesEditForm
+            series={series}
+            openedId={event.id}
+            scope={bulkScope}
+            teamId={event.team_id!}
+            homeUniform={homeUniform}
+            awayUniform={awayUniform}
+            onSave={handleEditSave}
+            onCancel={handleEditCancel}
+          />
+        ) : (
+          <EventEditForm
+            editingEvent={event}
+            teamId={event.team_id!}
+            homeUniform={homeUniform}
+            awayUniform={awayUniform}
+            onSave={handleEditSave}
+            onCancel={handleEditCancel}
+          />
+        )}
       </div>
     );
   }
@@ -1170,8 +952,7 @@ export function EventDetail({
       <EditRecurringPrompt
         open={editState === "prompt"}
         onClose={() => setEditState(null)}
-        onEditSingle={() => setEditState("single")}
-        onEditSeries={handleEditSeries}
+        onChoose={handleChooseScope}
       />
 
       {/* Delete confirmation */}
@@ -1180,24 +961,76 @@ export function EventDetail({
           <DialogHeader>
             <DialogTitle>Delete event</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &ldquo;{event.title}&rdquo;? This
-              action cannot be undone.
+              {isRecurring ? (
+                <>
+                  Delete only this event, or every event in the series? Deleted events and their
+                  availability responses can&apos;t be recovered.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete &ldquo;{event.title}&rdquo;? This
+                  action cannot be undone.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowDelete(false)}>
               Cancel
             </Button>
+            {isRecurring && (
+              <Button
+                variant="outline"
+                className="text-destructive"
+                onClick={handleAskDeleteSeries}
+                disabled={deleting}
+              >
+                Entire series…
+              </Button>
+            )}
             <Button
               variant="destructive"
               onClick={handleDelete}
               disabled={deleting}
             >
-              {deleting ? "Deleting..." : "Delete"}
+              {deleting ? "Deleting..." : isRecurring ? "This event" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Whole-series delete: a separate, explicit confirmation */}
+      <AlertDialog
+        open={confirmSeriesDelete}
+        onOpenChange={(open) => {
+          setConfirmSeriesDelete(open);
+          if (!open) setDeleteSummary(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete the entire series?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteSummary && (
+                <>
+                  This permanently deletes all {deleteSummary.occurrences} events in the
+                  &ldquo;{event.title}&rdquo; series, past events included, and{" "}
+                  {deleteSummary.responses} availability{" "}
+                  {deleteSummary.responses === 1 ? "response" : "responses"}. To stop the series
+                  without losing its history, edit the entire series and set an earlier
+                  &ldquo;Repeat until&rdquo; date instead.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Back</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleDeleteSeries} disabled={deleting}>
+              {deleting ? "Deleting..." : `Delete ${deleteSummary?.occurrences ?? ""} events`}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

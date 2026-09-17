@@ -1,7 +1,7 @@
 # BUG-003 — Private chat groups are self-joinable and message bodies are mutable
 
 **Severity:** P1
-**Status:** Fixed (pending deploy verification — see Verification)
+**Status:** Fixed — verified in production 2026-09-17
 **Reported:** 2026-09-04 by readiness review (finding 3)
 **Area:** chat / rls
 **Evidence class:** Reproduced (local stack) for all defects, 2026-09-17 — **unverified in deployment**
@@ -199,3 +199,11 @@ Expected:
 
 **After deploy, a quick manual check:** send a message and delete it on web; open a group and a DM on mobile.
 Chat reads and read markers run through the new policies.
+
+**Deployed and verified 2026-09-17** (merge `96a62b7fd`, PR #61):
+- The staging checks passed before merge.
+- The production migration job logged `Applying migration 20260917000004_chat_access_control.sql...`, and the
+  Vercel production deploy succeeded.
+- The production SQL checks passed (user).
+- The manual chat check passed (user): sending and deleting a message on web, and opening a group and a DM on
+  mobile.

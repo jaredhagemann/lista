@@ -11,6 +11,10 @@
 "tomorrow" wording, and push text — moved to [BUG-020](./fixed/020-notification-times-in-utc.md) to ship first, using
 the team's timezone. BUG-010 keeps the event-level timezone field, timezone-aware forms, recurrence and backfill (D5).
 
+**Symptom 1 fixed by [BUG-009](./fixed/009-series-edit-destroys-occurrence-history.md) (2026-09-17):** "Repeat until" now
+includes that day, both when creating a series and in the series editor. New rules also store their start (`DTSTART`).
+The event-level timezone field and backfill (D5) are still open here.
+
 ## Reproduced in production — 2026-09-17
 
 Reported by the user from the first real reminder run after [BUG-008](./fixed/008-cron-routes-redirected-to-login.md)
