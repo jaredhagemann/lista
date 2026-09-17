@@ -1,10 +1,10 @@
 # BUG-021 — A guardian signing in to a club-tier team gets the default Lista experience, not the club's
 
 **Severity:** P1
-**Status:** Open — needs the production probe below
+**Status:** Open — cause diagnosed, not yet fixed
 **Reported:** 2026-09-17 by the user, while testing in production
 **Area:** tenancy / branding
-**Evidence class:** Mixed — **symptom reported in production** (user, 2026-09-17); subdomain routing **confirmed working in production** for another account the same day; the code paths below are **Static**
+**Evidence class:** **Reproduced** (local stack, 2026-09-17) from the production account shape; symptom reported in production the same day
 **Last verified:** `f28b0d5fa`, code inspection, 2026-09-17
 
 ## Symptom
@@ -27,7 +27,7 @@ Reported from production; not yet reproduced locally, and not yet isolated to gu
 switches to that team (user, 2026-09-17), so `lista.team` is live, the org's subdomain is active, and both the
 switcher redirect and hostname branding work for at least one account. Whatever fails, fails for this account.
 
-## Evidence
+## How branding reaches the browser
 
 Branding is derived from the **hostname only**. Nothing about the signed-in user feeds it:
 
@@ -50,77 +50,91 @@ is the job of the redirect in `dashboard/layout.tsx:144`, which is where a guard
 
 Spec: [`docs/specs/club-subdomain-routing.md`](../specs/club-subdomain-routing.md).
 
-## Candidate causes
+## Cause
 
-Not diagnosed. **Ruled out 2026-09-17:** "production isn't on `lista.team`". It is, and the subdomain
-redirect works for the reporter's own account on the same org.
+**Diagnosed and reproduced on a local stack, 2026-09-17.** A guardian cannot read the `organizations` row
+for their child's team, so the dashboard has no subdomain to send them to.
 
-What is left depends on a detail that is itself unclear — how this player and guardian are actually
-recorded. The account shows **one** profile in the switcher, labelled *"U10 Girls (Player)"*, the player's
-page shows **"Dad"** beside the contact email, and the player has no sign-in of their own (user, 2026-09-17).
-Two different shapes produce roughly that screen:
-
-**(a) The intended managed-profile shape.** The child is a profile with no auth user, a `team_members` row
-with role `player`, and a `profile_managers` link to the guardian's account. The guardian has no membership
-of their own. Then `activeMembership` (`dashboard/layout.tsx:93`) finds no row for the active profile and
-falls through to `allMemberships[0]` — the child's. That resolves the club org, so the layout *should*
-redirect. If it doesn't, the defect is in this fallback path or in something before it, and it would hit
-every guardian.
-
-**(b) The invite attached the guardian's own account as the player.** The guardian's profile itself holds
-the `player` membership, "Dad" is that profile's own contact detail, and no child profile exists. Then the
-account is an ordinary team member and should be branded like any other — which points the defect somewhere
-other than guardianship, and raises a **separate** question about what the invite created. Compare
-[BUG-002](./fixed/002-profile-managers-claim-child.md) (guardian links) and
-[BUG-011](./011-identity-differs-web-vs-mobile.md) (identity differs by client).
-
-The earlier "guardian is also on another, non-club team" hypothesis needs the same data: the reporter says
-this is their only guardian account, which doesn't yet say how many teams it belongs to.
-
-## Production probe
-
-Read-only, to be run in the production SQL editor with the guardian's email. It settles (a) vs (b) and shows
-exactly which team and org the dashboard would resolve.
+The `organizations` SELECT policy
+(`supabase/migrations/20260416000001_organization_members.sql:99`, "Orgs visible to members") admits two
+kinds of caller:
 
 ```sql
--- 1. The account, its memberships, and each team's org branding
-select p.id as profile_id, p.full_name, p.active_team_id,
-       tm.team_id, tm.role, t.name as team_name,
-       t.organization_id, o.name as org_name, o.plan, o.subdomain, o.subdomain_status
-from profiles p
-left join team_members tm on tm.profile_id = p.id
-left join teams t on t.id = tm.team_id
-left join organizations o on o.id = t.organization_id
-where p.email = '<guardian email>';
-
--- 2. Profiles this account manages, and their memberships
-select pm.managed_id, mp.full_name, mp.email, pm.relationship,
-       tm.team_id, tm.role, t.name as team_name, o.subdomain, o.subdomain_status
-from profile_managers pm
-join profiles mp on mp.id = pm.managed_id
-left join team_members tm on tm.profile_id = pm.managed_id
-left join teams t on t.id = tm.team_id
-left join organizations o on o.id = t.organization_id
-where pm.manager_id = (select id from profiles where email = '<guardian email>')
-  and pm.managed_id <> pm.manager_id;
+exists (select 1 from teams t
+          join team_members tm on tm.team_id = t.id
+          join profiles p on p.id = tm.profile_id
+        where t.organization_id = organizations.id and p.auth_user_id = auth.uid())
+or
+exists (select 1 from organization_members om
+          join profiles p on p.id = om.profile_id
+        where om.organization_id = organizations.id and p.auth_user_id = auth.uid())
 ```
 
-Reading it:
-- Query 1 returns a membership row on the club team → shape **(b)**: the account is the player.
-- Query 1 returns no membership (or only non-club teams) and query 2 returns the child on the club team →
-  shape **(a)**.
-- Either way, note whether `subdomain_status` is `active` and `plan` is a club tier on the row that should
-  brand the dashboard, and whether `active_team_id` points at that team.
+Both require a profile that is **itself** a member and whose `auth_user_id` is the caller. A guardian is
+neither: the membership belongs to the managed child, and a managed profile has `auth_user_id = null`.
+`is_team_member()` has covered managed children since `20260303000002_managed_profiles.sql:67`, but this
+policy doesn't use it.
+
+The dashboard layout then does this (`apps/web/src/app/dashboard/layout.tsx:118`):
+
+```ts
+supabase.from("organizations").select("subdomain, subdomain_status, plan, subscription_status")
+```
+
+which returns nothing, so `activeOrgSubdomain` stays `null`, the redirect at `layout.tsx:144` never fires,
+the browser stays on `lista.team`, and `resolveTenant` reports no tenant. Branding is hostname-derived, so
+the guardian gets the default Lista look.
+
+**Second symptom from the same read:** `hasTrainingAccess` is computed from that same empty row
+(`layout.tsx:131`), so a guardian on a club team never sees the **Training** nav item
+(`apps/web/src/components/layout/dashboard-nav.tsx:71`).
+
+Everything *before* the org read is fine, which is why the team still appears correctly in the switcher.
+
+## Evidence
+
+Production data for the reported account (user-run SQL, 2026-09-17), which establishes the shape:
+
+| | |
+| --- | --- |
+| Guardian profile | `8059acf9…`, `auth_user_id` equal to its own id, `active_team_id` = the child's team |
+| Guardian memberships | **none** |
+| Managed child | `c14c62c9…` "Zoey Butler", `managed-…@lista.internal`, `auth_user_id` **null**, relationship "dad" |
+| Child membership | team `cdcc4967…` "U10 Girls", role `player` |
+| Org | plan `club_large`, subdomain `slofc`, `subdomain_status` `active` |
+
+So this is the intended managed-profile shape, not a bad invite: the child has no sign-in of their own, and
+"Dad" beside the contact email is the guardian's own detail on the child's page.
+
+Local reproduction, `tests/rls/guardian-branding-probe.test.ts` (not committed — it asserts the *fixed*
+behavior and fails today), replaying the layout's queries as the guardian against the same shape:
+
+| Layout step | Result |
+| --- | --- |
+| own profile, managed links, `team_members` with `teams(*)` | resolve correctly |
+| `activeMembership` → `activeOrgId` | resolves to the club org |
+| **`organizations` row for that org** | **empty — `plan` is `undefined`** |
+
+`AssertionError: expected undefined to be 'club_large'`
+
+The same policy shape also guards `organization_members` ("org members can view org_members"), which is
+harmless here: a guardian genuinely has no org role.
 
 ## Proposed fix
 
-Depends on the probe. If the branding org must come from a managed child's membership, the active team — and
-therefore the org whose branding applies — should be resolved from the team actually being viewed, with
-managed-child memberships counting for it, rather than from whichever membership happens to sort first.
+Let the `organizations` SELECT policy admit a caller who manages a profile on one of the org's teams —
+the rule `is_team_member()` already applies everywhere else — and keep the org-member branch as is.
+Guardians would then read the same org row any team member already can.
+
+Worth settling in the same change: this policy hands every team member the whole row, billing columns
+included (`stripe_customer_id`, `subscription_status`). Widening the audience is a good moment to decide
+whether reads should be column-limited, which [BUG-005](./fixed/005-org-billing-columns-self-editable.md)
+touched on for writes only.
 
 ## Regression test
 
-Against the unfixed code: a guardian whose managed child is on a club-tier team with an active subdomain,
-and whose own memberships are elsewhere or absent, resolves the **child's club team** as the active team,
-and the dashboard sends them to that org's subdomain instead of to `lista.team`. Cover the "viewing as
-myself" and "viewing as the child" cases, and a guardian with children on two teams.
+Against the unfixed code: a guardian whose only link to a club-tier org is a managed child reads that org's
+`plan`, `subdomain` and `subdomain_status` — failing today, as the probe above shows. Cover a guardian with
+no memberships of their own, a guardian who is also a member of a different org's team (they must not gain
+that org), and a non-guardian outsider (still refused). Add a layout-level assertion that the resolved
+`activeOrgSubdomain` for such a guardian is the club's subdomain.
