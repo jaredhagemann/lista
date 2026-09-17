@@ -40,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft,
   Calendar,
@@ -56,6 +57,7 @@ import { RsvpButtons } from "@/components/availability/rsvp-buttons";
 import { ResponseList } from "@/components/availability/response-list";
 import { getRecurrenceDescription } from "@/lib/utils/rrule";
 import { pinnedStartRule } from "@/lib/events/series-edit";
+import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -122,6 +124,9 @@ function EventEditForm({
   const [newLocationAddress, setNewLocationAddress] = useState("");
 
   const [saving, setSaving] = useState(false);
+  // D3: time, arrival time and location changes notify by themselves (the
+  // database enqueues them). A title or notes edit only notifies if asked.
+  const [notifyTeam, setNotifyTeam] = useState(false);
 
   useEffect(() => {
     supabase
@@ -214,7 +219,24 @@ function EventEditForm({
       setSaving(false);
       return;
     }
-    toast.success("Event updated");
+    const schedulingChanged =
+      eventData.start_time !== editingEvent.start_time ||
+      eventData.end_time !== editingEvent.end_time ||
+      eventData.arrival_time !== editingEvent.arrival_time ||
+      eventData.location_id !== editingEvent.location_id;
+
+    if (!schedulingChanged && notifyTeam) {
+      const { error: queueError } = await supabase.rpc("enqueue_event_notification", {
+        p_event_id: editingEvent.id,
+        p_action: "updated",
+      });
+      if (queueError) {
+        toast.error(`Event saved, but the notification could not be queued: ${queueError.message}`);
+      }
+    }
+
+    const summary = schedulingChanged || notifyTeam ? await drainNotifications() : null;
+    toast.success(withNotice("Event updated", summary));
 
     setSaving(false);
     onSave();
@@ -449,6 +471,17 @@ function EventEditForm({
             </div>
           )}
 
+          <div className="flex items-center justify-between rounded-md border p-4">
+            <div>
+              <Label htmlFor="notifyTeam">Notify the team</Label>
+              <p className="text-sm text-muted-foreground">
+                Date, time and location changes are always sent. Switch this on to tell
+                families about other edits too.
+              </p>
+            </div>
+            <Switch id="notifyTeam" checked={notifyTeam} onCheckedChange={setNotifyTeam} />
+          </div>
+
           <div className="flex gap-2 pt-2 border-t">
             <Button type="submit" disabled={saving}>
               {saving ? "Saving..." : "Save changes"}
@@ -460,6 +493,76 @@ function EventEditForm({
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * What happened to the last notice about this event (BUG-006, D3): saved and
+ * sent are different things, and a coach can see which. "Sent" means the
+ * delivery service accepted it, not that anyone read it.
+ */
+function NotificationStatus({ eventId }: { eventId: string }) {
+  const supabase = createClient();
+  const [job, setJob] = useState<{
+    status: string;
+    created_at: string;
+    sent: number;
+    failed: number;
+    skipped: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      const { data } = await supabase
+        .from("notification_jobs")
+        .select("id, status, created_at, notification_deliveries(status)")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled || !data) return;
+      const deliveries = (data.notification_deliveries ?? []) as { status: string }[];
+      setJob({
+        status: data.status,
+        created_at: data.created_at,
+        sent: deliveries.filter((d) => d.status === "sent").length,
+        failed: deliveries.filter((d) => d.status === "failed").length,
+        skipped: deliveries.filter((d) => d.status === "skipped").length,
+      });
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, supabase]);
+
+  if (!job) return null;
+
+  const when = new Date(job.created_at).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const waiting = job.status === "pending" || job.status === "sending";
+  const label = waiting
+    ? "Queued — sending shortly"
+    : [
+        `Sent ${job.sent}`,
+        job.skipped > 0 ? `${job.skipped} skipped` : null,
+        job.failed > 0 ? `${job.failed} failed` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+  return (
+    <div className="rounded-md border p-3 text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">Notifications:</span> {label}
+      {!waiting && ` · ${when}`}
+      {job.status === "failed" && " — we'll retry"}
+    </div>
   );
 }
 
@@ -537,7 +640,7 @@ export function EventDetail({
       return;
     }
 
-    toast.success("Event deleted");
+    toast.success(withNotice("Event deleted", await drainNotifications()));
     router.push("/dashboard/schedule");
     router.refresh();
   }
@@ -573,7 +676,7 @@ export function EventDetail({
       return;
     }
 
-    toast.success(`Series deleted (${data} events)`);
+    toast.success(withNotice(`Series deleted (${data} events)`, await drainNotifications()));
     router.push("/dashboard/schedule");
     router.refresh();
   }
@@ -589,7 +692,7 @@ export function EventDetail({
       return;
     }
 
-    toast.success("Event cancelled");
+    toast.success(withNotice("Event cancelled", await drainNotifications()));
     router.refresh();
   }
 
@@ -604,7 +707,7 @@ export function EventDetail({
       return;
     }
 
-    toast.success("Event restored");
+    toast.success(withNotice("Event restored", await drainNotifications()));
     router.refresh();
   }
 
@@ -799,6 +902,8 @@ export function EventDetail({
               Recurring: {getRecurrenceDescription(event.recurrence_rule)}
             </div>
           )}
+
+          {isAdmin && <NotificationStatus eventId={event.id} />}
 
           {event.event_type === "game" &&
             (event.opponent ||

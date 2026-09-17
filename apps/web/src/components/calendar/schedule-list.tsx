@@ -41,6 +41,7 @@ import {
 import { EventFormDialog } from "./event-form-dialog";
 import { toast } from "sonner";
 import { pinnedStartRule } from "@/lib/events/series-edit";
+import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -216,7 +217,7 @@ export function ScheduleList({
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Event cancelled");
+      toast.success(withNotice("Event cancelled", await drainNotifications()));
       setCancellingEvent(null);
       fetchEvents();
     }
@@ -231,7 +232,7 @@ export function ScheduleList({
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Event restored");
+      toast.success(withNotice("Event restored", await drainNotifications()));
       setRestoringEvent(null);
       fetchEvents();
     }
@@ -248,7 +249,7 @@ export function ScheduleList({
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Event deleted");
+      toast.success(withNotice("Event deleted", await drainNotifications()));
       setDeletingEvent(null);
       fetchEvents();
     }

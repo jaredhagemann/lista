@@ -1,3 +1,13 @@
+/**
+ * Deprecated (BUG-006). Schedule changes now enqueue a notification job in the
+ * same transaction as the change and go out through /api/notifications/drain,
+ * which resolves recipients as the service role. Nothing in the app calls this
+ * route any more.
+ *
+ * It still resolves recipients through the caller's own client, so it cannot see
+ * other people's push tokens — the defect BUG-007 tracks. Retiring it belongs
+ * with that ticket, which also covers the chat fan-out and mobile tokens.
+ */
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {

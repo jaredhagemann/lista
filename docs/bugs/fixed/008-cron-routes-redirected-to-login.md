@@ -214,3 +214,9 @@ real reminder email for a same-day practice. That email exposed the timezone def
 [BUG-010](../010-event-time-and-recurrence-boundaries.md), which is a separate bug. The 02:00 UTC
 subdomain-quarantine and 12:00 UTC trial-expiration runs have no user-visible output and are not yet confirmed.
 Check them in the Vercel Cron Jobs view.
+
+**Open question, noted 2026-09-17:** the project is on a hosting plan that allows **two** cron jobs, and
+`apps/web/vercel.json` declares three (`reminders`, `trial-expiration`, `subdomain-quarantine`). That may be
+why the trial-expiration and subdomain-quarantine runs were never confirmed: one of them may simply never
+fire. Worth checking the deployment’s cron list. [BUG-006](./006-schedule-changes-do-not-notify.md)
+deliberately avoided adding a fourth by sweeping the notification queue from the reminders run.

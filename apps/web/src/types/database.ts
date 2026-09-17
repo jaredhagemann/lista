@@ -488,6 +488,117 @@ export type Database = {
           },
         ]
       }
+      notification_deliveries: {
+        Row: {
+          channel: string
+          created_at: string
+          id: string
+          job_id: string
+          profile_id: string | null
+          reason: string | null
+          status: string
+          target: string | null
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          id?: string
+          job_id: string
+          profile_id?: string | null
+          reason?: string | null
+          status: string
+          target?: string | null
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          id?: string
+          job_id?: string
+          profile_id?: string | null
+          reason?: string | null
+          status?: string
+          target?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_deliveries_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "notification_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_deliveries_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_jobs: {
+        Row: {
+          action: string
+          attempts: number
+          batch_key: string
+          created_at: string
+          created_by: string | null
+          event_id: string | null
+          id: string
+          last_error: string | null
+          occurrence_count: number
+          sent_at: string | null
+          snapshot: Json
+          status: string
+          team_id: string
+        }
+        Insert: {
+          action: string
+          attempts?: number
+          batch_key: string
+          created_at?: string
+          created_by?: string | null
+          event_id?: string | null
+          id?: string
+          last_error?: string | null
+          occurrence_count?: number
+          sent_at?: string | null
+          snapshot: Json
+          status?: string
+          team_id: string
+        }
+        Update: {
+          action?: string
+          attempts?: number
+          batch_key?: string
+          created_at?: string
+          created_by?: string | null
+          event_id?: string | null
+          id?: string
+          last_error?: string | null
+          occurrence_count?: number
+          sent_at?: string | null
+          snapshot?: Json
+          status?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_jobs_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           chat_digest_enabled: boolean
@@ -1065,6 +1176,30 @@ export type Database = {
         Args: { p_managed_profile_id: string; p_team_id: string }
         Returns: boolean
       }
+      claim_notification_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          action: string
+          attempts: number
+          batch_key: string
+          created_at: string
+          created_by: string | null
+          event_id: string | null
+          id: string
+          last_error: string | null
+          occurrence_count: number
+          sent_at: string | null
+          snapshot: Json
+          status: string
+          team_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "notification_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       create_club_team: {
         Args: { org_id: string; season: string; team_name: string }
         Returns: string
@@ -1083,6 +1218,23 @@ export type Database = {
         Returns: undefined
       }
       delete_event_series: { Args: { p_event_id: string }; Returns: number }
+      enqueue_event_notification: {
+        Args: { p_action: string; p_event_id: string }
+        Returns: string
+      }
+      enqueue_notification_job: {
+        Args: {
+          p_action: string
+          p_event_id: string
+          p_snapshot: Json
+          p_team_id: string
+        }
+        Returns: string
+      }
+      event_notification_snapshot: {
+        Args: { e: Database["public"]["Tables"]["events"]["Row"] }
+        Returns: Json
+      }
       get_user_org_ids: { Args: never; Returns: string[] }
       guardian_dependents: {
         Args: { p_manager_id: string }

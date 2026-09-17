@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { drainNotificationJobs } from "@/lib/notifications/worker";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail, buildEventEmailHtml } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
@@ -181,9 +182,21 @@ export async function GET(request: Request) {
     }
   }
 
+  // Sweep up schedule-change notices whose immediate send never happened — a
+  // closed tab, a provider outage (BUG-006). This is the only scheduled sweep:
+  // the plan allows two cron jobs, so it rides along with the reminders run
+  // rather than taking a slot of its own.
+  let drained = { claimed: 0 };
+  try {
+    drained = await drainNotificationJobs(100);
+  } catch (err) {
+    console.error("Notification drain failed:", err);
+  }
+
   return NextResponse.json({
     success: true,
     eventsProcessed: events.length,
     notificationsSent: sent,
+    notificationJobsDrained: drained.claimed,
   });
 }
