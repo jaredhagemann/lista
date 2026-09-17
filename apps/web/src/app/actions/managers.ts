@@ -43,13 +43,14 @@ export async function removeProfileManager(managersRowId: string) {
 
   if (!row) return { error: "Not found" };
 
+  // A Self link (manager = managed) is the account holder's own record, not a
+  // guardian relationship. It lasts as long as the profile — not even the player
+  // may remove it (BUG-002 review, finding 3).
+  if (row.manager_id === row.managed_id) return { error: "Not authorized" };
+
   const isSelf = row.manager_id === user.id;
-  // A Self link (manager = managed) is the player's own record, not a guardian
-  // relationship: only that player may remove it, via isSelf.
-  const isSelfLink = row.manager_id === row.managed_id;
   const isPlayer =
     !isSelf &&
-    !isSelfLink &&
     (await admin
       .from("profiles")
       .select("auth_user_id")
@@ -59,7 +60,6 @@ export async function removeProfileManager(managersRowId: string) {
   // A player's own Self link would also match below, so exclude the player.
   const isOtherGuardian =
     !isSelf &&
-    !isSelfLink &&
     !isPlayer &&
     user.id !== row.managed_id &&
     (await admin

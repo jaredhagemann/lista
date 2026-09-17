@@ -9,6 +9,16 @@ import {
   adminClient,
 } from "./helpers";
 
+async function rosterRow(teamId: string, profileId: string) {
+  const { data } = await adminClient
+    .from("team_members")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  return data;
+}
+
 describe("team_members RLS", () => {
   afterAll(async () => {
     await cleanupTestData();
@@ -41,7 +51,11 @@ describe("team_members RLS", () => {
     expect(data).toHaveLength(0);
   });
 
-  it("admin can INSERT team members", async () => {
+  // BUG-002 review, finding 1 (option A): admins used to be able to insert any
+  // existing profile into their team. That fabricated membership then
+  // authorized a staff guardian invitation for someone else's child. Membership
+  // now comes only from an accepted invitation, team creation, or club setup.
+  it("admin cannot INSERT an existing profile into their team directly", async () => {
     const coach = await createTestUser();
     const newPlayer = await createTestUser();
     const { teamId } = await createTestTeam(coach.user.id);
@@ -49,12 +63,13 @@ describe("team_members RLS", () => {
     const { error } = await coach.client
       .from("team_members")
       .insert({ team_id: teamId, profile_id: newPlayer.user.id, role: "player" });
-    expect(error).toBeNull();
+    expect(error).not.toBeNull();
+    expect(await rosterRow(teamId, newPlayer.user.id)).toBeNull();
   });
 
   // BUG-001: self-insertion used to succeed at any role, so knowing a team UUID
-  // was enough to become its coach. Membership must come from an admin, an
-  // accepted invitation, or a team-creation RPC — never a direct API insert.
+  // was enough to become its coach. Membership must come from an accepted
+  // invitation or a team-creation RPC — never a direct API insert.
   it.each(["player", "parent", "coach", "manager", "director"] as const)(
     "uninvited user cannot self-insert as %s",
     async (role) => {
@@ -90,7 +105,7 @@ describe("team_members RLS", () => {
     expect(error).not.toBeNull();
   });
 
-  it("org director can INSERT a member into a team in their org (implicit admin)", async () => {
+  it("org director cannot INSERT a member into a team in their org directly", async () => {
     const coach = await createTestUser();
     const director = await createTestUser();
     const newPlayer = await createTestUser();
@@ -100,7 +115,8 @@ describe("team_members RLS", () => {
     const { error } = await director.client
       .from("team_members")
       .insert({ team_id: teamId, profile_id: newPlayer.user.id, role: "player" });
-    expect(error).toBeNull();
+    expect(error).not.toBeNull();
+    expect(await rosterRow(teamId, newPlayer.user.id)).toBeNull();
   });
 
   it("non-admin cannot INSERT other members", async () => {
@@ -125,6 +141,56 @@ describe("team_members RLS", () => {
     const { error } = await coach.client
       .from("team_members")
       .update({ role: "manager" })
+      .eq("team_id", teamId)
+      .eq("profile_id", player.user.id);
+    expect(error).toBeNull();
+  });
+
+  // BUG-002 review, finding 1: with direct inserts gone, re-pointing an existing
+  // roster row is the other way to fabricate a membership. App code only ever
+  // updates role, jersey number and position.
+  it("admin cannot re-point an existing membership at another profile", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const someoneElse = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const { error } = await coach.client
+      .from("team_members")
+      .update({ profile_id: someoneElse.user.id })
+      .eq("team_id", teamId)
+      .eq("profile_id", player.user.id);
+    expect(error).not.toBeNull();
+    expect(await rosterRow(teamId, someoneElse.user.id)).toBeNull();
+    expect(await rosterRow(teamId, player.user.id)).not.toBeNull();
+  });
+
+  it("admin cannot move a membership to another team they administer", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const { teamId: otherTeamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const { error } = await coach.client
+      .from("team_members")
+      .update({ team_id: otherTeamId })
+      .eq("team_id", teamId)
+      .eq("profile_id", player.user.id);
+    expect(error).not.toBeNull();
+    expect(await rosterRow(otherTeamId, player.user.id)).toBeNull();
+  });
+
+  it("admin can still update jersey number and position", async () => {
+    const coach = await createTestUser();
+    const player = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+
+    const { error } = await coach.client
+      .from("team_members")
+      .update({ jersey_number: 7, position: "Keeper" })
       .eq("team_id", teamId)
       .eq("profile_id", player.user.id);
     expect(error).toBeNull();

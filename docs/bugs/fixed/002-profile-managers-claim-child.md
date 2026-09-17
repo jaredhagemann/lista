@@ -1,7 +1,7 @@
 # BUG-002 — A user can claim another player's profile as their managed child
 
 **Severity:** P0
-**Status:** Reopened 2026-09-16 — findings 1 and 3 open, fixes decided; see Reopened
+**Status:** Fixed (pending deploy verification of the reopened fix — see Reopened fix as implemented)
 **Reported:** 2026-09-04 by readiness review (finding 2)
 **Area:** auth / rls / managed profiles
 **Evidence class:** Reproduced (local stack) — **unverified in deployment**
@@ -15,14 +15,14 @@ these are routes around them.
 
 | Finding | Severity | Status |
 | --- | --- | --- |
-| **1. A coach can fabricate the team membership that authorizes a staff guardian invitation.** BUG-001 kept `is_team_admin(team_id)` as enough to insert **any** profile into a team. A coach adds someone else's child to their own team, invites themselves as guardian, and accepts — gaining that child's guardianship across every club. `can_invite_guardian_for` and `/api/invitations/send` trust exactly that membership. | P0 | **Open — option A decided 2026-09-16**, not yet implemented |
-| **2. A guardian invitation can be redeemed as a team-role invitation**, making the recipient team staff | P0 | **Closed 2026-09-16 (user) — fixed by [BUG-012](./fixed/012-invite-server-actions-lack-recipient-check.md)**: acceptance must match the invitation's kind, and guardian invitations are constrained to role `manager` at creation |
-| **3. A player can delete their own Self link**, losing the authority to invite guardians that `can_invite_guardian_for` derives from it, with no way to recreate it now that client inserts are blocked | P2 | **Open — proposed fix agreed 2026-09-16**, not yet implemented |
+| **1. A coach can fabricate the team membership that authorizes a staff guardian invitation.** BUG-001 kept `is_team_admin(team_id)` as enough to insert **any** profile into a team. A coach adds someone else's child to their own team, invites themselves as guardian, and accepts — gaining that child's guardianship across every club. `can_invite_guardian_for` and `/api/invitations/send` trust exactly that membership. | P0 | **Fixed** — option A, see Reopened fix as implemented |
+| **2. A guardian invitation can be redeemed as a team-role invitation**, making the recipient team staff | P0 | **Closed 2026-09-16 (user) — fixed by [BUG-012](./012-invite-server-actions-lack-recipient-check.md)**: acceptance must match the invitation's kind, and guardian invitations are constrained to role `manager` at creation |
+| **3. A player can delete their own Self link**, losing the authority to invite guardians that `can_invite_guardian_for` derives from it, with no way to recreate it now that client inserts are blocked | P2 | **Fixed** — see Reopened fix as implemented |
 
 ### Finding 1 — decided: option A
 
-**User decision, 2026-09-16: option A.** Client sessions will no longer insert `team_members` rows at all,
-including team admins and org directors. Not yet implemented; this ticket's next PR carries it.
+**User decision, 2026-09-16: option A.** Client sessions no longer insert `team_members` rows at all,
+including team admins and org directors.
 
 No web or mobile code inserts `team_members` through a user session: every real admission goes through the
 service role (invitation acceptance, club director setup) or the team-creation RPCs. No spec plans for staff
@@ -36,7 +36,7 @@ to add or move existing players. The capability behind finding 1 is therefore un
 
 ### Finding 3 — agreed fix
 
-**User agreed the proposed fix, 2026-09-16.** Not yet implemented; ships in the same PR as finding 1.
+**User agreed the proposed fix, 2026-09-16.** Shipped in the same PR as finding 1.
 
 Make Self links undeletable except when the profile itself is deleted, and hide their **Remove** action. Derive
 the player's authority in `can_invite_guardian_for` and the managers page from the authenticated user owning the
@@ -88,7 +88,7 @@ remain forbidden.
 
 `profile_managers` permits INSERT whenever `manager_id = auth.uid()`, with no proof that the caller is
 authorized to manage `managed_id`. This is an independent path from
-[BUG-001](./fixed/001-team-members-self-insert-coach.md) — fixing team self-insertion does not close it.
+[BUG-001](./001-team-members-self-insert-coach.md) — fixing team self-insertion does not close it.
 
 **Revocation has the mirror-image flaw.** `removeProfileManager` (`apps/web/src/app/actions/managers.ts:20`)
 lets any coach/manager/director sharing **any** team with the child delete the global guardian link. For a
@@ -110,7 +110,7 @@ existing guardian. Protect identity/auth linkage fields separately from editable
 
 Enforce the last-login invariant **atomically**, including concurrent removal attempts by two different
 guardians. Account deletion must not silently bypass it — see
-[BUG-013](./013-club-staffing-and-ownership-handover.md) and D7.
+[BUG-013](../013-club-staffing-and-ownership-handover.md) and D7.
 
 Player-initiated operations must be authenticated as that player; a staff member viewing a child's profile
 does not thereby acquire the player's removal permission.
@@ -150,7 +150,7 @@ up eight problems. The filed bug was one of them.
 | --- | --- | --- |
 | 5 | `removeProfileManager` let **any coach sharing a team** remove a guardian, and refused the other guardian and the player | Now: the guardian themselves, another guardian of the same player, or the player. Staff alone: refused. A player's own Self link can only be removed by that player. The managers card shows **Remove** only to the player or a guardian. |
 | 6 | Nothing stopped the **last guardian** of a player with no login from unlinking | Trigger `profile_managers_keep_login_path` refuses it on every delete path, service role included. It locks the player row, so concurrent removals serialize. A pending invitation does not count as a replacement. Deleting the player's own profile still cascades. |
-| 7 | **Account deletion** by a sole guardian orphaned the child | The trigger refuses the cascade. `/api/account/delete` checks first via `guardian_dependents` (service role only) and returns `409 sole_guardian` with the affected players' names. Web and mobile explain it and link to Managed Players. Included here per user decision 2026-09-16; this covers the sole-guardian area of [BUG-013](./013-club-staffing-and-ownership-handover.md). |
+| 7 | **Account deletion** by a sole guardian orphaned the child | The trigger refuses the cascade. `/api/account/delete` checks first via `guardian_dependents` (service role only) and returns `409 sole_guardian` with the affected players' names. Web and mobile explain it and link to Managed Players. Included here per user decision 2026-09-16; this covers the sole-guardian area of [BUG-013](../013-club-staffing-and-ownership-handover.md). |
 
 Both refusal paths (5 and 6) show one clear message rather than the raw database error.
 
@@ -163,7 +163,7 @@ Both refusal paths (5 and 6) show one clear message rather than the raw database
 ### Deliberately left alone
 
 - **`acceptManagerInvitation`** (web) still has no recipient-email check. It is exactly the scope of
-  [BUG-012](./fixed/012-invite-server-actions-lack-recipient-check.md). Until 012 ships, anyone holding a valid
+  [BUG-012](./012-invite-server-actions-lack-recipient-check.md). Until 012 ships, anyone holding a valid
   guardian invitation's ID can accept it. After this fix, such an invitation can only have come from the
   player, a guardian, or the player's own staff.
 - **`updateProfileManager`** still lets staff sharing a team edit a guardian's relationship label and phone.
@@ -222,7 +222,7 @@ calls it. That test is about Bearer-token acceptance.
 **Full runs** on a local stack reset with all migrations (pinned CLI 2.78.1):
 - RLS suite: **295 passed** (previously 275)
 - `apps/web` suite: **717 passed** (previously 697)
-- Root tenant/billing selection: 218 passed, 3 failed — the unchanged [BUG-017](./017-stale-test-fixtures-three-failures.md) failures
+- Root tenant/billing selection: 218 passed, 3 failed — the unchanged [BUG-017](../017-stale-test-fixtures-three-failures.md) failures
 - `tsc --noEmit`: web and mobile clean. ESLint on changed files: clean apart from a pre-existing `<img>` warning in `roster-profile.tsx`.
 
 `src/types/database.ts` was regenerated; the diff is only the two new functions.
@@ -257,3 +257,113 @@ Expected:
 - The staging checks passed before merge.
 - The production SQL checks passed (user, 2026-09-16): SELECT and DELETE policies only on `profile_managers`, both
   invitations policies present, both triggers present, and `guardian_dependents` not executable by `authenticated`.
+
+---
+
+## Reopened fix as implemented
+
+**Branch:** `fix/002-guardian-authorization-gaps`
+**PR:** #58
+**Migration:** `supabase/migrations/20260917000002_close_guardian_authorization_gaps.sql`
+
+### Finding 1 — no client-session roster admissions (option A)
+
+- The `team_members` INSERT policy is **dropped with no replacement**. Team admins and org directors can no
+  longer add any profile to a team through the data API. Every real admission already went elsewhere:
+  invitation acceptance (`accept_invitation`), club setup (`/api/club/teams`, service role) and the
+  team-creation RPCs. So a player's membership is again evidence of an accepted invitation, which is what
+  `can_invite_guardian_for` and `/api/invitations/send` rely on.
+- **A second route to the same fabrication, found while implementing:** the UPDATE policy let an admin change
+  **any** column, so re-pointing an existing roster row's `profile_id` or `team_id` would have fabricated a
+  membership as surely as an insert. Trigger `team_members_protect_identity` now refuses changes to either
+  column from client sessions. App code only ever updates `role`, `jersey_number` and `position`.
+
+This removes the admin-insert branch that [BUG-001](./001-team-members-self-insert-coach.md) deliberately
+kept; that ticket carries an addendum.
+
+### Finding 3 — Self links last as long as the profile
+
+- `enforce_guardian_login_path` refuses deleting a Self link while its profile exists, on every path including
+  the service role. Deleting the profile still cascades it away.
+- `can_invite_guardian_for` recognizes the player by **owning the profile** (`auth_user_id = auth.uid()`) as
+  well as by guardianship or staff role, so authority no longer depends on the Self row.
+  `/api/invitations/send` does the same.
+- `removeProfileManager` refuses Self links for everyone, the player included. `removeManagedProfile` refuses
+  the caller's own id with a clear message.
+- UI: the managers card never shows **Remove** on a Self row. The roster page recognizes the player by their
+  login. The web managed-players page no longer lists your own Self link as a managed player, matching mobile,
+  which already excluded it.
+- The migration **restores missing Self links** for every account holder (`on conflict do nothing`).
+
+### Verification (reopened fix)
+
+**Tests.** Each new case failed against the schema and code before this fix.
+
+RLS, **9 failed on the prior schema**:
+
+| Test | Before |
+| --- | --- |
+| `team-members` — admin inserts an existing profile into their team | succeeded |
+| `team-members` — org director inserts a member directly | succeeded |
+| `team-members` — admin re-points a membership at another profile | succeeded |
+| `team-members` — admin moves a membership to another team | succeeded |
+| `profile-managers` — team admin adds their own managed profile directly | succeeded |
+| `profile-managers` — player deletes their own Self link | succeeded |
+| `profile-managers` — service role deletes a Self link while the profile exists | succeeded |
+| `invitations` — player with a login but no Self link invites a guardian for themselves | refused (42501) |
+| `invitation-acceptance` — coach fabricates membership, invites self as guardian, accepts | fabrication succeeded |
+
+The last one is the review's missing end-to-end regression. It runs the whole sequence (admission, re-point,
+invitation) and asserts no guardianship and no access to the child's real team.
+
+The two RLS tests that asserted admins and org directors **can** insert directly were inverted; the review
+identified them as encoding the bypass.
+
+Unit, **3 failed on the prior code**:
+- `managers-actions` — a player removes their own Self link: succeeded
+- `profile-actions` — `removeManagedProfile` on the caller's own id: succeeded
+- `single-invite-api` — a player with a login but no Self link invites a guardian for themselves: 403
+
+Guards passing before and after: deleting a profile still removes its Self link; admins can still update
+jersey number and position (and role); invitation acceptance, team creation and every existing D1 path still
+work.
+
+**Review probes** (`docs/reviews/2026-09-16-bug002-gap-probes.test.ts`) assert the defects exist; **all three now
+fail**, each at the attack step:
+1. The fabricated roster insert is refused by RLS (`42501`).
+2. The coach-role guardian invitation is refused by BUG-012's constraint (`23514`).
+3. The Self-link delete is refused by the trigger (`P0001`).
+
+Full runs on a local stack reset with all migrations (pinned CLI 2.78.1):
+- RLS suite: **323 passed** (previously 315)
+- `apps/web` suite: **721 passed** (previously 718)
+- Root tenant/billing selection: 218 passed and the 3 unchanged [BUG-017](../017-stale-test-fixtures-three-failures.md) failures
+- `tsc --noEmit` and ESLint on changed files: clean; regenerated database types unchanged
+
+**Before merge on staging, and after deploy in production** (read-only SQL editor):
+
+```sql
+-- 1. No INSERT policy remains on team_members
+select policyname, cmd from pg_policies where tablename = 'team_members' order by cmd;
+
+-- 2. The membership identity trigger exists
+select tgname from pg_trigger where tgname = 'team_members_protect_identity';
+
+-- 3. Every account holder has a Self link after the backfill
+select count(*) as missing_self_links
+from profiles p
+where p.auth_user_id is not null
+  and not exists (
+    select 1 from profile_managers pm where pm.manager_id = p.id and pm.managed_id = p.id
+  );
+
+-- 4. Player authority comes from owning the profile
+select prosrc like '%auth_user_id = auth.uid()%' as checks_ownership
+from pg_proc where proname = 'can_invite_guardian_for';
+```
+
+Expected:
+1. No INSERT row.
+2. One row.
+3. `0`.
+4. `true`.

@@ -268,7 +268,8 @@ export function ManagersCard({
                           <Pencil className="h-4 w-4" />
                         </Button>
                       )}
-                      {canRemove && (
+                      {/* A Self link lasts as long as the profile (BUG-002 review, finding 3). */}
+                      {canRemove && m.manager_id !== m.managed_id && (
                         <Button
                           variant="ghost"
                           size="icon"

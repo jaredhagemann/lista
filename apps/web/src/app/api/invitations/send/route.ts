@@ -60,7 +60,9 @@ export async function POST(request: Request) {
   if (isTeamAdmin && managedProfileId) {
     // A guardian invitation makes the recipient that player's guardian. Staff may
     // only send one for a player on their own team (D1, BUG-002) — anyone can
-    // create a team, so "admin of some team" is not enough.
+    // create a team, so "admin of some team" is not enough. The membership is
+    // trustworthy because client sessions can no longer create or re-point
+    // roster rows (BUG-002 review, finding 1).
     const { data: playerMembership } = await admin
       .from("team_members")
       .select("id")
@@ -74,19 +76,31 @@ export async function POST(request: Request) {
   }
 
   if (!isTeamAdmin) {
-    // Allow if they manage the specific profile being invited for
+    // Allow the player themselves, or a guardian of that player
     if (!managedProfileId) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
-    const { data: managerLink } = await admin
-      .from("profile_managers")
-      .select("id")
-      .eq("manager_id", user.id)
-      .eq("managed_id", managedProfileId)
-      .maybeSingle();
 
-    if (!managerLink) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    // The player is identified by owning the profile, not by their optional
+    // Self link (BUG-002 review, finding 3).
+    const { data: invitedFor } = await admin
+      .from("profiles")
+      .select("auth_user_id")
+      .eq("id", managedProfileId)
+      .maybeSingle();
+    const isPlayer = !!invitedFor?.auth_user_id && invitedFor.auth_user_id === user.id;
+
+    if (!isPlayer) {
+      const { data: managerLink } = await admin
+        .from("profile_managers")
+        .select("id")
+        .eq("manager_id", user.id)
+        .eq("managed_id", managedProfileId)
+        .maybeSingle();
+
+      if (!managerLink) {
+        return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+      }
     }
   }
 

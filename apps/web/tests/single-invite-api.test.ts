@@ -350,3 +350,31 @@ describe("POST /api/invitations/send — guardian invitation role (BUG-012)", ()
     expect(insertMock).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/invitations/send — player authority (BUG-002 review, finding 3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupBaseAuth();
+  });
+
+  it("lets a player with their own login invite a guardian for themselves without a Self link", async () => {
+    mocks.mockAssertTeamAdmin.mockResolvedValue(false);
+    setupFromRouting({
+      // No profile_managers link of any kind for this caller.
+      managerLinks: null as unknown as Array<{ managed_id: string }>,
+      // The invited-for profile is the caller's own account.
+      profileResponses: [{ auth_user_id: AUTHED_USER.id }],
+    });
+
+    const res = await POST(
+      makeRequest({
+        teamId: TEAM_ID,
+        email: "mom@example.com",
+        role: "manager",
+        managedProfileId: AUTHED_USER.id,
+      })
+    );
+
+    expect(res.status).not.toBe(403);
+  });
+});

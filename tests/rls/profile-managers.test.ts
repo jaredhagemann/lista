@@ -250,7 +250,9 @@ describe("is_team_member extended for managed profiles", () => {
 });
 
 describe("team_members: inserting managed profiles", () => {
-  it("team admin can add their own managed profile to their team", async () => {
+  // BUG-002 review, finding 1 (option A): no client-session roster inserts, even
+  // an admin adding their own child. Players join through an accepted invitation.
+  it("team admin cannot add even their own managed profile to their team directly", async () => {
     const parent = await createTestUser();
     const { teamId } = await createTestTeam(parent.user.id);
     const managedId = await createManagedProfile(parent.user.id);
@@ -261,7 +263,7 @@ describe("team_members: inserting managed profiles", () => {
       role: "player",
     });
 
-    expect(error).toBeNull();
+    expect(error).not.toBeNull();
   });
 
   it("non-admin cannot add another user's managed profile to a team", async () => {
@@ -557,5 +559,54 @@ describe("profile_managers: every player keeps a login path (BUG-002, D1/D7)", (
       p_manager_id: parent.user.id,
     });
     expect(error).not.toBeNull();
+  });
+});
+
+// ── BUG-002 review, finding 3 ─────────────────────────────────────────────────
+// A Self link (manager = managed) is the account holder's own record. Deleting
+// it used to be allowed, and since client inserts were removed it could not be
+// recreated. Self links now survive until the profile itself is deleted.
+
+describe("profile_managers: Self links cannot be removed (BUG-002 review, finding 3)", () => {
+  it("player cannot delete their own Self link", async () => {
+    const player = await createTestUser();
+
+    const { error } = await player.client
+      .from("profile_managers")
+      .delete()
+      .eq("manager_id", player.user.id)
+      .eq("managed_id", player.user.id);
+    expect(error).not.toBeNull();
+
+    const { data } = await adminClient
+      .from("profile_managers")
+      .select("id")
+      .eq("manager_id", player.user.id)
+      .eq("managed_id", player.user.id);
+    expect(data).toHaveLength(1);
+  });
+
+  it("the service role cannot delete a Self link while the profile exists", async () => {
+    const player = await createTestUser();
+
+    const { error } = await adminClient
+      .from("profile_managers")
+      .delete()
+      .eq("manager_id", player.user.id)
+      .eq("managed_id", player.user.id);
+    expect(error).not.toBeNull();
+  });
+
+  it("deleting the profile itself still removes its Self link", async () => {
+    const player = await createTestUser();
+
+    const { error } = await adminClient.from("profiles").delete().eq("id", player.user.id);
+    expect(error).toBeNull();
+
+    const { data } = await adminClient
+      .from("profile_managers")
+      .select("id")
+      .eq("managed_id", player.user.id);
+    expect(data).toHaveLength(0);
   });
 });

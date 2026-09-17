@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
-import { LAST_GUARDIAN_MESSAGE, isLastGuardianError } from "@/lib/guardians";
+import { LAST_GUARDIAN_MESSAGE, SELF_LINK_MESSAGE, isLastGuardianError } from "@/lib/guardians";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
 
 /**
@@ -141,6 +141,10 @@ export async function removeManagedProfile(managedId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+
+  // The caller's own Self link is not a managed player and lasts as long as
+  // their profile (BUG-002 review, finding 3).
+  if (managedId === user.id) return { error: SELF_LINK_MESSAGE };
 
   const { error } = await supabase
     .from("profile_managers")

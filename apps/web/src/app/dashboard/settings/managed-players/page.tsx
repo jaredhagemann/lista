@@ -17,7 +17,9 @@ export default async function ManagedPlayersPage() {
   const { data: rawLinks } = await supabase
     .from("profile_managers")
     .select("managed_id, relationship, profiles!managed_id(*)")
-    .eq("manager_id", user.id);
+    .eq("manager_id", user.id)
+    // Your own Self link is not a managed player (BUG-002 review, finding 3).
+    .neq("managed_id", user.id);
 
   const managedProfiles = (rawLinks ?? []).map((link) => ({
     profile: link.profiles as unknown as Profile,
