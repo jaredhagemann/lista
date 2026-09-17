@@ -155,3 +155,11 @@ Full runs:
   and shows local times with a zone label, or
 - **immediately:** edit a future event's details so the "Event Updated" email and push go out, and check
   both show the team's local time and zone label.
+
+**Remediation, 2026-09-17.** The 12:00 UTC reminder batch that morning had already gone out with UTC times
+before this fix merged. With one team in production, the user sent the affected families a correction by hand
+(corrected time, wrong time struck through) rather than building a one-off resend.
+
+**Deployed 2026-09-17** (PR #60). Deploy verification is pending the next real notification: the next 12:00 UTC
+reminder, or an "Event Updated" email after editing an event, should show the team's local time with a zone
+label.
