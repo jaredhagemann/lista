@@ -165,3 +165,12 @@ select count(*) from invitations where managed_profile_id is not null and role <
 Expected: `false`; one row with `convalidated = false`. For query 3, zero means the constraint can later be
 validated with `alter table invitations validate constraint invitations_guardian_role_check`. Anything else
 means rows were written that way, and each should be reviewed.
+
+**Staging checks passed** (user, 2026-09-16, PR #57 before merge):
+1. `authenticated_can_execute` = `false`.
+2. `invitations_guardian_role_check` exists with `convalidated = false`.
+3. **Zero** guardian invitations carry a team role, so the constraint can be validated
+   (`alter table invitations validate constraint invitations_guardian_role_check`). Run query 3 in production
+   after deploy before doing so; a zero on staging says nothing about production rows.
+
+**Production checks:** still to be run after deploy.

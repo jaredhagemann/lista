@@ -1,7 +1,7 @@
 # BUG-002 — A user can claim another player's profile as their managed child
 
 **Severity:** P0
-**Status:** Reopened 2026-09-16 — findings 1 and 3 open; see Reopened
+**Status:** Reopened 2026-09-16 — findings 1 and 3 open, fixes decided; see Reopened
 **Reported:** 2026-09-04 by readiness review (finding 2)
 **Area:** auth / rls / managed profiles
 **Evidence class:** Reproduced (local stack) — **unverified in deployment**
@@ -15,11 +15,14 @@ these are routes around them.
 
 | Finding | Severity | Status |
 | --- | --- | --- |
-| **1. A coach can fabricate the team membership that authorizes a staff guardian invitation.** BUG-001 kept `is_team_admin(team_id)` as enough to insert **any** profile into a team. A coach adds someone else's child to their own team, invites themselves as guardian, and accepts — gaining that child's guardianship across every club. `can_invite_guardian_for` and `/api/invitations/send` trust exactly that membership. | P0 | **Open — needs a product decision**, see below |
-| **2. A guardian invitation can be redeemed as a team-role invitation**, making the recipient team staff | P0 | **Fixed by [BUG-012](./fixed/012-invite-server-actions-lack-recipient-check.md)**: acceptance must match the invitation's kind, and guardian invitations are constrained to role `manager` at creation |
-| **3. A player can delete their own Self link**, losing the authority to invite guardians that `can_invite_guardian_for` derives from it, with no way to recreate it now that client inserts are blocked | P2 | **Open** |
+| **1. A coach can fabricate the team membership that authorizes a staff guardian invitation.** BUG-001 kept `is_team_admin(team_id)` as enough to insert **any** profile into a team. A coach adds someone else's child to their own team, invites themselves as guardian, and accepts — gaining that child's guardianship across every club. `can_invite_guardian_for` and `/api/invitations/send` trust exactly that membership. | P0 | **Open — option A decided 2026-09-16**, not yet implemented |
+| **2. A guardian invitation can be redeemed as a team-role invitation**, making the recipient team staff | P0 | **Closed 2026-09-16 (user) — fixed by [BUG-012](./fixed/012-invite-server-actions-lack-recipient-check.md)**: acceptance must match the invitation's kind, and guardian invitations are constrained to role `manager` at creation |
+| **3. A player can delete their own Self link**, losing the authority to invite guardians that `can_invite_guardian_for` derives from it, with no way to recreate it now that client inserts are blocked | P2 | **Open — proposed fix agreed 2026-09-16**, not yet implemented |
 
-### Finding 1 — open decision
+### Finding 1 — decided: option A
+
+**User decision, 2026-09-16: option A.** Client sessions will no longer insert `team_members` rows at all,
+including team admins and org directors. Not yet implemented; this ticket's next PR carries it.
 
 No web or mobile code inserts `team_members` through a user session: every real admission goes through the
 service role (invitation acceptance, club director setup) or the team-creation RPCs. No spec plans for staff
@@ -31,7 +34,9 @@ to add or move existing players. The capability behind finding 1 is therefore un
 | B. Keep direct inserts; staff guardian invitations need approval from an existing guardian | Changes D1, which says staff-initiated invitations need only recipient acceptance |
 | C. Stop staff sending guardian invitations; only the player or a guardian may | Changes D1 |
 
-### Finding 3 — proposed fix
+### Finding 3 — agreed fix
+
+**User agreed the proposed fix, 2026-09-16.** Not yet implemented; ships in the same PR as finding 1.
 
 Make Self links undeletable except when the profile itself is deleted, and hide their **Remove** action. Derive
 the player's authority in `can_invite_guardian_for` and the managers page from the authenticated user owning the
@@ -250,4 +255,5 @@ Expected:
 - The production migration job logged `Applying migration 20260917000000_protect_guardian_links.sql...`, and the
   Vercel production deploy succeeded.
 - The staging checks passed before merge.
-- **The production SQL checks are still to be run.**
+- The production SQL checks passed (user, 2026-09-16): SELECT and DELETE policies only on `profile_managers`, both
+  invitations policies present, both triggers present, and `guardian_dependents` not executable by `authenticated`.
