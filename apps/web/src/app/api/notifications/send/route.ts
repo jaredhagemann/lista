@@ -8,11 +8,16 @@ import {
 } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
+import {
+  formatEventTime,
+  formatShortEventDate,
+  resolveTimeZone,
+} from "@/lib/notifications/event-time";
 import type { Database } from "@/types/database";
 import { notificationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
-  teams: { name: string };
+  teams: { name: string; timezone: string | null };
   locations: { name: string } | null;
 };
 type MemberWithProfile = {
@@ -46,7 +51,7 @@ export async function POST(request: Request) {
   // Fetch event details
   const { data: rawEvent, error: eventError } = await supabase
     .from("events")
-    .select("*, teams(name), locations(name)")
+    .select("*, teams(name, timezone), locations(name)")
     .eq("id", eventId)
     .single();
 
@@ -56,6 +61,8 @@ export async function POST(request: Request) {
 
   const event = rawEvent as EventWithTeam;
   const teamName = event.teams?.name ?? "Unknown Team";
+  // The server runs in UTC: format event times in the team's timezone (BUG-020).
+  const timeZone = resolveTimeZone(event.teams?.timezone);
 
   // Get all team members
   const { data: rawMembers } = await supabase
@@ -129,6 +136,7 @@ export async function POST(request: Request) {
         action: action as "created" | "updated" | "cancelled" | "reminder",
         arrivalTime: event.arrival_time,
         eventUrl: `${appUrl}/dashboard/schedule/${eventId}`,
+        timeZone,
       });
 
   // Send emails
@@ -163,7 +171,7 @@ export async function POST(request: Request) {
   const pushSubs = (rawPushSubs ?? []) as PushSubscription[];
   const pushBody = isSeriesUpdate
     ? `${event.title} schedule has been updated`
-    : `${new Date(event.start_time).toLocaleDateString()} at ${new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}${event.locations?.name ? ` — ${event.locations.name}` : ""}`;
+    : `${formatShortEventDate(event.start_time, timeZone)} at ${formatEventTime(event.start_time, timeZone)}${event.locations?.name ? ` — ${event.locations.name}` : ""}`;
 
   const filteredPushSubs = pushSubs.filter((sub) => {
     const pref = prefsMap.get(sub.profile_id);

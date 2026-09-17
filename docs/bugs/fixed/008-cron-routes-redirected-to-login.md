@@ -208,3 +208,9 @@ Vercel Cron Jobs view or logs: 02:00 UTC quarantine, 12:00 UTC reminders and tri
 
 Still to confirm: the first scheduled runs succeed — 02:00 UTC quarantine and 12:00 UTC reminders and trial
 expiration on 2026-09-17.
+
+**First scheduled runs — 2026-09-17.** The 12:00 UTC reminders job **ran in production**: the user received a
+real reminder email for a same-day practice. That email exposed the timezone defect in
+[BUG-010](../010-event-time-and-recurrence-boundaries.md), which is a separate bug. The 02:00 UTC
+subdomain-quarantine and 12:00 UTC trial-expiration runs have no user-visible output and are not yet confirmed.
+Check them in the Vercel Cron Jobs view.

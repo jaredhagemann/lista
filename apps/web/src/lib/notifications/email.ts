@@ -1,4 +1,10 @@
 import { getResend } from "@/lib/resend";
+import {
+  formatEventDate,
+  formatEventTime,
+  formatEventTimeRange,
+  resolveTimeZone,
+} from "@/lib/notifications/event-time";
 
 interface SendEmailParams {
   to: string;
@@ -64,6 +70,7 @@ export function buildEventEmailHtml({
   eventUrl,
   brandName,
   logoUrl,
+  timeZone,
 }: {
   eventTitle: string;
   eventType: string;
@@ -76,9 +83,10 @@ export function buildEventEmailHtml({
   eventUrl?: string;
   brandName?: string;
   logoUrl?: string;
+  /** The team's IANA timezone. Emails are built on a UTC server, so times must be formatted in it (BUG-020). */
+  timeZone?: string | null;
 }) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const zone = resolveTimeZone(timeZone);
 
   const actionMeta = {
     created:  { label: "New Event",      color: "#16a34a", bg: "#dcfce7" },
@@ -87,12 +95,11 @@ export function buildEventEmailHtml({
     reminder: { label: "Event Reminder", color: "#2563eb", bg: "#dbeafe" },
   }[action];
 
-  const dateStr = start.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-  const timeStr = `${start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} – ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  const dateStr = formatEventDate(startTime, zone);
+  const timeStr = formatEventTimeRange(startTime, endTime, zone);
 
   const arrivalTime_ = arrivalTime != null
-    ? new Date(start.getTime() - arrivalTime * 60 * 1000)
-        .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    ? formatEventTime(new Date(new Date(startTime).getTime() - arrivalTime * 60 * 1000), zone)
     : null;
 
   function detailRow(label: string, value: string) {
