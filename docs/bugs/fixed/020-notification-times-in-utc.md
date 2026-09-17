@@ -97,7 +97,7 @@ The stored instants and the team timezone are correct; only notification formatt
 ## Fix as implemented
 
 **Branch:** `fix/020-notification-times`
-**PR:** see branch
+**PR:** #60
 **Migration:** none
 
 - **New `apps/web/src/lib/notifications/event-time.ts`.** Every formatter takes the timezone explicitly and
