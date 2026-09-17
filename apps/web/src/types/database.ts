@@ -1051,6 +1051,12 @@ export type Database = {
         }
         Returns: Json
       }
+      can_access_channel: { Args: { p_channel_id: string }; Returns: boolean }
+      can_access_dm: { Args: { p_dm_channel_id: string }; Returns: boolean }
+      can_add_channel_member: {
+        Args: { p_channel_id: string; p_profile_id: string }
+        Returns: boolean
+      }
       can_invite_guardian_for: {
         Args: { p_managed_profile_id: string; p_team_id: string }
         Returns: boolean
@@ -1093,6 +1099,10 @@ export type Database = {
       is_team_player: { Args: { p_id: string; t_id: string }; Returns: boolean }
       is_training_admin_for_profile: {
         Args: { p_id: string }
+        Returns: boolean
+      }
+      profile_on_team: {
+        Args: { p_profile_id: string; p_team_id: string }
         Returns: boolean
       }
       safe_team_tz: { Args: { t_id: string }; Returns: string }
