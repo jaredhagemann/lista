@@ -76,7 +76,7 @@ simultaneous acceptances of one invitation.
 ## Fix as implemented
 
 **Branch:** `fix/011-invite-identity`
-**PR:** see branch
+**PR:** #68
 **Migration:** `supabase/migrations/20260918000001_accept_invitation_existing_child.sql`
 
 Two defects, one acceptance path.
