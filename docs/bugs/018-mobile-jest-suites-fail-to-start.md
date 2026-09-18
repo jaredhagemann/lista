@@ -7,6 +7,10 @@
 **Evidence class:** Reproduced in the **September 4 installed checkout only**
 **Last verified:** `5acde1074`, local run, 2026-09-04
 
+**Not reproducible on a current install, 2026-09-17.** All four suites run and pass (`npx jest` in
+`apps/mobile`: 4 suites, 26 tests). The September finding was scoped to that checkout’s installed
+dependencies, and a reinstall since then appears to have cleared it. Candidate for closing — see Verification.
+
 ## Symptom
 
 All four mobile Jest suites fail to start; **zero tests execute**. The mobile app has no working test

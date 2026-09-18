@@ -545,8 +545,10 @@ export type Database = {
           created_by: string | null
           event_id: string | null
           id: string
+          kind: string
           last_error: string | null
           occurrence_count: number
+          recipient_profile_ids: string[] | null
           sent_at: string | null
           snapshot: Json
           status: string
@@ -560,8 +562,10 @@ export type Database = {
           created_by?: string | null
           event_id?: string | null
           id?: string
+          kind?: string
           last_error?: string | null
           occurrence_count?: number
+          recipient_profile_ids?: string[] | null
           sent_at?: string | null
           snapshot: Json
           status?: string
@@ -575,8 +579,10 @@ export type Database = {
           created_by?: string | null
           event_id?: string | null
           id?: string
+          kind?: string
           last_error?: string | null
           occurrence_count?: number
+          recipient_profile_ids?: string[] | null
           sent_at?: string | null
           snapshot?: Json
           status?: string
@@ -1186,8 +1192,10 @@ export type Database = {
           created_by: string | null
           event_id: string | null
           id: string
+          kind: string
           last_error: string | null
           occurrence_count: number
+          recipient_profile_ids: string[] | null
           sent_at: string | null
           snapshot: Json
           status: string

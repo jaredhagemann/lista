@@ -56,7 +56,7 @@ Last updated: 2026-03-11
 - [x] AASA file at `lista.team/.well-known/apple-app-site-association` (web route handler)
 - [x] Associated Domains entitlement in `app.json` (`applinks:lista.team`)
 - [x] Invite accept screen (`app/invite/[id].tsx` — outside auth/app groups, handles both signed-in and unauthenticated states)
-- [x] Push notifications: `expo-notifications` setup, token registration, `expo_push_token` column in `push_subscriptions` (migration `20260312000001_expo_push_token.sql`), fan-out in `/api/notifications/send`, `/api/chat/notify`, and `/api/cron/reminders`
+- [x] Push notifications: `expo-notifications` setup, token registration, `expo_push_token` column in `push_subscriptions` (migration `20260312000001_expo_push_token.sql`), fan-out through the notification job queue (`/api/notifications/drain`), `/api/chat/notify`, and `/api/cron/reminders`
 - [x] `eas.json` build profiles (development, preview, production)
 
 **Push notification notes:**

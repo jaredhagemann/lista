@@ -348,10 +348,10 @@ test("logged-out GET /dashboard/team is redirected to /login by middleware", asy
 });
 
 // Item 4: protected API boundary — proves the public-route allowlist has not been over-broadened
-test("logged-out POST /api/notifications/send is redirected to /login by middleware", async ({ request }) => {
+test("logged-out POST /api/notifications/drain is redirected to /login by middleware", async ({ request }) => {
   // maxRedirects: 0 returns the raw redirect response instead of following it,
   // letting us assert the middleware 307 and location header directly.
-  const response = await request.post("/api/notifications/send", {
+  const response = await request.post("/api/notifications/drain", {
     maxRedirects: 0,
     data: {},
   });

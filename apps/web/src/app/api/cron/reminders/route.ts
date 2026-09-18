@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { drainNotificationJobs } from "@/lib/notifications/worker";
+import { resolveRecipients } from "@/lib/notifications/recipients";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail, buildEventEmailHtml } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
@@ -16,10 +17,6 @@ import type { Database } from "@/types/database";
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
   teams: { name: string; timezone: string | null };
   locations: { name: string } | null;
-};
-type MemberWithProfile = {
-  profile_id: string;
-  profiles: { email: string; auth_user_id: string | null } | null;
 };
 
 // Vercel Cron: runs daily, sends reminders for events happening in the next 24h
@@ -64,46 +61,13 @@ export async function GET(request: Request) {
     const relativeDay = relativeEventDay(event.start_time, timeZone);
     const dayLabel = relativeDay ?? formatShortEventDate(event.start_time, timeZone);
 
-    // Get team members
-    const { data: rawMembers } = await supabase
-      .from("team_members")
-      .select("profile_id, profiles(email, auth_user_id)")
-      .eq("team_id", event.team_id!);
-
-    if (!rawMembers) continue;
-    const members = rawMembers as unknown as MemberWithProfile[];
-
-    const profileIds = members.map((m) => m.profile_id);
-
-    // Resolve manager emails for managed profiles
-    const managedProfileIds = members
-      .filter((m) => m.profiles?.auth_user_id == null)
-      .map((m) => m.profile_id);
-
-    const managerEmailsByProfileId = new Map<string, string[]>();
-    if (managedProfileIds.length > 0) {
-      const { data: managerLinks } = await supabase
-        .from("profile_managers")
-        .select("managed_id, profiles!manager_id(email)")
-        .in("managed_id", managedProfileIds);
-
-      for (const link of managerLinks ?? []) {
-        const email = (link.profiles as unknown as { email: string } | null)?.email;
-        if (email) {
-          const existing = managerEmailsByProfileId.get(link.managed_id) ?? [];
-          existing.push(email);
-          managerEmailsByProfileId.set(link.managed_id, existing);
-        }
-      }
-    }
-
-    // Get notification preferences
-    const { data: prefs } = await supabase
-      .from("notification_preferences")
-      .select("*")
-      .in("profile_id", profileIds);
-
-    const prefsMap = new Map(prefs?.map((p) => [p.profile_id, p]));
+    // Everyone the reminder is for: teammates, and the guardians of managed
+    // players, who may have no roster row of their own. Each receiving adult's
+    // own preferences apply (BUG-007, D2).
+    const recipients = await resolveRecipients(supabase, {
+      category: "event",
+      teamId: event.team_id!,
+    });
 
     const appUrl =
       process.env.NEXT_PUBLIC_APP_URL ??
@@ -124,60 +88,44 @@ export async function GET(request: Request) {
       timeZone,
     });
 
-    // Send emails to members who have email enabled
-    for (const member of members) {
-      const pref = prefsMap.get(member.profile_id);
-      if (pref && !pref.email_enabled) continue;
-
-      const isManaged = member.profiles?.auth_user_id == null;
-      const emails = isManaged
-        ? (managerEmailsByProfileId.get(member.profile_id) ?? [])
-        : member.profiles?.email
-        ? [member.profiles.email]
-        : [];
-
-      for (const email of emails) {
-        try {
-          await sendEmail({
-            to: email,
-            subject: `Reminder: ${event.title} ${relativeDay ?? `on ${dayLabel}`}`,
-            html: emailHtml,
-          });
-          sent++;
-        } catch (err) {
-          console.error(`Reminder email to ${email} failed:`, err);
-        }
-      }
-    }
-
-    // Send push notifications
-    const { data: pushSubs } = await supabase
-      .from("push_subscriptions")
-      .select("*")
-      .in("profile_id", profileIds);
-
     const reminderPayload = {
       title: `Reminder: ${event.title}`,
       body: `${dayLabel.charAt(0).toUpperCase()}${dayLabel.slice(1)} at ${formatEventTime(event.start_time, timeZone)}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
       url: `/dashboard/schedule/${event.id}`,
     };
 
-    for (const sub of pushSubs ?? []) {
-      const pref = prefsMap.get(sub.profile_id);
-      if (pref && !pref.push_enabled) continue;
-
-      try {
-        if (sub.expo_push_token) {
-          await sendExpoPushNotification(sub.expo_push_token, reminderPayload);
-        } else {
-          await sendPushNotification(
-            { endpoint: sub.endpoint!, p256dh: sub.p256dh!, auth: sub.auth! },
-            reminderPayload
-          );
+    for (const recipient of recipients) {
+      if (recipient.emailEnabled) {
+        for (const email of recipient.emails) {
+          try {
+            await sendEmail({
+              to: email,
+              subject: `Reminder: ${event.title} ${relativeDay ?? `on ${dayLabel}`}`,
+              html: emailHtml,
+            });
+            sent++;
+          } catch (err) {
+            console.error(`Reminder email to ${email} failed:`, err);
+          }
         }
-        sent++;
-      } catch (err) {
-        console.error("Push reminder failed:", err);
+      }
+
+      if (!recipient.pushEnabled) continue;
+      // Every device the person has registered, not just the most recent one.
+      for (const target of recipient.pushTargets) {
+        try {
+          if (target.kind === "expo") {
+            await sendExpoPushNotification(target.token, reminderPayload);
+          } else {
+            await sendPushNotification(
+              { endpoint: target.endpoint, p256dh: target.p256dh, auth: target.auth },
+              reminderPayload
+            );
+          }
+          sent++;
+        } catch (err) {
+          console.error("Push reminder failed:", err);
+        }
       }
     }
   }

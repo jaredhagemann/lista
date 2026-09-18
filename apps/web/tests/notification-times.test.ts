@@ -21,20 +21,28 @@ const mocks = vi.hoisted(() => {
 
   // Every query resolves to the data configured for its table.
   const tables: Record<string, unknown> = {};
+  const jobs: unknown[] = [];
   const from = vi.fn((table: string) => {
     const result = () => Promise.resolve({ data: tables[table] ?? null, error: null });
+    const written = () => Promise.resolve({ data: null, error: null });
     const chain: Record<string, unknown> = {
       single: result,
       maybeSingle: result,
+      insert: written,
+      update: () => chain,
       then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => result().then(res, rej),
     };
     for (const method of ["select", "eq", "neq", "in", "gte", "lte"]) chain[method] = () => chain;
     return chain;
   });
+  // The worker claims jobs through an RPC before sending them.
+  const rpc = vi.fn(async () => ({ data: jobs.splice(0), error: null }));
 
   return {
     tables,
+    jobs,
     from,
+    rpc,
     sendEmail: vi.fn(async () => undefined),
     sendPushNotification: vi.fn(async () => undefined),
     sendExpoPushNotification: vi.fn(async () => undefined),
@@ -42,6 +50,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn(() => ({ from: mocks.from })) }));
+vi.mock("@/lib/api-auth", () => ({ adminClient: () => ({ from: mocks.from, rpc: mocks.rpc }) }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: { getUser: vi.fn(async () => ({ data: { user: { id: "coach-1" } } })) },
@@ -61,7 +70,7 @@ vi.mock("@/lib/notifications/expo-push", () => ({ sendExpoPushNotification: mock
 
 import { buildEventEmailHtml } from "@/lib/notifications/email";
 import { GET as runReminders } from "@/app/api/cron/reminders/route";
-import { POST as sendNotification } from "@/app/api/notifications/send/route";
+import { drainNotificationJobs } from "@/lib/notifications/worker";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -101,6 +110,9 @@ function email(overrides: Partial<Parameters<typeof buildEventEmailHtml>[0]> = {
 function configureTeam(events: unknown) {
   mocks.tables.events = events;
   mocks.tables.team_members = [{ profile_id: "p1", profiles: { email: "parent@example.com", auth_user_id: "u1" } }];
+  // Recipient resolution reads the profiles themselves now (BUG-007).
+  mocks.tables.profiles = [{ id: "p1", email: "parent@example.com", auth_user_id: "u1" }];
+  mocks.tables.profile_managers = [];
   mocks.tables.notification_preferences = [];
   mocks.tables.push_subscriptions = [{ profile_id: "p1", expo_push_token: "ExponentPushToken[test]" }];
 }
@@ -221,14 +233,31 @@ describe("reminders cron uses the team's timezone and the event's real day (BUG-
 describe("event notifications (new / updated / cancelled) use the team's timezone (BUG-020)", () => {
   it("formats the email and push in local time", async () => {
     configureTeam(eventFor(PACIFIC));
+    mocks.tables.teams = { name: "AYSO Girls U10", timezone: PACIFIC };
+    // A queued schedule change, as the database would have enqueued it (BUG-006).
+    mocks.jobs.push({
+      id: "job-1",
+      team_id: "team-1",
+      event_id: "evt-1",
+      action: "updated",
+      kind: "event",
+      occurrence_count: 1,
+      attempts: 1,
+      recipient_profile_ids: null,
+      snapshot: {
+        title: "Practice",
+        event_type: "practice",
+        start_time: PRACTICE.start_time,
+        end_time: PRACTICE.end_time,
+        arrival_time: 30,
+        location_id: null,
+        location_name: "Islay Park",
+        is_cancelled: false,
+      },
+    });
 
-    const res = await sendNotification(new Request("http://localhost/api/notifications/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId: "evt-1", action: "updated" }),
-    }));
+    await drainNotificationJobs();
 
-    expect(res.status).toBe(200);
     expect(sentEmail().html).toContain("4:00 PM – 5:30 PM PDT");
     expect(sentEmail().html).not.toContain("11:00 PM");
     expect(sentPush().body).toBe("Thu, Sep 17 at 4:00 PM PDT — Islay Park");

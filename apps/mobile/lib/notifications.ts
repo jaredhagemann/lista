@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
 // Configure how notifications are shown when the app is in the foreground
@@ -46,16 +47,24 @@ export async function registerForPushNotifications(userId: string) {
     return;
   }
 
-  // Remove any existing expo token rows for this user (e.g., old token after reinstall)
-  await supabase
-    .from("push_subscriptions")
-    .delete()
-    .eq("profile_id", userId)
-    .not("expo_push_token", "is", null);
+  await registerPushToken(supabase, userId, token);
+}
 
-  // Register the new token
-  await supabase.from("push_subscriptions").insert({
-    profile_id: userId,
-    expo_push_token: token,
-  });
+/**
+ * Records this device against the signed-in user.
+ *
+ * Registration used to delete every other Expo token the user had first, so
+ * installing on a second device silently stopped delivery to the first
+ * (BUG-007, gap 4). Upserting on the token keeps every device, refreshes the
+ * row if the app is reinstalled, and moves the device to whoever signs in on it.
+ */
+export async function registerPushToken(
+  client: SupabaseClient,
+  userId: string,
+  token: string
+) {
+  return client.from("push_subscriptions").upsert(
+    { profile_id: userId, expo_push_token: token },
+    { onConflict: "expo_push_token" }
+  );
 }

@@ -34,6 +34,15 @@ export const notificationLimiter = new Ratelimit({
   prefix: "rl:notification",
 });
 
+// Chat is chattier than the schedule: a coach sending 30 messages in an hour is
+// ordinary, and sharing the schedule-notification budget silenced their chat
+// (BUG-007, gap 5). Its own, larger budget.
+export const chatNotificationLimiter = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(200, "1 h"),
+  prefix: "rl:chat-notification",
+});
+
 export function rateLimitResponse() {
   return new Response(
     JSON.stringify({ error: "Too many requests. Please try again later." }),

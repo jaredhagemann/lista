@@ -12,7 +12,7 @@
 
 import type { FieldChange } from "@/lib/notifications/email";
 
-export type JobAction = "created" | "updated" | "cancelled" | "restored" | "deleted";
+export type JobAction = "created" | "updated" | "cancelled" | "restored" | "deleted" | "message";
 
 export type EventSnapshot = {
   title: string;
@@ -30,9 +30,19 @@ export type NotificationJob = {
   team_id: string;
   event_id: string | null;
   action: JobAction;
+  /** An event's details, or a chat message's — see ChatSnapshot. */
   snapshot: EventSnapshot;
   occurrence_count: number;
   attempts: number;
+  kind?: "event" | "chat";
+  recipient_profile_ids?: string[] | null;
+};
+
+/** What a chat job carries instead of an event snapshot. */
+export type ChatSnapshot = {
+  title: string;
+  body: string;
+  url: string;
 };
 
 /** A team member as the worker sees them, with the addresses that can reach them. */
@@ -75,14 +85,19 @@ export type DeliveryOutcome = {
  * asks for those to be reported separately, because a coach reading "2 failed"
  * should mean two deliveries the system could not make.
  */
-export function planDeliveries(recipients: Recipient[]): PlannedDelivery[] {
+export function planDeliveries(
+  recipients: Recipient[],
+  channels: ("email" | "push")[] = ["email", "push"]
+): PlannedDelivery[] {
   const planned: PlannedDelivery[] = [];
   // A guardian who is also on the team, or who has two children on it, is one
   // person: one notice per address and per device, not one per membership.
   const seen = new Set<string>();
 
   for (const r of recipients) {
-    if (!r.emailEnabled) {
+    if (!channels.includes("email")) {
+      // Chat has no per-message email (D2), so there is nothing to record.
+    } else if (!r.emailEnabled) {
       planned.push({ profile_id: r.profileId, channel: "email", target: "", skipReason: "opted_out" });
     } else if (r.emails.length === 0) {
       planned.push({ profile_id: r.profileId, channel: "email", target: "", skipReason: "no_address" });
@@ -94,7 +109,9 @@ export function planDeliveries(recipients: Recipient[]): PlannedDelivery[] {
       }
     }
 
-    if (!r.pushEnabled) {
+    if (!channels.includes("push")) {
+      // Nothing to do.
+    } else if (!r.pushEnabled) {
       planned.push({ profile_id: r.profileId, channel: "push", target: "", skipReason: "opted_out" });
     } else if (r.pushTargets.length === 0) {
       // Not every family installs the app; that is not a delivery failure.
@@ -139,6 +156,7 @@ const ACTION_WORDS: Record<JobAction, string> = {
   cancelled: "Cancelled",
   restored: "Back on",
   deleted: "Cancelled",
+  message: "Message",
 };
 
 /**
