@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { supabase } from "../../../../lib/supabase";
 import * as Crypto from "expo-crypto";
+import { notifyChatMessage } from "../../../../lib/chat-notify";
 import { useSession } from "../../../_layout";
 import { MessageItem, type Message } from "../../../../components/chat/MessageItem";
 import { MessageInput } from "../../../../components/chat/MessageInput";
@@ -150,7 +151,11 @@ export default function DmScreen() {
     if (error) {
       setMessages((prev) => prev.filter((m) => m.id !== id));
       optimisticIds.current.delete(id);
+      return;
     }
+
+    // Push it to the other person (BUG-007).
+    void notifyChatMessage({ messageId: id, dmChannelId: dmId });
   }
 
   async function handleDelete(id: string) {

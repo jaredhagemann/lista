@@ -46,7 +46,7 @@ Middleware (`src/middleware.ts` → `src/lib/supabase/middleware.ts`) protects a
 
 Two API routes handle notifications beyond basic CRUD:
 
-- **`/api/notifications/send`** — called by the frontend after event create/update/cancel; fans out emails (Resend) and push notifications (web-push) to team members based on their preferences
+- **`/api/notifications/drain`** — sends queued notifications. Schedule changes enqueue a `notification_jobs` row in the same transaction as the change (a trigger on `events`), and chat messages enqueue one through `/api/chat/notify`. The worker runs as the service role, so it can resolve every recipient — guardians of managed players included — and records each delivery in `notification_deliveries` as sent, failed or skipped. The app pings this route after a save; `/api/cron/notifications` and the reminders cron sweep daily
 - **`/api/cron/reminders`** — Vercel cron (daily at 12:00 UTC, configured in `vercel.json`); uses service role to query upcoming events and notify members
 
 ### Database Schema

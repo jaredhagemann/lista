@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import * as Crypto from "expo-crypto";
+import { notifyChatMessage } from "../../../lib/chat-notify";
 import { useAppContext } from "../../../contexts/AppContext";
 import { useSession } from "../../_layout";
 import { MessageItem, type Message } from "../../../components/chat/MessageItem";
@@ -142,7 +143,11 @@ export default function ChannelScreen() {
     if (error) {
       setMessages((prev) => prev.filter((m) => m.id !== id));
       optimisticIds.current.delete(id);
+      return;
     }
+
+    // Push it to the rest of the channel (BUG-007).
+    void notifyChatMessage({ messageId: id, channelId });
   }
 
   async function handleDelete(id: string) {

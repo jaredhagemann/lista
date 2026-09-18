@@ -134,7 +134,7 @@ describe("updateSession — Vercel cron routes (BUG-008)", () => {
 
   it("still redirects an unrelated protected API route to /login", async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
-    const response = await updateSession(req("/api/notifications/send"));
+    const response = await updateSession(req("/api/notifications/drain"));
     expect(locationOf(response)).toContain("/login");
   });
 
