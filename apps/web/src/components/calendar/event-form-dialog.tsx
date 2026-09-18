@@ -24,6 +24,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { buildRRule, expandRecurrenceFromLocalString, untilEndOfDay } from "@/lib/utils/rrule";
+import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -112,6 +113,8 @@ export function EventFormDialog({
 
   // Recurrence
   const [isRecurring, setIsRecurring] = useState(false);
+  // D3: a new event notifies unless the coach says otherwise.
+  const [notifyTeam, setNotifyTeam] = useState(true);
   const [frequencyMode, setFrequencyMode] = useState<
     "weekly" | "biweekly" | "custom"
   >("weekly");
@@ -239,21 +242,43 @@ export function EventFormDialog({
       }
 
       toast.success(
-        `Created recurring event with ${childEvents.length + 1} occurrences`
+        withNotice(
+          `Created recurring event with ${childEvents.length + 1} occurrences`,
+          await announce(parentEvent.id)
+        )
       );
     } else {
-      const { error } = await supabase.from("events").insert(eventData);
+      // The id is generated here so the creation notice can name the event.
+      const eventId = crypto.randomUUID();
+      const { error } = await supabase.from("events").insert({ ...eventData, id: eventId });
       if (error) {
         toast.error(error.message);
         setLoading(false);
         return;
       }
-      toast.success("Event created");
+      toast.success(withNotice("Event created", await announce(eventId)));
     }
 
     setLoading(false);
     router.refresh();
     onClose();
+  }
+
+  /**
+   * Queues the creation notice, if the coach left the switch on, and sends what
+   * is waiting. A series enqueues once for the whole operation.
+   */
+  async function announce(eventId: string) {
+    if (!notifyTeam) return null;
+    const { error } = await supabase.rpc("enqueue_event_notification", {
+      p_event_id: eventId,
+      p_action: "created",
+    });
+    if (error) {
+      toast.error(`Event saved, but the notification could not be queued: ${error.message}`);
+      return null;
+    }
+    return drainNotifications();
   }
 
   const startDayRRule = jsToRRuleDay(new Date(startTime).getDay());
@@ -448,6 +473,17 @@ export function EventFormDialog({
                 </div>
               </div>
             )}
+
+            {/* Notify toggle — a new event tells the team unless switched off */}
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Notify the team</Label>
+                <p className="text-sm text-muted-foreground">
+                  Email and push the families about this event
+                </p>
+              </div>
+              <Switch checked={notifyTeam} onCheckedChange={setNotifyTeam} />
+            </div>
 
             {/* Recurring toggle */}
             <div className="flex items-center justify-between">

@@ -18,6 +18,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { getRecurrenceDescription, parseRRule } from "@/lib/utils/rrule";
+import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import {
   planSeriesEdit,
   resolveSeriesEdit,
@@ -215,7 +216,7 @@ export function SeriesEditForm({
       return;
     }
 
-    await apply(plan, changes);
+    await apply(plan);
   }
 
   function describeChanges(fields: BulkFields, timeChanged: boolean, newRule: string | null): FieldChange[] {
@@ -257,7 +258,7 @@ export function SeriesEditForm({
     return changes;
   }
 
-  async function apply(plan: SeriesEditPlan, changes: FieldChange[]) {
+  async function apply(plan: SeriesEditPlan) {
     setSaving(true);
     const { error } = await supabase.rpc("apply_series_edit", {
       p_series_head_id: plan.seriesHeadId,
@@ -269,13 +270,8 @@ export function SeriesEditForm({
       return;
     }
 
-    fetch("/api/notifications/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId: plan.newHeadId, action: "series_updated", changes }),
-    }).catch(() => {});
-
-    toast.success("Series updated");
+    // apply_series_edit enqueued one notice for the whole operation (BUG-006).
+    toast.success(withNotice("Series updated", await drainNotifications()));
     setPending(null);
     setSaving(false);
     onSave();
@@ -555,6 +551,18 @@ export function SeriesEditForm({
           </DialogHeader>
           {pending && (
             <div className="max-h-80 space-y-3 overflow-y-auto text-sm">
+              {pending.changes.length > 0 && (
+                <div>
+                  <p className="font-medium">What changes</p>
+                  <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                    {pending.changes.map((c) => (
+                      <li key={c.field}>
+                        {c.field}: {c.before} → {c.after}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <PreviewGroup title="Updated" items={pending.plan.preview.updated} />
               <PreviewGroup title="Cancelled" items={pending.plan.preview.cancelled} />
               <PreviewGroup title="Added" items={pending.plan.preview.added} />
@@ -565,7 +573,7 @@ export function SeriesEditForm({
             <Button variant="outline" onClick={() => setPending(null)} disabled={saving}>
               Back
             </Button>
-            <Button onClick={() => pending && apply(pending.plan, pending.changes)} disabled={saving}>
+            <Button onClick={() => pending && apply(pending.plan)} disabled={saving}>
               {saving ? "Saving..." : "Apply changes"}
             </Button>
           </DialogFooter>

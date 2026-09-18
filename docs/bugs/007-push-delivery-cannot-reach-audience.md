@@ -7,6 +7,12 @@
 **Evidence class:** Mixed — token visibility Reproduced at the database boundary; route behavior Static
 **Last verified:** `5acde1074`, local stack + code inspection, 2026-09-04
 
+**Event fan-out fixed by [BUG-006](./fixed/006-schedule-changes-do-not-notify.md) (2026-09-17):** schedule
+changes now go out through a job queue drained by the service role, so every intended recipient resolves,
+guardians of managed players included. What remains here: the chat fan-out (`/api/chat/notify`), mobile
+token replacement, guardian targeting in the reminders cron, and retiring the now-unused
+`/api/notifications/send`, which still resolves recipients through the caller’s own client.
+
 ## Symptom
 
 Push fan-out cannot resolve the people it is meant to reach. **Other intended recipients' tokens are hidden
