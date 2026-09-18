@@ -44,8 +44,11 @@ export async function acceptInvitationAsSelf(invitationId: string) {
 }
 
 /**
- * Accept a player invitation as a parent/guardian: creates a managed profile
- * for the player and links the current user as manager.
+ * Accept a player invitation as a parent/guardian.
+ *
+ * Creates a managed profile for the player and links the current user as their
+ * manager — unless `managedProfileId` names a child they already manage, in
+ * which case that child joins the team and keeps their one identity (BUG-011).
  */
 export async function acceptInvitationAsGuardian(
   invitationId: string,
@@ -53,10 +56,13 @@ export async function acceptInvitationAsGuardian(
     relationship,
     firstName,
     lastName,
+    managedProfileId,
   }: {
     relationship: string;
     firstName?: string;
     lastName?: string;
+    /** A child the guardian already manages, rather than a new one (BUG-011). */
+    managedProfileId?: string;
   }
 ) {
   const supabase = await createServerClient();
@@ -72,6 +78,7 @@ export async function acceptInvitationAsGuardian(
     relationship,
     firstName,
     lastName,
+    managedProfileId,
   });
   if (!result.ok) return { error: result.message };
 

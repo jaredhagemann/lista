@@ -21,7 +21,13 @@ import type { Database } from "@/types/database";
 
 export type AcceptMode = "self" | "guardian" | "manager";
 
-export type AcceptFailure = "not_found" | "already_accepted" | "wrong_recipient" | "wrong_type" | "failed";
+export type AcceptFailure =
+  | "not_found"
+  | "already_accepted"
+  | "wrong_recipient"
+  | "wrong_type"
+  | "not_your_child"
+  | "failed";
 
 export type AcceptResult =
   | {
@@ -33,6 +39,7 @@ export type AcceptResult =
   | { ok: false; reason: AcceptFailure; message: string };
 
 const FAILURE_MARKERS: Array<[string, AcceptFailure]> = [
+  ["NOT_YOUR_MANAGED_PROFILE", "not_your_child"],
   ["INVITATION_NOT_FOUND", "not_found"],
   ["INVITATION_ALREADY_ACCEPTED", "already_accepted"],
   ["INVITATION_WRONG_RECIPIENT", "wrong_recipient"],
@@ -45,6 +52,7 @@ export const ACCEPT_FAILURE_MESSAGES: Record<Exclude<AcceptFailure, "failed">, s
   already_accepted: "Invitation already accepted",
   wrong_recipient: "This invitation was sent to a different email address",
   wrong_type: "Invalid invitation type",
+  not_your_child: "You don't manage that player",
 };
 
 export function sameEmail(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -61,6 +69,12 @@ export async function acceptInvitation(
     relationship?: string | null;
     firstName?: string | null;
     lastName?: string | null;
+    /**
+     * Guardian mode only: a child the caller already manages, joined to the team
+     * instead of a new profile being minted (BUG-011). The database checks that
+     * the caller really manages them.
+     */
+    managedProfileId?: string | null;
   }
 ): Promise<AcceptResult> {
   const { data, error } = await admin.rpc("accept_invitation", {
@@ -70,6 +84,7 @@ export async function acceptInvitation(
     p_relationship: params.relationship ?? undefined,
     p_first_name: params.firstName ?? undefined,
     p_last_name: params.lastName ?? undefined,
+    p_managed_profile_id: params.managedProfileId ?? undefined,
   });
 
   if (error) {
