@@ -1,7 +1,7 @@
 # BUG-006 — Schedule changes send no notification to families
 
 **Severity:** P1
-**Status:** Fixed (pending deploy verification — see Verification)
+**Status:** Fixed — SQL checks verified in production 2026-09-17; delivery check pending
 **Reported:** 2026-09-04 by readiness review (finding 6)
 **Area:** events / notifications
 **Evidence class:** Static — traced through the event UI; no live dispatch observed. Fix **unverified in deployment**
@@ -208,3 +208,11 @@ Expected:
 upcoming event. The parent should receive the email and push, the toast should read "Event cancelled —
 Notified N", and the event page should show the delivery line. Then edit only the title: nobody is notified
 unless the switch is on.
+
+**Deployed 2026-09-17** (PR #64, with the cron correction in PR #65):
+- The staging checks passed before merge.
+- The production SQL checks passed (user): the trigger exists, clients cannot enqueue or claim, and no
+  backlog is building.
+- **Still to confirm:** the manual delivery check — cancelling an upcoming event and watching the email and
+  push arrive for a subscribed parent. Until that runs, production dispatch is verified only at the database
+  boundary.
