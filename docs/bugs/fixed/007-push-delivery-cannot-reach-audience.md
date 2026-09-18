@@ -117,7 +117,7 @@ Assert an org director does not receive team notifications merely through admini
 
 **Decisions taken, 2026-09-17 (user):** chat joins the job queue BUG-006 built; the D2 preference migration
 ships here, with an inventory run first; per-device opt-out is filed separately as
-[BUG-022](../022-no-per-device-push-opt-out.md).
+[BUG-022](./022-no-per-device-push-opt-out.md).
 
 ### The root cause
 

@@ -1,7 +1,7 @@
 # BUG-018 — Mobile Jest suites cannot start
 
 **Severity:** P2
-**Status:** Open
+**Status:** Not reproducible — the suites run on a current install (2026-09-18)
 **Reported:** 2026-09-04 by readiness review (verification results)
 **Area:** tests / mobile
 **Evidence class:** Reproduced in the **September 4 installed checkout only**
@@ -50,3 +50,24 @@ failure visible in the runner.
 The actual gap is **absent mobile CI coverage**: nothing runs this suite automatically, so the breakage
 persisted unnoticed between September 4 and now. Wire the mobile suite into CI, and assert that a
 startup failure fails the build rather than being reported only to whoever runs it locally.
+
+---
+
+## Closed 2026-09-18 — Not reproducible
+
+`npx jest` in `apps/mobile` runs all suites and they pass. Checked on 2026-09-17 while working on
+[BUG-007](./007-push-delivery-cannot-reach-audience.md), which then added a fifth suite:
+
+```
+Test Suites: 5 passed, 5 total
+Tests:       31 passed, 31 total
+```
+
+The original finding was explicitly scoped to the September 4 checkout’s **installed dependencies**
+(`@babel/runtime/helpers/interopRequireDefault` missing), not to anything in the repository. A dependency
+reinstall between then and now cleared it, and `apps/mobile/__tests__/chat-notify.test.ts` was written and
+run against the current install, so the suites are exercised rather than merely present.
+
+**Not established:** why the install was broken in September. If the same failure appears on a fresh
+`pnpm install`, reopen this with the install log — that would point at the lockfile rather than a local
+state.
