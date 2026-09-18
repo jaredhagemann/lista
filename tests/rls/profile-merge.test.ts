@@ -125,6 +125,44 @@ describe("merge_managed_profiles (BUG-011)", () => {
     expect(await exists(merge)).toBe(false);
   });
 
+  it("carries invitations across, rather than being blocked by them", async () => {
+    const coach = await createTestUser();
+    const guardian = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const keep = await createManagedProfile(guardian.user.id, { firstName: "Finley" });
+    const merge = await createManagedProfile(guardian.user.id, { firstName: "Finley" });
+    await addTeamMember(teamId, merge, "player");
+
+    // A guardian invitation naming the record about to be merged away. The
+    // invitations foreign key does not cascade, so this blocked the delete
+    // outright in production on 2026-09-18.
+    const invitationId = crypto.randomUUID();
+    const { error: inviteError } = await adminClient.from("invitations").insert({
+      id: invitationId,
+      team_id: teamId,
+      email: "other-parent@example.com",
+      role: "manager",
+      managed_profile_id: merge,
+      relationship: "mom",
+      invited_by: coach.user.id,
+    });
+    if (inviteError) throw new Error(inviteError.message);
+
+    const { error } = await adminClient.rpc("merge_managed_profiles", {
+      p_keep: keep,
+      p_merge: merge,
+    });
+    expect(error).toBeNull();
+
+    const { data: invitation } = await adminClient
+      .from("invitations")
+      .select("managed_profile_id")
+      .eq("id", invitationId)
+      .single();
+    expect(invitation!.managed_profile_id).toBe(keep);
+    expect(await exists(merge)).toBe(false);
+  });
+
   it("fills in details the survivor was missing", async () => {
     const guardian = await createTestUser();
     const keep = await createManagedProfile(guardian.user.id, { firstName: "Finley" });

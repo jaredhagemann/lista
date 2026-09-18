@@ -114,25 +114,12 @@ $$;
 
 revoke execute on function merge_managed_profiles(uuid, uuid) from public, anon, authenticated;
 
--- ── The one duplicate found in production, 2026-09-18 ───────────────────────
+-- ── The production merge lives in 20260918000003 ────────────────────────────
 --
--- "Finley Hagemann" existed twice for the same guardian:
---   8c5cd6ce  created 2026-04-30, on the live club team, 4 training sessions
---   a37d29b9  created 2026-04-01, on GU11 Futsal - England, 15 responses, both parents
---
--- The live team's record survives, so its roster row and training sessions are
--- untouched; the futsal membership, its responses and the second guardian link
--- move across. Guarded by existence checks, so this is a no-op everywhere the
--- ids do not exist (local, staging, and production once it has run).
-do $$
-begin
-  if exists (select 1 from profiles where id = '8c5cd6ce-0b3b-4d7a-9782-53430c14f952')
-     and exists (select 1 from profiles where id = 'a37d29b9-b62a-49c4-90e7-9b8396a6fa81')
-  then
-    perform merge_managed_profiles(
-      '8c5cd6ce-0b3b-4d7a-9782-53430c14f952',
-      'a37d29b9-b62a-49c4-90e7-9b8396a6fa81'
-    );
-  end if;
-end
-$$;
+-- This file originally performed the merge here. It failed in production on an
+-- invitation still referencing the record being deleted, and the whole migration
+-- rolled back, so production never recorded this version while staging did.
+-- The merge, and the corrected function, moved to
+-- 20260918000003_merge_managed_profiles_references.sql, which both databases
+-- reach. The step was removed here rather than fixed in place so that the two
+-- end in the same state without a staging reset.

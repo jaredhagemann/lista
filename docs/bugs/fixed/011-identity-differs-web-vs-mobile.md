@@ -76,8 +76,8 @@ simultaneous acceptances of one invitation.
 ## Fix as implemented
 
 **Branch:** `fix/011-invite-identity`
-**PR:** #68
-**Migrations:** `supabase/migrations/20260918000001_accept_invitation_existing_child.sql` (prevention), `supabase/migrations/20260918000002_merge_managed_profiles.sql` (repair)
+**PR:** #68, with the production repair completed in #69
+**Migrations:** `supabase/migrations/20260918000001_accept_invitation_existing_child.sql` (prevention), `supabase/migrations/20260918000002_merge_managed_profiles.sql` and `20260918000003_merge_managed_profiles_references.sql` (repair)
 
 Two defects, one acceptance path.
 
@@ -218,3 +218,38 @@ Expected:
 a child on another team, and accept it **in the native app** as the guardian. The app should ask who you
 are, offer the child by name, and the roster should show the existing child with two teams — not a second
 record, and not the parent enrolled as the player.
+
+---
+
+## The repair failed in production first — 2026-09-18
+
+The merge in `20260918000002` failed when it reached production:
+
+```
+ERROR: update or delete on table "profiles" violates foreign key constraint
+"invitations_managed_profile_id_fkey" on table "invitations" (SQLSTATE 23503)
+Key (id)=(a37d29b9-…) is still referenced from table "invitations".
+```
+
+A guardian invitation still named the record being merged away. Most tables referencing `profiles` cascade,
+so the delete cleared them; `invitations` does not, deliberately — an invitation records something that
+happened, and deleting a person should not quietly erase it. The merge function relied on the cascade and
+had nothing to say about the tables that do not.
+
+**Why the tests missed it:** every fixture built a child out of profiles, memberships, availability, training
+and guardian links. None had an invitation, which is the one thing a real child acquired on the way in.
+`tests/rls/profile-merge.test.ts` now has a case that reproduces the production error exactly (`23503`)
+and fails against the old function.
+
+**What the failure left behind:** each migration runs in its own transaction, so production rolled the whole
+file back — no function, no merge, and `20260918000002` unrecorded. Staging had recorded it, because the
+merge was a no-op with those ids absent. That split is why the fix is a **new** migration
+(`20260918000003`) rather than an edit: it redefines the function and runs the merge, so both databases
+converge without a staging reset. The merge step was removed from `20260918000002`, which production would
+otherwise retry and fail on again.
+
+**The corrected function** repoints every reference that does not cascade — `invitations.managed_profile_id`
+and `invited_by`, and `created_by` on `events`, `organizations`, `training_categories` and
+`training_sessions` — instead of trusting the delete to clear them. The invitation follows the child.
+
+Full RLS suite after the fix: **408 passed**.
