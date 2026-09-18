@@ -97,8 +97,8 @@ Drive the tests off the D3 matrix rather than asserting unconditional dispatch. 
 **Migration:** `supabase/migrations/20260917000007_notification_jobs.sql`
 
 **Decisions taken, 2026-09-17 (user):** enqueue from the database, fold BUG-007's *event* fan-out into this
-change, surface status minimally, and — because the hosting plan allows only daily cron jobs — carry
-delivery on the immediate send rather than a frequent sweep.
+change, surface status minimally, and — because the hosting plan runs each cron job at most once a day, and
+not punctually — carry delivery on the immediate send rather than on a frequent sweep.
 
 ### Enqueueing happens in the same transaction as the change
 
@@ -126,8 +126,9 @@ deleted event can still describe it. `event_id` deliberately has no foreign key 
 
 `/api/notifications/drain` claims pending jobs through `claim_notification_jobs()` — `for update skip
 locked`, attempts counted on claim — so two simultaneous pings cannot send the same job twice. The app pings
-it right after a save, and the daily reminders cron sweeps up anything left behind. The sweep rides along
-with that existing run rather than taking a cron slot of its own, because the plan allows only two.
+it right after a save, and daily crons sweep up anything left behind: `/api/cron/notifications` at midnight
+and the existing reminders run at noon. Two sweeps because this plan runs each cron job only once a day, so
+a stranded notice waits at most twelve hours rather than a full day.
 
 Recipient resolution moved to the service role, which is where BUG-007's event half is fixed: the old
 fan-out resolved recipients through the caller's own client, so other people's push tokens were invisible to

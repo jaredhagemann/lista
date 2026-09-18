@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/subdomain-quarantine",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "0 0 * * *"
     }
   ]
 }
