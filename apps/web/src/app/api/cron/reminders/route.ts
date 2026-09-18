@@ -183,9 +183,10 @@ export async function GET(request: Request) {
   }
 
   // Sweep up schedule-change notices whose immediate send never happened — a
-  // closed tab, a provider outage (BUG-006). This is the only scheduled sweep:
-  // the plan allows two cron jobs, so it rides along with the reminders run
-  // rather than taking a slot of its own.
+  // closed tab, a provider outage (BUG-006). /api/cron/notifications sweeps at
+  // midnight too; doing it here as well costs one query and halves how long a
+  // stranded notice can sit, because this plan allows only one run per day per
+  // cron job.
   let drained = { claimed: 0 };
   try {
     drained = await drainNotificationJobs(100);
