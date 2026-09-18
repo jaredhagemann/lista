@@ -112,7 +112,7 @@ Assert an org director does not receive team notifications merely through admini
 ## Fix as implemented
 
 **Branch:** `fix/007-push-delivery-audience`
-**PR:** see branch
+**PR:** #66
 **Migration:** `supabase/migrations/20260918000000_chat_notification_jobs.sql`
 
 **Decisions taken, 2026-09-17 (user):** chat joins the job queue BUG-006 built; the D2 preference migration
