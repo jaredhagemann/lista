@@ -1162,6 +1162,7 @@ export type Database = {
           p_first_name?: string
           p_invitation_id: string
           p_last_name?: string
+          p_managed_profile_id?: string
           p_mode: string
           p_relationship?: string
           p_user_id: string

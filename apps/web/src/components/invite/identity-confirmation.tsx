@@ -27,12 +27,17 @@ type Invitation = Database["public"]["Tables"]["invitations"]["Row"] & {
 };
 type UserProfile = Database["public"]["Tables"]["profiles"]["Row"];
 
+export type ManagedChild = { id: string; first_name: string; last_name: string };
+
 export function IdentityConfirmation({
   invitation,
   userProfile,
+  managedChildren = [],
 }: {
   invitation: Invitation;
   userProfile: UserProfile;
+  /** Children this user already manages (BUG-011). */
+  managedChildren?: ManagedChild[];
 }) {
   const router = useRouter();
   const [identity, setIdentity] = useState<"self" | "guardian" | null>(null);
@@ -43,6 +48,8 @@ export function IdentityConfirmation({
   const [guardianLastName, setGuardianLastName] = useState(
     userProfile.last_name ?? ""
   );
+  // "" means this invitation is for someone new.
+  const [existingChildId, setExistingChildId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,6 +79,7 @@ export function IdentityConfirmation({
         relationship,
         firstName: guardianFirstName || undefined,
         lastName: guardianLastName || undefined,
+        managedProfileId: existingChildId || undefined,
       });
       if (result.error) {
         setError(result.error);
@@ -146,6 +154,28 @@ export function IdentityConfirmation({
 
           {identity === "guardian" && (
             <div className="space-y-3 rounded-md border p-3">
+              {managedChildren.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="existing-child">Which player is this?</Label>
+                  <Select value={existingChildId || "__new__"} onValueChange={(v) => setExistingChildId(v === "__new__" ? "" : v)}>
+                    <SelectTrigger id="existing-child">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {managedChildren.map((child) => (
+                        <SelectItem key={child.id} value={child.id}>
+                          {[child.first_name, child.last_name].filter(Boolean).join(" ")}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__new__">Someone else — add them</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choosing a player you already manage adds this team to them, instead of
+                    creating a second record.
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="relationship">Your relationship</Label>
                 <Select value={relationship} onValueChange={setRelationship}>

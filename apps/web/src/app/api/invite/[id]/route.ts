@@ -18,7 +18,7 @@ export async function GET(
 
   const { data: invitation, error } = await admin
     .from("invitations")
-    .select("id, email, role, managed_profile_id, accepted_at, teams(name)")
+    .select("id, email, role, first_name, last_name, managed_profile_id, accepted_at, teams(name)")
     .eq("id", id)
     .single();
 
@@ -39,5 +39,7 @@ export async function GET(
     teamName,
     // If managed_profile_id is set, this is a "manage existing player" invite
     isManagerInvite: !!invitation.managed_profile_id,
+    // So the app can ask "are you <player>?" rather than assuming (BUG-011).
+    playerName: [invitation.first_name, invitation.last_name].filter(Boolean).join(" ") || null,
   });
 }

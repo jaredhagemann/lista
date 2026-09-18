@@ -116,10 +116,23 @@ export default async function InvitePage({
     .eq("id", user.id)
     .single();
 
+  // Children this person already manages, so an invitation for one of them adds
+  // a team rather than a second identity (BUG-011).
+  const { data: managedLinks } = await supabase
+    .from("profile_managers")
+    .select("managed_id, profiles!managed_id(id, first_name, last_name)")
+    .eq("manager_id", user.id)
+    .neq("managed_id", user.id);
+
+  const managedChildren = (managedLinks ?? [])
+    .map((link) => link.profiles as unknown as { id: string; first_name: string; last_name: string } | null)
+    .filter((child): child is { id: string; first_name: string; last_name: string } => child !== null);
+
   return (
     <IdentityConfirmation
       invitation={invitation}
       userProfile={userProfile!}
+      managedChildren={managedChildren}
     />
   );
 }
