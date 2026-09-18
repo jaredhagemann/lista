@@ -1,10 +1,10 @@
 # BUG-011 — Invitation acceptance creates the wrong player identity on mobile
 
 **Severity:** P1
-**Status:** Fixed (pending deploy verification — see Verification)
+**Status:** Fixed — repair verified in production 2026-09-18; native acceptance check pending
 **Reported:** 2026-09-04 by readiness review (finding 11)
 **Area:** invites / identity / mobile
-**Evidence class:** Static — code inspection only. Fix **unverified in deployment**
+**Evidence class:** Static — code inspection only. The duplicate identity it predicted was **found and repaired in production** (2026-09-18)
 **Last verified:** `5acde1074`, code inspection, 2026-09-04
 
 ## Symptom
@@ -253,3 +253,11 @@ and `invited_by`, and `created_by` on `events`, `organizations`, `training_categ
 `training_sessions` — instead of trusting the delete to clear them. The invitation follows the child.
 
 Full RLS suite after the fix: **408 passed**.
+
+**Deployed and verified 2026-09-18** (PR #68, with the repair completed in #69):
+- The staging checks passed before each merge.
+- The production merge is confirmed (user): one Finley, both teams, 20 availability responses, 4 training
+  sessions, 2 guardians, and `a37d29b9-b62a-49c4-90e7-9b8396a6fa81` gone.
+- **Still to confirm:** the native acceptance check — inviting a player whose guardian already manages a
+  child on another team, accepting it in the app as the guardian, and seeing the existing child gain a team.
+  Until that runs, the prevention half is verified only at the database boundary.
