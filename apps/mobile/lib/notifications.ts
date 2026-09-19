@@ -51,6 +51,28 @@ export async function registerForPushNotifications(userId: string) {
 }
 
 /**
+ * Detaches this device from the signed-in account, before signing out.
+ *
+ * The token row is bound to whoever registered it, so leaving it behind means
+ * the handset keeps buzzing for the previous account — and whoever signs in next
+ * sees their notifications (BUG-007 follow-up). Best effort: if the token cannot
+ * be read, there is nothing to detach.
+ */
+export async function unregisterForPushNotifications() {
+  try {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    await unregisterPushToken(supabase, token);
+  } catch {
+    // No token on this device (Simulator, permission denied, offline).
+  }
+}
+
+export async function unregisterPushToken(client: SupabaseClient, token: string) {
+  return client.from("push_subscriptions").delete().eq("expo_push_token", token);
+}
+
+/**
  * Records this device against the signed-in user.
  *
  * Registration used to delete every other Expo token the user had first, so

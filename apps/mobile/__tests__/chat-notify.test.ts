@@ -8,7 +8,7 @@
  */
 
 import { notifyChatMessage } from "../lib/chat-notify";
-import { registerPushToken } from "../lib/notifications";
+import { registerPushToken, unregisterPushToken } from "../lib/notifications";
 
 jest.mock("../lib/supabase", () => ({
   supabase: { auth: { getSession: jest.fn() }, from: jest.fn() },
@@ -77,5 +77,20 @@ describe("registerPushToken", () => {
     );
     // The old code deleted every other Expo row for this user first.
     expect(del).not.toHaveBeenCalled();
+  });
+});
+
+describe("unregisterPushToken", () => {
+  it("detaches this device, and only this device", async () => {
+    const eq = jest.fn(async () => ({ error: null }));
+    const del = jest.fn(() => ({ eq }));
+    const client = { from: jest.fn(() => ({ delete: del })) };
+
+    await unregisterPushToken(client as never, "ExponentPushToken[thisphone]");
+
+    expect(client.from).toHaveBeenCalledWith("push_subscriptions");
+    // By token, not by profile: the person's other devices keep working, and the
+    // handset stops receiving the account it just signed out of.
+    expect(eq).toHaveBeenCalledWith("expo_push_token", "ExponentPushToken[thisphone]");
   });
 });

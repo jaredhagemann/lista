@@ -36,6 +36,8 @@ export type NotificationJob = {
   attempts: number;
   kind?: "event" | "chat";
   recipient_profile_ids?: string[] | null;
+  /** Who caused this notice. For chat, they are never told about it. */
+  created_by?: string | null;
 };
 
 /** What a chat job carries instead of an event snapshot. */
