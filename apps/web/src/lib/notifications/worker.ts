@@ -19,7 +19,7 @@ import {
   buildSeriesUpdateEmailHtml,
 } from "@/lib/notifications/email";
 import { sendPushNotification } from "@/lib/notifications/push";
-import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
+import { sendExpoPushNotification, isDeadTokenError } from "@/lib/notifications/expo-push";
 import { formatEventTime, formatShortEventDate, resolveTimeZone } from "@/lib/notifications/event-time";
 import { resolveRecipients } from "@/lib/notifications/recipients";
 import {
@@ -66,6 +66,11 @@ async function runJob(db: Db, job: NotificationJob) {
       category: isChat ? "chat" : "event",
       teamId: isChat ? undefined : job.team_id,
       profileIds: isChat ? job.recipient_profile_ids ?? [] : undefined,
+      // The route drops the sender from the addressed members, but a guardian of
+      // a player on the team is resolved back in through their child — and would
+      // be pushed the message they just sent. Excluding the author here is the
+      // only place that knows about the expansion.
+      excludeProfileIds: isChat && job.created_by ? [job.created_by] : undefined,
     });
     const planned = planDeliveries(recipients, isChat ? ["push"] : ["email", "push"]);
 
@@ -95,6 +100,11 @@ async function runJob(db: Db, job: NotificationJob) {
         }
         outcomes.push({ ...toRow(item), status: "sent", reason: null });
       } catch (err) {
+        // A token the service says is dead never works again: drop it rather
+        // than failing against it on every message (BUG-007).
+        if (isDeadTokenError(err)) {
+          await db.from("push_subscriptions").delete().eq("expo_push_token", item.target);
+        }
         outcomes.push({
           ...toRow(item),
           status: "failed",

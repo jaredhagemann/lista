@@ -229,3 +229,10 @@ Expected:
 - Register a second device, then send again: **both** devices buzz (gap 4).
 - Have a guardian with no roster row confirm they get event reminders and chat push for their child's team
   (gap 2).
+
+**Follow-up, 2026-09-18:** three defects turned up once the delivery records had real traffic in them,
+fixed in PR #71 — the sender was pushed their own chat message through their own child; an Expo ticket
+rejection was recorded as `sent`; and signing out left the handset attached to the previous account. The
+last of these also exposed a deployment coupling introduced here: the `unique(expo_push_token)` index this
+fix added makes the *installed* mobile build fail registration silently, because it inserts rather than
+upserts. Tracked as [BUG-023](../023-device-token-stuck-on-previous-account.md) until a new build ships.
