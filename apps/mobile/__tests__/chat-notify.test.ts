@@ -94,3 +94,30 @@ describe("unregisterPushToken", () => {
     expect(eq).toHaveBeenCalledWith("expo_push_token", "ExponentPushToken[thisphone]");
   });
 });
+
+describe("registration failures are audible", () => {
+  const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+  afterEach(() => warn.mockClear());
+
+  it("says so when the write is refused, instead of failing silently", async () => {
+    const upsert = jest.fn(async () => ({
+      error: { message: 'duplicate key value violates unique constraint "push_subscriptions_expo_push_token_key"' },
+    }));
+    const client = { from: jest.fn(() => ({ upsert })) };
+
+    const result = await registerPushToken(client as never, "user-1", "ExponentPushToken[phone]");
+
+    expect(result.error).not.toBeNull();
+    expect(warn).toHaveBeenCalledWith("Push registration failed:", expect.stringContaining("duplicate key"));
+  });
+
+  it("stays quiet when the write succeeds", async () => {
+    const upsert = jest.fn(async () => ({ error: null }));
+    const client = { from: jest.fn(() => ({ upsert })) };
+
+    await registerPushToken(client as never, "user-1", "ExponentPushToken[phone]");
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
