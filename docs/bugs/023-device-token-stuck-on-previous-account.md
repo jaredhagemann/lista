@@ -67,6 +67,11 @@ Written, in the same PR as the chat-push fixes:
 **None of this reaches the handset until a new mobile build ships.** Until then the workaround is the SQL
 under Verification.
 
+**Decision, 2026-09-18 (user):** hold the build until the open bugs are worked through, and ship the mobile
+changes together. Interim rule: **accept invitations on the web**, since the installed build still enrols the
+parent as the player. What the build carries, and what stays broken until it does, is listed in
+[docs/releases/mobile-next.md](../releases/mobile-next.md).
+
 ## Regression test
 
 `apps/mobile/__tests__/chat-notify.test.ts`: registration upserts by token rather than deleting the
