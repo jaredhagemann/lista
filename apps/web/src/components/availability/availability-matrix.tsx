@@ -19,6 +19,7 @@ import {
   fetchTeamRoster,
   type RosterMember,
 } from "@/lib/availability/queries";
+import { createRosterCache } from "@/lib/availability/roster-cache";
 import {
   AVAILABILITY_WINDOWS,
   newAnchor,
@@ -111,25 +112,27 @@ function StatusChip({ status }: { status: CellStatus }) {
 
 const CYCLE: (AvailabilityStatus | null)[] = ["available", "maybe", "unavailable", null];
 
+/** A response row, as PostgREST identifies it. */
+const cellKey = (eventId: string, profileId: string) => `${eventId}:${profileId}`;
+
 /**
- * Keeps whatever the reader changed on top of a freshly read page.
+ * One response the reader changed, held on top of the last complete read.
  *
- * A read that started before an edit would otherwise hand back the server's
- * older value and undo it on screen, seconds after the click (spec §7.3).
+ * What is on screen is the server's answer with these laid over it. Keeping
+ * them apart is what lets a fresh read replace everything the reader did *not*
+ * touch: an edit to one cell is not a reason to freeze the rest of the page at
+ * values someone else has since changed.
+ *
+ * `settledTick` is the moment its write succeeded, on this component's own
+ * clock. A read that started after that moment already contains the change, so
+ * the overlay can be dropped; a read that started before it must not undo it.
+ * A write still in flight has no tick at all and survives every read until it
+ * lands (spec §7.3).
  */
-function mergeMutations(
-  fresh: Map<string, Map<string, AvailabilityStatus | null>>,
-  current: Map<string, Map<string, AvailabilityStatus | null>>
-) {
-  const merged = new Map(fresh);
-  for (const [eventId, inner] of current) {
-    if (!merged.has(eventId)) continue;
-    const target = new Map(merged.get(eventId)!);
-    for (const [profileId, status] of inner) target.set(profileId, status);
-    merged.set(eventId, target);
-  }
-  return merged;
-}
+type LocalEdit = { status: AvailabilityStatus | null; settledTick: number | null };
+
+/** One in-flight write per cell, with at most one more waiting behind it. */
+type WriteChain = { queued: { status: AvailabilityStatus | null } | null };
 
 export function AvailabilityMatrix({
   teamId,
@@ -159,45 +162,85 @@ export function AvailabilityMatrix({
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<string | null>(null);
 
-  // eventId → profileId → status. Only ever holds rows from a completed read
-  // for the current identity; anything missing is "not read yet".
-  const [statusMap, setStatusMap] = useState<Map<string, Map<string, AvailabilityStatus | null>>>(
+  // What the server said, as of the last complete read: eventId → profileId →
+  // status. Anything missing from it has not been read.
+  const [fetched, setFetched] = useState<Map<string, Map<string, AvailabilityStatus | null>>>(
     new Map()
   );
+  // What the reader has changed since, by response row. Laid over `fetched`.
+  const [overlay, setOverlay] = useState<Map<string, LocalEdit>>(new Map());
 
   const cursorHistory = useRef<(EventCursor | null)[]>([null]);
   const nextCursor = useRef<EventCursor | null>(null);
   const requestGeneration = useRef(0);
-  // Bumped on every cell write, so a read that started earlier cannot undo it.
-  const mutationGeneration = useRef(0);
+  // Orders reads against writes. Every read and every settled write takes a
+  // tick, which is all the ordering the overlay needs.
+  const clock = useRef(0);
+  const writes = useRef(new Map<string, WriteChain>());
 
-  // Everything a page of this matrix depends on. A cursor, and a response map,
-  // belong to exactly one of these.
-  const identity = `${teamId}|${currentUserId}|${window_}|${typeFilter}|${pageSize}|${anchor}`;
+  // Whose data this is. Everything on screen belongs to one of these, and a
+  // write issued under one must never be applied under another.
+  const context = `${teamId}|${currentUserId}`;
+  const contextRef = useRef(context);
+  // The question being asked of it. A cursor belongs to exactly one of these.
+  const query = `${context}|${window_}|${typeFilter}|${pageSize}`;
+  // The exact read. Differs from `query` only by the anchor, which a refresh
+  // renews to move the window forward.
+  const identity = `${query}|${anchor}`;
+  const loadedQuery = useRef(query);
   const loadedIdentity = useRef(identity);
+  const loadedPage = useRef(page);
 
   const range = useMemo(() => windowRange(window_, anchor), [window_, anchor]);
 
+  const [rosterCache] = useState(() =>
+    createRosterCache({ read: (id: string) => fetchTeamRoster(supabase, id) })
+  );
+
   useEffect(() => {
+     
+    if (contextRef.current !== context) {
+      contextRef.current = context;
+      // Another team's rows must not merely be stale here — they must be gone.
+      // Left on screen they stay clickable, and a click writes to the team the
+      // reader has just left (spec §7.3). Its pending writes stop applying too.
+      rosterCache.invalidate();
+      writes.current.clear();
+      setOverlay(new Map());
+      setEvents([]);
+      setMembers([]);
+      setFetched(new Map());
+      setHasNext(false);
+    } else if (loadedQuery.current !== query || loadedPage.current !== page) {
+      // A different question: the columns on screen answer the old one, and
+      // showing them under the new range or page number would misdescribe them.
+      // Local edits stay — they are rows, not columns, and still apply if the
+      // new page shows them again.
+      setEvents([]);
+      setFetched(new Map());
+      setHasNext(false);
+    }
+    loadedQuery.current = query;
+    loadedPage.current = page;
+
     if (loadedIdentity.current !== identity) {
       loadedIdentity.current = identity;
       cursorHistory.current = [null];
       nextCursor.current = null;
-      // Events and responses are replaced together when the new read lands,
-      // so the last complete result stays readable until then rather than
-      // blanking (spec §7.3).
       if (page !== 1) {
-        // Synchronous on purpose: a new range starts at its own first page, and
-        // reading page three of a range nobody asked for would be wasted work.
-        setPage(1); // eslint-disable-line react-hooks/set-state-in-effect
+        // A new range starts at its own first page; reading page three of a
+        // range nobody asked for would be wasted work.
+        setPage(1);
         return;
       }
     }
 
     const generation = ++requestGeneration.current;
-    const mutationsAtStart = mutationGeneration.current;
+    const startTick = ++clock.current;
+    const readContext = context;
     setLoading(true);
     setFailure(null);
+     
 
     void (async () => {
       try {
@@ -219,16 +262,17 @@ export function AvailabilityMatrix({
 
         const displayed = eventPage.items;
         // Responses for what is on screen, and the roster, together: the page is
-        // ready only when all three have succeeded (spec §7.1).
+        // ready only when all three have succeeded (spec §7.1). The roster comes
+        // from its own cache, so paging through events does not read it again.
         const [responses, roster] = await Promise.all([
           fetchResponsesForEvents(
             supabase,
             displayed.map((e) => e.id)
           ),
-          fetchTeamRoster(supabase, teamId),
+          rosterCache.load(teamId),
         ]);
 
-        if (generation !== requestGeneration.current) return;
+        if (generation !== requestGeneration.current || readContext !== contextRef.current) return;
 
         const map = new Map<string, Map<string, AvailabilityStatus | null>>();
         for (const event of displayed) map.set(event.id, new Map());
@@ -242,10 +286,20 @@ export function AvailabilityMatrix({
         setMembers(roster);
         setHasNext(eventPage.hasNext);
         nextCursor.current = eventPage.nextCursor;
-        // A cell edited while this read was in flight keeps its newer value.
-        setStatusMap((current) =>
-          mutationsAtStart === mutationGeneration.current ? map : mergeMutations(map, current)
-        );
+        setFetched(map);
+        // An edit whose write finished before this read started is in the rows
+        // that just arrived, so it can stop being held separately. Anything
+        // newer than the read — or still in flight — stays on top of it.
+        setOverlay((prev) => {
+          let next: Map<string, LocalEdit> | null = null;
+          for (const [key, edit] of prev) {
+            if (edit.settledTick !== null && edit.settledTick < startTick) {
+              next ??= new Map(prev);
+              next.delete(key);
+            }
+          }
+          return next ?? prev;
+        });
         setLoading(false);
       } catch (error) {
         if (generation !== requestGeneration.current) return;
@@ -253,7 +307,7 @@ export function AvailabilityMatrix({
         setLoading(false);
       }
     })();
-  }, [identity, page, supabase, teamId, typeFilter, pageSize, range]);
+  }, [context, query, identity, page, supabase, teamId, typeFilter, pageSize, range, rosterCache]);
 
   function restart() {
     cursorHistory.current = [null];
@@ -262,49 +316,111 @@ export function AvailabilityMatrix({
   }
 
   function statusFor(eventId: string, profileId: string): CellStatus {
-    const inner = statusMap.get(eventId);
+    const edit = overlay.get(cellKey(eventId, profileId));
+    if (edit) return edit.status;
+    const inner = fetched.get(eventId);
     if (!inner) return undefined;
     return inner.get(profileId) ?? null;
   }
 
-  async function setCell(
+  function setCell(eventId: string, profileId: string, next: AvailabilityStatus | null) {
+    const key = cellKey(eventId, profileId);
+    setOverlay((prev) => new Map(prev).set(key, { status: next, settledTick: null }));
+
+    const running = writes.current.get(key);
+    if (running) {
+      // Two requests for one row can be applied in either order, and the
+      // database keeps whichever finished last rather than whichever was
+      // clicked last. So the newest intent waits its turn, and any intent it
+      // overtakes was never sent — nobody is owed a write that a later click
+      // already replaced.
+      running.queued = { status: next };
+      return;
+    }
+    writes.current.set(key, { queued: null });
+    void drainWrites(key, eventId, profileId, next);
+  }
+
+  async function drainWrites(
+    key: string,
     eventId: string,
     profileId: string,
-    next: AvailabilityStatus | null,
-    previous: AvailabilityStatus | null
+    first: AvailabilityStatus | null
   ) {
-    const mutation = ++mutationGeneration.current;
-    applyCell(eventId, profileId, next);
+    const writeContext = contextRef.current;
+    let status = first;
 
-    const { error } =
-      next === null
-        ? await supabase
-            .from("availability")
-            .delete()
-            .eq("event_id", eventId)
-            .eq("profile_id", profileId)
-        : await supabase
-            .from("availability")
-            .upsert(
-              { event_id: eventId, profile_id: profileId, status: next },
-              { onConflict: "event_id,profile_id" }
-            );
+    for (;;) {
+      const { error } =
+        status === null
+          ? await supabase
+              .from("availability")
+              .delete()
+              .eq("event_id", eventId)
+              .eq("profile_id", profileId)
+          : await supabase
+              .from("availability")
+              .upsert(
+                { event_id: eventId, profile_id: profileId, status },
+                { onConflict: "event_id,profile_id" }
+              );
 
-    if (error) {
-      toast.error(error.message);
-      // Roll back this cell only: a newer edit elsewhere is none of its business.
-      if (mutation === mutationGeneration.current) applyCell(eventId, profileId, previous);
+      if (error) {
+        writes.current.delete(key);
+        toast.error(error.message);
+        // A write belonging to a team the reader has left changes nothing here.
+        if (writeContext !== contextRef.current) return;
+        // Roll this row back on its own — an edit elsewhere, newer or older, is
+        // none of its business — and then ask what the value really is, rather
+        // than trusting a page read from before the attempt (spec §7.3).
+        setOverlay((prev) => {
+          if (!prev.has(key)) return prev;
+          const rest = new Map(prev);
+          rest.delete(key);
+          return rest;
+        });
+        void revalidateCell(eventId, profileId, writeContext);
+        return;
+      }
+
+      const chain = writes.current.get(key);
+      if (chain?.queued) {
+        status = chain.queued.status;
+        chain.queued = null;
+        continue;
+      }
+      writes.current.delete(key);
+
+      const settledTick = ++clock.current;
+      if (writeContext !== contextRef.current) return;
+      // Held on top of the page until a read that started after this moment can
+      // be trusted to contain it.
+      setOverlay((prev) => {
+        const edit = prev.get(key);
+        if (!edit || edit.status !== status) return prev;
+        return new Map(prev).set(key, { status, settledTick });
+      });
+      return;
     }
   }
 
-  function applyCell(eventId: string, profileId: string, status: AvailabilityStatus | null) {
-    setStatusMap((prev) => {
-      const next = new Map(prev);
-      const inner = new Map(next.get(eventId) ?? []);
-      inner.set(profileId, status);
-      next.set(eventId, inner);
-      return next;
-    });
+  async function revalidateCell(eventId: string, profileId: string, writeContext: string) {
+    try {
+      const rows = await fetchResponsesForEvents(supabase, [eventId]);
+      if (writeContext !== contextRef.current) return;
+      const row = rows.find((r) => r.profile_id === profileId);
+      setFetched((prev) => {
+        const inner = prev.get(eventId);
+        if (!inner) return prev;
+        const replacement = new Map(inner);
+        if (row) replacement.set(profileId, row.status);
+        else replacement.delete(profileId);
+        return new Map(prev).set(eventId, replacement);
+      });
+    } catch {
+      // The toast has already said the write failed. Failing to confirm it
+      // leaves the last complete read on screen, which is the honest fallback.
+    }
   }
 
   const players = members.filter((m) => m.role === "player");
@@ -376,7 +492,9 @@ export function AvailabilityMatrix({
         variant="outline"
         size="sm"
         onClick={() => {
-          // A refresh is a new question: new anchor, back to the first page.
+          // A refresh asks everything again, the roster included: this is the
+          // control someone reaches for after a player joins (spec §7.2).
+          rosterCache.invalidate();
           setAnchor(newAnchor());
           restart();
         }}
@@ -407,6 +525,11 @@ export function AvailabilityMatrix({
               </Button>
             </div>
           </div>
+        </div>
+      ) : loading && events.length === 0 ? (
+        <div className="rounded-lg border p-8 text-center text-muted-foreground">
+          <Loader2 className="mx-auto size-5 animate-spin" />
+          <p className="mt-2 text-sm">Loading availability…</p>
         </div>
       ) : !loading && events.length === 0 ? (
         <div className="rounded-lg border p-8 text-center text-muted-foreground">
@@ -566,12 +689,7 @@ function MemberRows({
   isAdmin: boolean;
   stale: boolean;
   statusFor: (eventId: string, profileId: string) => CellStatus;
-  onSet: (
-    eventId: string,
-    profileId: string,
-    next: AvailabilityStatus | null,
-    previous: AvailabilityStatus | null
-  ) => void;
+  onSet: (eventId: string, profileId: string, next: AvailabilityStatus | null) => void;
 }) {
   if (group.length === 0) return null;
 
@@ -616,7 +734,7 @@ function MemberRows({
                       onClick={() => {
                         const current = (status ?? null) as AvailabilityStatus | null;
                         const next = CYCLE[(CYCLE.indexOf(current) + 1) % CYCLE.length];
-                        onSet(event.id, member.profileId, next, current);
+                        onSet(event.id, member.profileId, next);
                       }}
                     >
                       <StatusChip status={status} />

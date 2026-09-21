@@ -256,3 +256,168 @@ describe("a refresh that fails", () => {
     expect(within(cell(upcomingEvent.id, PLAYER)!).queryByRole("button")).toBeNull();
   });
 });
+/**
+ * The PR #76 review found five ways the matrix could show, or save, the wrong
+ * availability. Each case below is one of them, written as the behaviour that
+ * should hold (docs/reviews/2026-09-21-pr76-availability-review.md).
+ */
+describe("two writes to the same cell", () => {
+  it("sends them one at a time, and the last click is the one that sticks", async () => {
+    const first = deferred<{ error: null }>();
+    const sent: string[] = [];
+    mocks.upsert
+      .mockImplementationOnce((row: { status: string }) =>
+        first.promise.then((result) => {
+          sent.push(row.status);
+          return result;
+        })
+      )
+      .mockImplementationOnce(async (row: { status: string }) => {
+        sent.push(row.status);
+        return { error: null };
+      });
+
+    renderMatrix();
+    const button = () => within(cell(upcomingEvent.id, PLAYER)!).getByRole("button");
+    await waitFor(() => expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")));
+
+    await userEvent.click(button()); // → Available
+    await userEvent.click(button()); // → Maybe
+
+    // Two requests in flight at once can be applied in either order, and the
+    // database keeps whichever finished last rather than whichever was clicked
+    // last. So the second waits.
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+
+    first.resolve({ error: null });
+    await waitFor(() => expect(mocks.upsert).toHaveBeenCalledTimes(2));
+    expect(sent).toEqual(["available", "maybe"]);
+    expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Maybe")).toBeTruthy();
+  });
+});
+
+describe("a write that fails", () => {
+  it("is rolled back even after a different cell has been edited", async () => {
+    mocks.fetchEventPage.mockResolvedValue(eventPage([upcomingEvent, laterEvent]));
+    const failing = deferred<{ error: { message: string } }>();
+    mocks.upsert.mockReturnValueOnce(failing.promise).mockResolvedValue({ error: null });
+
+    renderMatrix();
+    await waitFor(() => expect(cell(laterEvent.id, PLAYER)).toBeTruthy());
+
+    await userEvent.click(within(cell(upcomingEvent.id, PLAYER)!).getByRole("button"));
+    await userEvent.click(within(cell(laterEvent.id, PLAYER)!).getByRole("button"));
+
+    failing.resolve({ error: { message: "denied" } });
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+    // The failed cell goes back to what the server last said…
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+    // …and the edit to the other cell, which succeeded, is untouched.
+    expect(within(cell(laterEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy();
+    // The failure is not the last word on that row: the server is asked again.
+    expect(mocks.fetchResponsesForEvents).toHaveBeenCalledWith(expect.anything(), [
+      upcomingEvent.id,
+    ]);
+  });
+});
+
+describe("a read that lands while an edit is happening", () => {
+  it("takes fresh values for every cell the reader did not touch", async () => {
+    mocks.fetchEventPage.mockResolvedValue(eventPage([upcomingEvent, laterEvent]));
+    mocks.fetchResponsesForEvents.mockResolvedValueOnce([
+      { event_id: laterEvent.id, profile_id: PLAYER, status: "available" },
+    ]);
+    const refresh = deferred<unknown[]>();
+    mocks.fetchResponsesForEvents.mockReturnValueOnce(refresh.promise);
+
+    renderMatrix();
+    await waitFor(() =>
+      expect(within(cell(laterEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy()
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(mocks.fetchResponsesForEvents).toHaveBeenCalledTimes(2));
+    await userEvent.click(within(cell(upcomingEvent.id, PLAYER)!).getByRole("button"));
+
+    // Someone else changed the second event while this page was open.
+    refresh.resolve([{ event_id: laterEvent.id, profile_id: PLAYER, status: "unavailable" }]);
+
+    await waitFor(() =>
+      expect(within(cell(laterEvent.id, PLAYER)!).getByTitle("Unavailable")).toBeTruthy()
+    );
+    // One edit does not freeze the rest of the page at its old values.
+    expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy();
+  });
+
+  it("keeps an edit whose write had not finished when the read started", async () => {
+    const write = deferred<{ error: null }>();
+    mocks.upsert.mockReturnValueOnce(write.promise);
+    mocks.fetchResponsesForEvents.mockResolvedValueOnce([]);
+    const refresh = deferred<unknown[]>();
+    mocks.fetchResponsesForEvents.mockReturnValueOnce(refresh.promise);
+
+    renderMatrix();
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+
+    await userEvent.click(within(cell(upcomingEvent.id, PLAYER)!).getByRole("button"));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(mocks.fetchResponsesForEvents).toHaveBeenCalledTimes(2));
+
+    // The server answers without the write, because it has not received it yet.
+    refresh.resolve([]);
+    await waitFor(() => expect(mocks.fetchTeamRoster).toHaveBeenCalledTimes(2));
+    expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy();
+
+    write.resolve({ error: null });
+    await waitFor(() => expect(mocks.upsert).toHaveBeenCalledTimes(1));
+    expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy();
+  });
+});
+
+describe("switching to another team", () => {
+  it("drops the old team's rows rather than leaving them editable", async () => {
+    const view = renderMatrix();
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+
+    const pending = deferred<ReturnType<typeof eventPage>>();
+    mocks.fetchEventPage.mockReturnValueOnce(pending.promise);
+    view.rerender(
+      <AvailabilityMatrix
+        teamId="33333333-3333-3333-3333-333333333333"
+        currentUserId={PLAYER}
+        isAdmin={false}
+        timeZone="UTC"
+      />
+    );
+
+    await waitFor(() => expect(mocks.fetchEventPage).toHaveBeenCalledTimes(2));
+    // A click here would have written to the team the reader just left.
+    expect(cell(upcomingEvent.id, PLAYER)).toBeNull();
+    expect(mocks.upsert).not.toHaveBeenCalled();
+
+    pending.resolve(eventPage([]));
+    await waitFor(() => expect(screen.getByText(/No events in this range/)).toBeTruthy());
+  });
+});
+
+describe("the roster", () => {
+  it("is read once while paging through events", async () => {
+    mocks.fetchEventPage.mockResolvedValue(eventPage([upcomingEvent], true));
+
+    renderMatrix();
+    await waitFor(() => expect(screen.getByText("Page 1")).toBeTruthy());
+    await userEvent.click(screen.getByRole("button", { name: "More events" }));
+    await waitFor(() => expect(screen.getByText("Page 2")).toBeTruthy());
+
+    // Every ten-event step used to repeat the whole roster read, and wait for it
+    // before showing any response (spec §7.2).
+    expect(mocks.fetchTeamRoster).toHaveBeenCalledTimes(1);
+  });
+});
