@@ -71,6 +71,13 @@ accurate because closing it is part of the change, not a follow-up someone has t
 **Merging is not deploying.** For authorization, storage, cron and delivery fixes, record under
 **Verification** what must be confirmed after deploy, and who confirmed it.
 
+**A migration that changes data needs a fixture that has been lived in.** Build the test subject the way the
+product builds it — a player who arrived through an invitation, an event with responses against it — not
+field by field. BUG-011's merge passed six tests and then failed in production on a foreign key from
+`invitations`, the one table no fixture had touched because no fixture had invited anyone. Prefer the same
+helpers and routes the app uses; where a fixture is assembled by hand, say in the test what a real record
+would also carry.
+
 ## Terminal states other than fixed
 
 Set **Status** to `Won't fix` or `Not reproducible`, record what was tried and why closure is justified,
