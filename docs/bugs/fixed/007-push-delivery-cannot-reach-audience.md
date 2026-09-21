@@ -1,7 +1,7 @@
 # BUG-007 — Push notifications cannot reach their intended recipients
 
 **Severity:** P1
-**Status:** Fixed (pending deploy verification — see Verification)
+**Status:** Fixed — chat delivery verified in production 2026-09-20; the app-side checks wait on a mobile build
 **Reported:** 2026-09-04 by readiness review (finding 7)
 **Area:** notifications
 **Evidence class:** Mixed — token visibility Reproduced at the database boundary; route behavior Static. Fix **unverified in deployment**
@@ -236,3 +236,15 @@ rejection was recorded as `sent`; and signing out left the handset attached to t
 last of these also exposed a deployment coupling introduced here: the `unique(expo_push_token)` index this
 fix added makes the *installed* mobile build fail registration silently, because it inserts rather than
 upserts. Tracked as [BUG-023](../023-device-token-stuck-on-previous-account.md) until a new build ships.
+
+**Deployed and verified 2026-09-20** (PR #66, with the follow-up fixes in #71):
+- The production SQL checks passed (user).
+- **The check this bug was filed for passes:** a chat message sent from the web reached another member's
+  phone. The old fan-out could not see that person's token at all.
+- The delivery records are the evidence trail: every push carries a recipient, a channel and an outcome, and
+  an Expo rejection now records `failed` with the service's own reason rather than a hopeful `sent`.
+- **Still waiting on a mobile build**, and listed in [the release notes](../../releases/mobile-next.md):
+  messages sent *from* the app (gap 1), and a second device keeping the first alive (gap 4). Both are app
+  code; the server half of each is live.
+- Also outstanding: a guardian with no roster row confirming they receive their child's team reminders
+  (gap 2). The recipient resolution behind it is covered by tests against a real database.

@@ -1,7 +1,7 @@
 # BUG-023 — A device keeps the previous account's push token, and re-registration fails silently
 
 **Severity:** P1
-**Status:** Open — app fix written, waiting on a mobile build
+**Status:** Open — device repaired in production 2026-09-20; the app fix waits on a mobile build
 **Reported:** 2026-09-18 by the user, from production behaviour
 **Area:** notifications / ios
 **Evidence class:** **Reproduced in production** (delivery records and subscription rows, 2026-09-18)
@@ -97,3 +97,18 @@ where expo_push_token = '<the token>';
 1. Sign in as A, confirm `push_subscriptions` has a row for A with this device's token.
 2. Sign out. Confirm the row is gone.
 3. Sign in as B, send a message to B from elsewhere: it arrives. Send one *from* B: it does not come back.
+
+**Repaired in production 2026-09-20 (user).** The handset's token was repointed to the account signed in on
+it, and chat push to that device now works — confirmed by a message from another member arriving on the
+phone.
+
+Two things that repair also did, worth knowing if this recurs:
+
+- It unblocked registration on the **installed** build for that device. The collision was with another
+  account's row; with the row owned by the signed-in account, the old build's delete-then-insert succeeds
+  again.
+- It leaves the other account with no registered device, which matches the facts: one handset, one person
+  signed into it.
+
+The ticket stays open because the defect is not fixed, only its instance: any device that changes hands
+before the new build ships will do the same thing, silently.
