@@ -198,7 +198,9 @@ export function AvailabilityMatrix({
   );
 
   useEffect(() => {
-     
+    // The clearing below is synchronous on purpose: it has to happen before a
+    // render can put one team's rows under another team's name, or one range's
+    // dates under another range's label.
     if (contextRef.current !== context) {
       contextRef.current = context;
       // Another team's rows must not merely be stale here — they must be gone.
