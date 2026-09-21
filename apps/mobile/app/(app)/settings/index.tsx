@@ -14,6 +14,7 @@ import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { unregisterForPushNotifications } from "../../../lib/notifications";
 import { useAppContext } from "../../../contexts/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
@@ -72,6 +73,7 @@ export default function SettingsHubScreen() {
   }, []);
 
   async function handleSignOut() {
+    await unregisterForPushNotifications();
     await supabase.auth.signOut();
     router.replace("/(auth)/login");
   }

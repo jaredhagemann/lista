@@ -51,6 +51,33 @@ export async function registerForPushNotifications(userId: string) {
 }
 
 /**
+ * Detaches this device from the signed-in account, before signing out.
+ *
+ * The token row is bound to whoever registered it, so leaving it behind means
+ * the handset keeps buzzing for the previous account — and whoever signs in next
+ * sees their notifications (BUG-007 follow-up). Best effort: if the token cannot
+ * be read, there is nothing to detach.
+ */
+export async function unregisterForPushNotifications() {
+  try {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    await unregisterPushToken(supabase, token);
+  } catch {
+    // No token on this device (Simulator, permission denied, offline).
+  }
+}
+
+export async function unregisterPushToken(client: SupabaseClient, token: string) {
+  const { error } = await client.from("push_subscriptions").delete().eq("expo_push_token", token);
+
+  if (error) {
+    console.warn("Push unregistration failed:", error.message);
+  }
+  return { error };
+}
+
+/**
  * Records this device against the signed-in user.
  *
  * Registration used to delete every other Expo token the user had first, so
@@ -63,8 +90,16 @@ export async function registerPushToken(
   userId: string,
   token: string
 ) {
-  return client.from("push_subscriptions").upsert(
+  const { error } = await client.from("push_subscriptions").upsert(
     { profile_id: userId, expo_push_token: token },
     { onConflict: "expo_push_token" }
   );
+
+  // Silence here is how this device ended up receiving another account's
+  // notifications: the old build inserted blind, the write failed against the
+  // token's unique index, and nobody heard about it (BUG-023).
+  if (error) {
+    console.warn("Push registration failed:", error.message);
+  }
+  return { error };
 }
