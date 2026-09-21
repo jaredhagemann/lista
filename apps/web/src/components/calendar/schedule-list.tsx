@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -42,6 +42,7 @@ import { EventFormDialog } from "./event-form-dialog";
 import { toast } from "sonner";
 import { pinnedStartRule } from "@/lib/events/series-edit";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
+import { fetchEventPage, type EventCursor } from "@/lib/events/queries";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
@@ -104,7 +105,9 @@ export function ScheduleList({
   awayUniform?: string | null;
 }) {
   const router = useRouter();
-  const supabase = createClient();
+  // Held in state so its identity is stable: this client is a dependency of the
+  // data effect, and a fresh object each render would re-run it forever.
+  const [supabase] = useState(() => createClient());
 
   // Filter / pagination state
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -114,8 +117,15 @@ export function ScheduleList({
 
   // Data state
   const [events, setEvents] = useState<EventWithLocation[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  // Where each visited page started. Next continues from the current page's
+  // cursor; Previous returns to a saved one. Offsets shift when an event is
+  // deleted behind them, silently skipping one that still exists (BUG-014).
+  const cursorHistory = useRef<(EventCursor | null)[]>([null]);
+  const nextCursor = useRef<EventCursor | null>(null);
 
   // Dialog state
   const [deletingEvent, setDeletingEvent] = useState<EventWithLocation | null>(null);
@@ -123,33 +133,37 @@ export function ScheduleList({
   const [restoringEvent, setRestoringEvent] = useState<EventWithLocation | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-
   const fetchEvents = useCallback(async () => {
     setLoading(true);
-    const offset = (page - 1) * pageSize;
+    setLoadError(false);
 
-    let query = supabase
-      .from("events")
-      .select("*, locations(name, address)", { count: "exact" })
-      .eq("team_id", teamId)
-      .order("start_time", { ascending: true })
-      .range(offset, offset + pageSize - 1);
+    // The cursor for this page was saved when the user navigated to it.
+    const cursor = cursorHistory.current[page - 1] ?? null;
 
-    if (!showAll) {
-      query = query.gte("start_time", startOfToday());
-    }
-    if (typeFilter !== "all") {
-      query = query.eq("event_type", typeFilter);
-    }
+    try {
+      const result = await fetchEventPage(supabase, {
+        query: {
+          teamId,
+          fromInclusive: showAll ? undefined : startOfToday(),
+          eventType: typeFilter === "all" ? undefined : typeFilter,
+          includeCancelled: true,
+        },
+        pageSize,
+        cursor,
+        projection: "list",
+      });
 
-    const { data, error, count } = await query;
-
-    if (error) {
+      setEvents(result.items as unknown as EventWithLocation[]);
+      setHasNext(result.hasNext);
+      nextCursor.current = result.nextCursor;
+    } catch {
+      // An empty result and a failed read look identical once rendered, so the
+      // list says which this is.
+      setEvents([]);
+      setHasNext(false);
+      nextCursor.current = null;
+      setLoadError(true);
       toast.error("Failed to load events");
-    } else {
-      setEvents((data ?? []) as EventWithLocation[]);
-      setTotalCount(count ?? 0);
     }
     setLoading(false);
   }, [supabase, teamId, typeFilter, showAll, page, pageSize]);
@@ -158,20 +172,41 @@ export function ScheduleList({
     void fetchEvents(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [fetchEvents]);
 
-  // Reset to page 1 when filters change
+  /**
+   * A cursor only means anything within one query. Changing what is being asked
+   * for — or changing the data underneath — sends the user back to page 1 with
+   * the history cleared, rather than continuing from a position in a result set
+   * that no longer exists.
+   */
+  function restart() {
+    cursorHistory.current = [null];
+    nextCursor.current = null;
+    setPage(1);
+  }
+
   function applyTypeFilter(value: TypeFilter) {
     setTypeFilter(value);
-    setPage(1);
+    restart();
   }
 
   function applyShowAll(value: boolean) {
     setShowAll(value);
-    setPage(1);
+    restart();
   }
 
   function applyPageSize(value: PageSize) {
     setPageSize(value);
-    setPage(1);
+    restart();
+  }
+
+  function goToNextPage() {
+    // Remember where this page began so Previous can come back to it.
+    cursorHistory.current[page] = nextCursor.current;
+    setPage(page + 1);
+  }
+
+  function goToPreviousPage() {
+    setPage(Math.max(1, page - 1));
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -204,6 +239,8 @@ export function ScheduleList({
       toast.error(error.message);
     } else {
       toast.success("Event duplicated");
+      // A new event can land on any page of the ordered result.
+      restart();
       fetchEvents();
     }
   }
@@ -525,7 +562,7 @@ export function ScheduleList({
       </div>
 
       {/* Pagination footer */}
-      {!loading && totalCount > 0 && (
+      {!loading && !loadError && (events.length > 0 || page > 1) && (
         <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <span>Rows per page</span>
@@ -544,15 +581,17 @@ export function ScheduleList({
             </Select>
           </div>
           <div className="flex items-center gap-2">
-            <span>
-              Page {page} of {totalPages}
-            </span>
+            {/* No "of N": an exact count is a second query on every page load,
+                and its answer is stale by the time it arrives. Next is enabled
+                by a single lookahead row instead (BUG-014, spec §4.3). */}
+            <span>Page {page}</span>
             <Button
               variant="outline"
               size="icon"
               className="size-8"
               disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
+              onClick={goToPreviousPage}
+              aria-label="Previous page"
             >
               <ChevronLeft className="size-4" />
             </Button>
@@ -560,8 +599,9 @@ export function ScheduleList({
               variant="outline"
               size="icon"
               className="size-8"
-              disabled={page === totalPages}
-              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasNext}
+              onClick={goToNextPage}
+              aria-label="Next page"
             >
               <ChevronRight className="size-4" />
             </Button>

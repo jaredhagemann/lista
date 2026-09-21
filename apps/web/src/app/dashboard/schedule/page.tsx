@@ -4,8 +4,6 @@ import { ScheduleView } from "@/components/calendar/schedule-view";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import type { Database } from "@/types/database";
 
-type Event = Database["public"]["Tables"]["events"]["Row"];
-
 export default async function SchedulePage() {
   const supabase = await createClient();
   const {
@@ -23,13 +21,10 @@ export default async function SchedulePage() {
     membership.role === "manager" ||
     membership.role === "director";
 
-  const { data: rawEvents } = await supabase
-    .from("events")
-    .select("*")
-    .eq("team_id", team.id)
-    .order("start_time", { ascending: true });
-
-  const events = (rawEvents ?? []) as Event[];
+  // No event fetch here. Opening the page used to read the team's entire
+  // history before rendering either tab — past the API's row cap it dropped the
+  // future events, and the List tab then paginated separately anyway (BUG-014).
+  // Each tab now reads what it displays.
 
   return (
     <div className="space-y-6">
@@ -37,9 +32,9 @@ export default async function SchedulePage() {
         <h1 className="text-2xl font-bold">Schedule</h1>
       </div>
       <ScheduleView
-        events={events}
         teamId={team.id}
         isAdmin={isAdmin}
+        timeZone={team.timezone}
         homeUniform={team.home_uniform}
         awayUniform={team.away_uniform}
       />
