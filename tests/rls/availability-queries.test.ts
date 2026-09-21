@@ -148,3 +148,76 @@ describe("reading the roster (BUG-014, spec §7.2)", () => {
     );
   });
 });
+
+// ── Rows whose keys are null ──────────────────────────────────────────────────
+
+describe("rows that cannot be keyed (BUG-014, PR #74 review)", () => {
+  it("does not let a null-profile response end the read early", async () => {
+    const coach = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const [firstEvent, secondEvent] = await seedEvents(teamId, coach.user.id, 2);
+    const players = [
+      await createManagedProfile(coach.user.id, { firstName: "A" }),
+      await createManagedProfile(coach.user.id, { firstName: "B" }),
+    ];
+
+    await seedResponses([firstEvent], players);
+    await seedResponses([secondEvent], [players[0]]);
+    // profile_id is nullable. Filtered in JavaScript after the limit, this row
+    // consumes the lookahead slot and the read stops before the second event.
+    const { error } = await adminClient
+      .from("availability")
+      .insert({ event_id: firstEvent, profile_id: null, status: "available" });
+    if (error) throw new Error(error.message);
+
+    const responses = await fetchResponsesForEvents(
+      coach.client,
+      [firstEvent, secondEvent],
+      { batchSize: 2 }
+    );
+
+    expect(responses).toHaveLength(3);
+    expect(responses.map((r) => r.event_id)).toContain(secondEvent);
+    expect(responses.every((r) => r.profile_id !== null)).toBe(true);
+  });
+
+  it("returns the real members of a roster that has membership rows without profiles", async () => {
+    const coach = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    const child = await createManagedProfile(coach.user.id, { firstName: "Real" });
+    await addTeamMember(teamId, child, "player");
+    // Legacy shape the schema still permits; the helper claims to skip them.
+    const { error } = await adminClient
+      .from("team_members")
+      .insert([
+        { team_id: teamId, profile_id: null, role: "player" },
+        { team_id: teamId, profile_id: null, role: "player" },
+      ]);
+    if (error) throw new Error(error.message);
+
+    const roster = await fetchTeamRoster(coach.client, teamId, { batchSize: 2 });
+
+    expect(roster.map((m) => m.profileId).sort()).toEqual([coach.user.id, child].sort());
+  });
+});
+
+describe("batch sizes the API cannot honour (BUG-014, PR #74 review)", () => {
+  const badSizes = [0, -1, 1.5, 2000];
+
+  it.each(badSizes)("refuses a response batch of %s", async (batchSize) => {
+    const coach = await createTestUser();
+
+    await expect(
+      fetchResponsesForEvents(coach.client, [crypto.randomUUID()], { batchSize })
+    ).rejects.toBeInstanceOf(AvailabilityQueryError);
+  });
+
+  it.each(badSizes)("refuses a roster batch of %s", async (batchSize) => {
+    const coach = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+
+    await expect(
+      fetchTeamRoster(coach.client, teamId, { batchSize })
+    ).rejects.toBeInstanceOf(AvailabilityQueryError);
+  });
+});

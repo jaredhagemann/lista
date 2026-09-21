@@ -26,6 +26,7 @@ import {
   createTestUser,
   createTestTeam,
   addTeamMember,
+  createManagedProfile,
   cleanupTestData,
 } from "./helpers";
 
@@ -331,11 +332,20 @@ describe("authenticated callers (BUG-014)", () => {
     const player = await createTestUser();
     await addTeamMember(teamId, player.user.id, "player");
 
+    // A guardian whose only connection to the team is their child's membership:
+    // they have no roster row of their own, which is the case that broke
+    // recipient resolution in BUG-021 and BUG-007.
+    const guardian = await createTestUser();
+    const childId = await createManagedProfile(guardian.user.id, { relationship: "dad" });
+    await addTeamMember(teamId, childId, "player");
+
     const coachView = await traverse(coach.client, teamId, 3);
     const playerView = await traverse(player.client, teamId, 3);
+    const guardianView = await traverse(guardian.client, teamId, 3);
 
     expect(coachView.sort()).toEqual([...ids].sort());
     expect(playerView.sort()).toEqual([...ids].sort());
+    expect(guardianView.sort()).toEqual([...ids].sort());
   });
 });
 

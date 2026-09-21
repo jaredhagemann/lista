@@ -22,9 +22,26 @@ import type { Database } from "@/types/database";
 type Db = SupabaseClient<Database>;
 
 export type EventRow = Database["public"]["Tables"]["events"]["Row"];
-export type EventWithLocation = EventRow & {
+
+/**
+ * Exactly the columns the calendar projection selects. Typing these reads as a
+ * whole `EventRow` advertised fields the query never asked for — `notes` came
+ * back undefined while the compiler called it `string | null`.
+ */
+export type CalendarEventRow = Pick<
+  EventRow,
+  "id" | "team_id" | "title" | "event_type" | "start_time" | "end_time" | "is_cancelled"
+>;
+
+/** The list projection: the whole row, plus the joined location summary. */
+export type ListEventRow = EventRow & {
   locations: { name: string; address: string | null } | null;
 };
+
+/** The row shape a projection returns. Callers do not get to choose it. */
+export type RowFor<P extends EventProjection> = P extends "calendar"
+  ? CalendarEventRow
+  : ListEventRow;
 
 /** A position in the ordered result, carried between pages. */
 export type EventCursor = { startTime: string; id: string };
@@ -40,6 +57,7 @@ export type EventQuery = {
 };
 
 export type EventProjection = "calendar" | "list";
+
 
 export type CursorPage<T> = {
   items: T[];
@@ -137,15 +155,15 @@ function keysetFilter(cursor: EventCursor): string {
  * `hasNext` comes from a single extra row rather than a count: an exact count on
  * every page load is a second query whose answer is stale as soon as it returns.
  */
-export async function fetchEventPage<T = EventRow>(
+export async function fetchEventPage<P extends EventProjection>(
   client: Db,
   args: {
     query: EventQuery;
     pageSize: number;
     cursor: EventCursor | null;
-    projection: EventProjection;
+    projection: P;
   }
-): Promise<CursorPage<T>> {
+): Promise<CursorPage<RowFor<P>>> {
   const { query, pageSize, cursor, projection } = args;
   assertValid(query, pageSize, cursor);
 
@@ -183,13 +201,13 @@ export async function fetchEventPage<T = EventRow>(
     throw new EventQueryError(`Could not read events: ${error.message}`);
   }
 
-  const rows = (data ?? []) as unknown as (T & { start_time: string; id: string })[];
+  const rows = (data ?? []) as unknown as (RowFor<P> & { start_time: string; id: string })[];
   const hasNext = rows.length > pageSize;
   const items = hasNext ? rows.slice(0, pageSize) : rows;
   const last = items[items.length - 1];
 
   return {
-    items: items as T[],
+    items: items as RowFor<P>[],
     // The cursor is the last *returned* row, not the lookahead one.
     nextCursor: hasNext && last ? { startTime: last.start_time, id: last.id } : null,
     hasNext,
@@ -203,29 +221,66 @@ export async function fetchEventPage<T = EventRow>(
  * because a partially loaded month renders as a month with fewer events in it,
  * and nothing on screen says otherwise.
  */
-export async function fetchEventRange<T = EventRow>(
+export async function fetchEventRange<P extends EventProjection>(
   client: Db,
   args: {
     query: EventQuery;
-    projection: EventProjection;
+    projection: P;
     batchSize?: number;
     /** Guards against an unbounded loop; exceeding it is an error, not a truncation. */
     maxBatches?: number;
+    /** Whole-range retries when a concurrent edit makes the batches inconsistent. */
+    maxAttempts?: number;
   }
-): Promise<T[]> {
-  const { query, projection, batchSize = 250, maxBatches = 40 } = args;
+): Promise<RowFor<P>[]> {
+  const { query, projection, batchSize = 250, maxBatches = 40, maxAttempts = 2 } = args;
 
   if (!query.fromInclusive || !query.toExclusive) {
     throw new EventQueryError("A range read needs both bounds");
   }
 
-  const items: T[] = [];
+  let lastInconsistency: string | null = null;
+
+  for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt++) {
+    try {
+      return await readRangeOnce<P>(client, { query, projection, batchSize, maxBatches });
+    } catch (error) {
+      // An edit landing mid-read is worth one more look; anything else is not.
+      if (error instanceof InconsistentRangeError) {
+        lastInconsistency = error.message;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new IncompleteRangeError(
+    `Range still inconsistent after ${maxAttempts} attempts: ${lastInconsistency}`
+  );
+}
+
+/** Internal: signals a retryable inconsistency rather than a failed read. */
+class InconsistentRangeError extends Error {}
+
+async function readRangeOnce<P extends EventProjection>(
+  client: Db,
+  args: {
+    query: EventQuery;
+    projection: P;
+    batchSize: number;
+    maxBatches: number;
+  }
+): Promise<RowFor<P>[]> {
+  const { query, projection, batchSize, maxBatches } = args;
+
+  const items: RowFor<P>[] = [];
+  const seen = new Set<string>();
   let cursor: EventCursor | null = null;
 
   for (let batch = 0; batch < maxBatches; batch++) {
-    let page: CursorPage<T>;
+    let page: CursorPage<RowFor<P>>;
     try {
-      page = await fetchEventPage<T>(client, {
+      page = await fetchEventPage<P>(client, {
         query,
         pageSize: batchSize,
         cursor,
@@ -237,9 +292,28 @@ export async function fetchEventRange<T = EventRow>(
       );
     }
 
-    items.push(...page.items);
+    for (const item of page.items) {
+      const id = (item as { id: string }).id;
+      // The same event in two batches means it moved across the cursor while we
+      // were reading. Deduplicating and calling the range complete would hide
+      // that another event may have moved the other way, out of the read.
+      if (seen.has(id)) {
+        throw new InconsistentRangeError("Event " + id + " was returned twice while reading the range");
+      }
+      seen.add(id);
+      items.push(item);
+    }
+
     if (!page.hasNext) return items;
-    cursor = page.nextCursor;
+
+    const next = page.nextCursor;
+    if (
+      !next ||
+      (cursor && next.startTime === cursor.startTime && next.id === cursor.id)
+    ) {
+      throw new InconsistentRangeError("Range cursor stopped advancing");
+    }
+    cursor = next;
   }
 
   throw new IncompleteRangeError(

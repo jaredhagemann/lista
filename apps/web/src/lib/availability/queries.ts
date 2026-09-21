@@ -46,7 +46,27 @@ export class AvailabilityQueryError extends Error {
 export const MAX_EVENT_IDS = 50;
 
 const DEFAULT_BATCH_SIZE = 500;
+const MAX_BATCH_SIZE = 500;
 const API_MAX_ROWS = 1000;
+
+/**
+ * One check for every batched read here. A batch the API cannot return comes
+ * back truncated, which is indistinguishable from the end of the list — the
+ * failure this module exists to prevent.
+ */
+function assertBatchSize(batchSize: number) {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new AvailabilityQueryError(`Batch size must be a positive integer, got ${batchSize}`);
+  }
+  if (batchSize > MAX_BATCH_SIZE) {
+    throw new AvailabilityQueryError(`Batch size must be at most ${MAX_BATCH_SIZE}, got ${batchSize}`);
+  }
+  if (batchSize + 1 > API_MAX_ROWS) {
+    throw new AvailabilityQueryError(
+      `A batch of ${batchSize} needs ${batchSize + 1} rows, past the API cap of ${API_MAX_ROWS}`
+    );
+  }
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -70,11 +90,7 @@ export async function fetchResponsesForEvents(
 ): Promise<ResponseRow[]> {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
 
-  if (batchSize + 1 > API_MAX_ROWS) {
-    throw new AvailabilityQueryError(
-      `A batch of ${batchSize} needs ${batchSize + 1} rows, past the API cap of ${API_MAX_ROWS}`
-    );
-  }
+  assertBatchSize(batchSize);
   if (eventIds.length > MAX_EVENT_IDS) {
     throw new AvailabilityQueryError(
       `Asked for ${eventIds.length} events at once; read the events on screen (at most ${MAX_EVENT_IDS}), not a whole window`
@@ -94,6 +110,11 @@ export async function fetchResponsesForEvents(
       .from("availability")
       .select("event_id, profile_id, status")
       .in("event_id", eventIds)
+      // Both key columns are nullable. Dropping those rows in JavaScript after
+      // the limit lets one consume the lookahead slot, so a page looks short and
+      // the read stops before later events' responses.
+      .not("event_id", "is", null)
+      .not("profile_id", "is", null)
       .order("event_id", { ascending: true })
       .order("profile_id", { ascending: true })
       .limit(batchSize + 1);
@@ -136,6 +157,7 @@ export async function fetchTeamRoster(
 ): Promise<RosterMember[]> {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
 
+  assertBatchSize(batchSize);
   if (!UUID.test(teamId)) {
     throw new AvailabilityQueryError(`Not a team id: ${teamId}`);
   }
@@ -148,6 +170,9 @@ export async function fetchTeamRoster(
       .from("team_members")
       .select("profile_id, role, profiles(first_name, last_name)")
       .eq("team_id", teamId)
+      // Same reason as the responses above: skipping these after the limit lets
+      // a membership with no profile end the roster early.
+      .not("profile_id", "is", null)
       .order("profile_id", { ascending: true })
       .limit(batchSize + 1);
 
