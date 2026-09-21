@@ -132,7 +132,18 @@ The contract is a live view with deterministic reads of unchanged keys, refreshe
 
 ## 5. Dates and timezone contract
 
-- Resolve an explicit grid/query timezone from the active team. Use the application's validated fallback when absent/invalid (currently labeled UTC); never silently depend on browser or server timezone.
+- Resolve an explicit grid/query timezone from the active team.
+
+  **Amended 2026-09-21 (user), after staging.** When the team has no timezone, fall back to the
+  **viewer's** zone and say so on screen, rather than to UTC. A team with no zone rendered 4:00 PM
+  Pacific events — 00:00 UTC the next day — on the following day. Before this work the grid grouped by
+  browser-local date, so the regression stayed invisible until a team without a zone was opened.
+
+  The rule that stands is *never silently*: the calendar names the zone it is using, tells every member
+  that reminders resolve to UTC until the team's zone is set (BUG-020's machinery), and offers coaches,
+  managers and directors a one-click fix. Two viewers in different cities can still disagree about which
+  day an event falls on until the team's zone is set; that is the accepted cost of the fallback, and the
+  notice is what makes it visible rather than puzzling. Never depend on the **server** zone.
 - Compute calendar month start and next-month start as local calendar boundaries in that zone, then convert each boundary to its UTC instant. Do not add a fixed number of hours to derive the next boundary across DST.
 - Use half-open ranges: `start_time >= from` and `start_time < to`. An event exactly at the next month's midnight belongs only to that next month.
 - Calendar grouping must use the same grid timezone as query boundaries. If the team grid date differs from the event-local date under D5, make the event-local date/time/zone explicit in the event presentation; do not silently move the stored instant.
