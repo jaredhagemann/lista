@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { fetchAllRows, PartialFetchError } from "@/lib/supabase/fetch-all-rows";
+import { ListLoadError } from "@/components/ui/list-load-error";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { Input } from "@/components/ui/input";
@@ -104,7 +106,23 @@ export default async function ClubMembersPage({
   if (teamFilter) membersQuery = membersQuery.eq("team_id", teamFilter);
   if (roleFilter) membersQuery = membersQuery.eq("role", roleFilter);
 
-  const { data: memberRows } = await membersQuery;
+  // Paged: an org's combined roster passes 1,000 rows well before it feels large
+  // (BUG-014).
+  let memberRows;
+  try {
+    memberRows = await fetchAllRows((from, to) => membersQuery.range(from, to));
+  } catch (error) {
+    if (!(error instanceof PartialFetchError)) throw error;
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Members</h1>
+        <ListLoadError
+          title="Couldn't load the member list"
+          description="Some members are missing, so this list would be incomplete."
+        />
+      </div>
+    );
+  }
 
   type RawRow = {
     team_id: string;
