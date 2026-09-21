@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EventFormDialog } from "./event-form-dialog";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { browserTimeZone, updateTeamTimeZone } from "@/lib/events/team-timezone";
 import { fetchEventRange, type CalendarEventRow } from "@/lib/events/queries";
 import { createMonthLoader, type MonthLoader } from "@/lib/events/month-cache";
 import {
@@ -71,34 +73,57 @@ export function ScheduleCalendar({
   const [events, setEvents] = useState<CalendarEventRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [savingZone, setSavingZone] = useState(false);
+
+  // Only knowable on the client: reading it during render would use the
+  // server's zone and then disagree with the browser after hydration.
+  const [viewerZone, setViewerZone] = useState<string | null>(null);
+  useEffect(() => {
+    setViewerZone(browserTimeZone()); // eslint-disable-line react-hooks/set-state-in-effect
+  }, []);
+
+  // A team that has never set one: fall back to the viewer's zone rather than
+  // UTC, and say so below.
+  const teamZoneMissing = !timeZone;
+  const gridZone = timeZone ?? viewerZone;
+  // Nothing is placed until the zone is known, so events cannot be drawn on one
+  // day and then moved to another a moment later.
+  const zoneResolved = !teamZoneMissing || viewerZone !== null;
   const [showForm, setShowForm] = useState(false);
   const [selectedDate, setSelectedDate] = useState<{ start: Date; end: Date } | null>(null);
   // Bumped to ask for the visible month again: a retry, or a write that emptied
   // the cache.
   const [reloadToken, setReloadToken] = useState(0);
 
-  // One loader for this mount, built once. The parent remounts the calendar on
-  // a team switch, so a cache can never be read by a different identity
-  // (spec §9); writes empty it in place.
-  const [loader] = useState<MonthLoader<CalendarEventRow>>(() =>
-    createMonthLoader<CalendarEventRow>({
-      read: (key) => {
-        const range = monthRange(key, timeZone);
-        return fetchEventRange(supabase, {
-          query: {
-            teamId,
-            fromInclusive: range.fromInclusive,
-            toExclusive: range.toExclusive,
-            // Cancelled events stay hidden on the grid, as before.
-            includeCancelled: false,
-          },
-          projection: "calendar",
-        });
-      },
-    })
+  // A cache belongs to one team and one zone: different boundaries mean
+  // different months, so a zone arriving after mount builds a new loader rather
+  // than reusing months fetched for the wrong range. The parent also remounts
+  // the calendar on a team switch, so one identity's cache is never read by
+  // another (spec §9); writes empty it in place.
+  const loader: MonthLoader<CalendarEventRow> = useMemo(
+    () =>
+      createMonthLoader<CalendarEventRow>({
+        read: (key) => {
+          const range = monthRange(key, gridZone);
+          return fetchEventRange(supabase, {
+            query: {
+              teamId,
+              fromInclusive: range.fromInclusive,
+              toExclusive: range.toExclusive,
+              // Cancelled events stay hidden on the grid, as before.
+              includeCancelled: false,
+            },
+            projection: "calendar",
+          });
+        },
+      }),
+    [supabase, teamId, gridZone]
   );
 
   useEffect(() => {
+    // Without a zone the month boundaries are unknown, so nothing is fetched yet.
+    if (!zoneResolved) return;
+
     // Still showing the month this effect ran for. Navigating away or emptying
     // the cache makes any result that arrives afterwards irrelevant.
     let showingThisMonth = true;
@@ -141,24 +166,24 @@ export function ScheduleCalendar({
     return () => {
       showingThisMonth = false;
     };
-  }, [month, loader, reloadToken]);
+  }, [month, loader, reloadToken, zoneResolved]);
 
-  const todayKey = dayKeyOf(new Date(), timeZone);
-  const monthLabel = monthLabelOf(month, timeZone);
+  const todayKey = zoneResolved ? dayKeyOf(new Date(), gridZone) : "";
+  const monthLabel = monthLabelOf(month, gridZone);
   const totalDays = daysInMonth(month);
-  const startDayOfWeek = firstWeekdayOf(month, timeZone);
+  const startDayOfWeek = firstWeekdayOf(month, gridZone);
 
   // Day cells keyed by the same zone the query used.
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEventRow[]>();
     for (const event of events ?? []) {
-      const key = dayKeyOf(event.start_time, timeZone);
+      const key = dayKeyOf(event.start_time, gridZone);
       const list = map.get(key) ?? [];
       list.push(event);
       map.set(key, list);
     }
     return map;
-  }, [events, timeZone]);
+  }, [events, gridZone]);
 
   function dayKeyFor(day: number) {
     return `${month}-${String(day).padStart(2, "0")}`;
@@ -217,7 +242,7 @@ export function ScheduleCalendar({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onMonthChange(currentMonthKey(timeZone))}
+            onClick={() => onMonthChange(currentMonthKey(gridZone))}
           >
             Today
           </Button>
@@ -235,6 +260,44 @@ export function ScheduleCalendar({
           )}
         </div>
       </div>
+
+      {teamZoneMissing && zoneResolved && (
+        <div
+          role="status"
+          className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-muted-foreground">
+              This team has no timezone set, so dates are shown in your device&apos;s zone
+              ({gridZone}). Reminder emails and notifications will use UTC until it is set.
+              {!isAdmin && " Ask a coach or manager to set the team's timezone."}
+            </p>
+            {isAdmin && gridZone && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={savingZone}
+                onClick={async () => {
+                  setSavingZone(true);
+                  const result = await updateTeamTimeZone(supabase, teamId, gridZone);
+                  setSavingZone(false);
+                  if (!result.ok) {
+                    toast.error(result.message);
+                    return;
+                  }
+                  // Boundaries and day placement both change, so every cached
+                  // month is now wrong.
+                  loader.invalidate();
+                  toast.success(`Team timezone set to ${gridZone}`);
+                  router.refresh();
+                }}
+              >
+                {savingZone ? "Saving…" : `Use ${gridZone}`}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       {failed ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6">
@@ -287,6 +350,7 @@ export function ScheduleCalendar({
               return (
                 <div
                   key={day}
+                  data-day={key}
                   className={`min-h-24 border-b border-r p-1 transition-colors ${
                     isAdmin ? "cursor-pointer hover:bg-accent/50" : ""
                   } ${isToday ? "bg-accent/30" : ""}`}
