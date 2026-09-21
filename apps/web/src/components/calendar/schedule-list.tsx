@@ -127,6 +127,16 @@ export function ScheduleList({
   const cursorHistory = useRef<(EventCursor | null)[]>([null]);
   const nextCursor = useRef<EventCursor | null>(null);
 
+  // Everything a cursor depends on. A page from one identity means nothing in
+  // another: a team's cursor would skip the next team's earliest events.
+  const identity = `${teamId}|${typeFilter}|${showAll}|${pageSize}`;
+  const loadedIdentity = useRef(identity);
+
+  // Bumped whenever a request is superseded. A result that arrives after its
+  // generation has passed is dropped — aborting alone cannot un-resolve a
+  // request already on its way back (spec §9).
+  const requestGeneration = useRef(0);
+
   // Dialog state
   const [deletingEvent, setDeletingEvent] = useState<EventWithLocation | null>(null);
   const [cancellingEvent, setCancellingEvent] = useState<EventWithLocation | null>(null);
@@ -134,6 +144,7 @@ export function ScheduleList({
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const fetchEvents = useCallback(async () => {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setLoadError(false);
 
@@ -153,10 +164,15 @@ export function ScheduleList({
         projection: "list",
       });
 
+      // Superseded while it was in flight: another filter, another team, another
+      // page. Its rows and its cursor both belong to a question nobody is asking.
+      if (generation !== requestGeneration.current) return;
+
       setEvents(result.items as unknown as EventWithLocation[]);
       setHasNext(result.hasNext);
       nextCursor.current = result.nextCursor;
     } catch {
+      if (generation !== requestGeneration.current) return;
       // An empty result and a failed read look identical once rendered, so the
       // list says which this is.
       setEvents([]);
@@ -165,12 +181,24 @@ export function ScheduleList({
       setLoadError(true);
       toast.error("Failed to load events");
     }
-    setLoading(false);
+    if (generation === requestGeneration.current) setLoading(false);
   }, [supabase, teamId, typeFilter, showAll, page, pageSize]);
 
   useEffect(() => {
-    void fetchEvents(); // eslint-disable-line react-hooks/set-state-in-effect
-  }, [fetchEvents]);
+    // A different team (or filter, or page size) is a different result set, so
+    // the saved cursors and the page number go with it. Without this, switching
+    // teams asks for team B using team A's cursor and skips B's earliest events.
+    if (loadedIdentity.current !== identity) {
+      loadedIdentity.current = identity;
+      cursorHistory.current = [null];
+      nextCursor.current = null;
+      if (page !== 1) {
+        setPage(1); // eslint-disable-line react-hooks/set-state-in-effect
+        return;
+      }
+    }
+    void fetchEvents();
+  }, [fetchEvents, identity, page]);
 
   /**
    * A cursor only means anything within one query. Changing what is being asked
@@ -369,6 +397,23 @@ export function ScheduleList({
                   className="h-32 text-center text-muted-foreground"
                 >
                   Loading…
+                </TableCell>
+              </TableRow>
+            ) : loadError ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-32 text-center">
+                  <p className="font-medium text-destructive">Couldn&apos;t load events</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    This is a failed request, not an empty schedule.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => void fetchEvents()}
+                  >
+                    Try again
+                  </Button>
                 </TableCell>
               </TableRow>
             ) : events.length === 0 ? (

@@ -190,3 +190,77 @@ describe("throwing the cache away", () => {
     expect(loader.generation()).not.toBe(before);
   });
 });
+
+describe("staying fresh", () => {
+  it("serves a recent month from memory without asking again", async () => {
+    let now = 1_000_000;
+    const read = vi.fn(async (key: string) => rows(key));
+    const loader = createMonthLoader<Row>({ read, freshFor: 60_000, now: () => now });
+
+    await loader.load("2026-12");
+    now += 30_000;
+    await loader.load("2026-12");
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(loader.isStale("2026-12")).toBe(false);
+  });
+
+  it("reads a month again once it has gone stale", async () => {
+    let now = 1_000_000;
+    const read = vi.fn(async (key: string) => rows(key));
+    const loader = createMonthLoader<Row>({ read, freshFor: 60_000, now: () => now });
+
+    await loader.load("2026-12");
+    // Long enough for someone else to have moved an event.
+    now += 61_000;
+
+    expect(loader.isStale("2026-12")).toBe(true);
+    await loader.load("2026-12");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("still offers the stale rows while the new ones are on their way", async () => {
+    let now = 1_000_000;
+    const pending = deferred<Row[]>();
+    let call = 0;
+    const read = vi.fn(() => {
+      call++;
+      return call === 1 ? Promise.resolve(rows("first")) : pending.promise;
+    });
+    const loader = createMonthLoader<Row>({ read, freshFor: 60_000, now: () => now });
+
+    await loader.load("2026-12");
+    now += 61_000;
+
+    // Showing something known-but-old beats showing nothing.
+    expect(loader.peek("2026-12")).toEqual(rows("first"));
+
+    const refreshed = loader.revalidate("2026-12");
+    pending.resolve(rows("second"));
+    expect(await refreshed).toEqual(rows("second"));
+    expect(loader.peek("2026-12")).toEqual(rows("second"));
+    expect(loader.isStale("2026-12")).toBe(false);
+  });
+
+  it("treats a month it has never read as stale", () => {
+    const loader = createMonthLoader<Row>({ read: async (key) => rows(key) });
+
+    expect(loader.isStale("2026-12")).toBe(true);
+  });
+
+  it("keeps the old rows when a revalidation fails", async () => {
+    let call = 0;
+    const read = vi.fn(() => {
+      call++;
+      if (call === 1) return Promise.resolve(rows("first"));
+      return Promise.reject(new Error("network"));
+    });
+    const loader = createMonthLoader<Row>({ read });
+
+    await loader.load("2026-12");
+    await expect(loader.revalidate("2026-12")).rejects.toThrow("network");
+
+    // A failed refresh is not a reason to blank a month that did load.
+    expect(loader.peek("2026-12")).toEqual(rows("first"));
+  });
+});

@@ -58,6 +58,14 @@ function listEvent(title: string, startTime: string) {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 const page = (title: string, hasNext: boolean) => ({
   items: [listEvent(title, "2026-12-10T18:00:00.000Z")],
   nextCursor: hasNext ? { startTime: "2026-12-10T18:00:00.000Z", id: `${title}-id` } : null,
@@ -150,5 +158,72 @@ describe("paging through the list", () => {
     // set, so the old position is meaningless.
     expect(lastCall[1].cursor).toBeNull();
     expect(lastCall[1].query.eventType).toBe("game");
+  });
+});
+
+describe("results that arrive too late (PR #75 review)", () => {
+  it("ignores a page that belonged to the previous filter", async () => {
+    const slowAll = deferred<ReturnType<typeof page>>();
+    mocks.fetchEventPage.mockImplementationOnce(() => slowAll.promise);
+    mocks.fetchEventPage.mockResolvedValue(page("Game event", false));
+
+    renderList();
+    // The first request is still open when the filter changes.
+    await userEvent.click(screen.getByRole("button", { name: "Game" }));
+    await waitFor(() => expect(screen.getByText("Game event")).toBeTruthy());
+
+    // The original request finally answers, for a filter nobody selected.
+    slowAll.resolve(page("Stale event", true));
+
+    await waitFor(() => expect(screen.queryByText("Stale event")).toBeNull());
+    expect(screen.getByText("Game event")).toBeTruthy();
+    // Its cursor must not survive either: Next would continue the wrong result.
+    expect(screen.getByRole("button", { name: "Next page" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("starts again when the team changes", async () => {
+    mocks.fetchEventPage.mockResolvedValueOnce(page("Team A event", true));
+    mocks.fetchEventPage.mockResolvedValueOnce(page("Team A page two", false));
+    mocks.fetchEventPage.mockResolvedValue(page("Team B event", false));
+
+    const { rerender } = renderList();
+    await waitFor(() => expect(screen.getByText("Team A event")).toBeTruthy());
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(screen.getByText("Page 2")).toBeTruthy());
+
+    rerender(<ScheduleList teamId="22222222-2222-2222-2222-222222222222" isAdmin />);
+
+    await waitFor(() => expect(screen.getByText("Team B event")).toBeTruthy());
+    // A cursor from another team's result would skip that team's earliest events.
+    const lastCall = mocks.fetchEventPage.mock.calls.at(-1)!;
+    expect(lastCall[1].cursor).toBeNull();
+    expect(lastCall[1].query.teamId).toBe("22222222-2222-2222-2222-222222222222");
+    expect(screen.getByText("Page 1")).toBeTruthy();
+  });
+});
+
+describe("when the list cannot be read (PR #75 review)", () => {
+  it("says so, and does not call it an empty schedule", async () => {
+    mocks.fetchEventPage.mockRejectedValueOnce(new Error("network"));
+
+    renderList();
+
+    await waitFor(() => expect(screen.getByText(/Couldn't load/i)).toBeTruthy());
+    // "No upcoming events" is an answer; a failed read is not.
+    expect(screen.queryByText(/No upcoming events/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /Try again/i })).toBeTruthy();
+  });
+
+  it("recovers on retry", async () => {
+    mocks.fetchEventPage.mockRejectedValueOnce(new Error("network"));
+    mocks.fetchEventPage.mockResolvedValue(page("First event", false));
+
+    renderList();
+    await waitFor(() => expect(screen.getByText(/Couldn't load/i)).toBeTruthy());
+
+    await userEvent.click(screen.getByRole("button", { name: /Try again/i }));
+
+    await waitFor(() => expect(screen.getByText("First event")).toBeTruthy());
+    expect(screen.queryByText(/Couldn't load/i)).toBeNull();
   });
 });

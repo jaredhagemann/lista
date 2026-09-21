@@ -196,3 +196,64 @@ describe("when a month cannot be read", () => {
     expect(screen.queryByText(/Couldn't load/)).toBeNull();
   });
 });
+
+describe("keeping a month fresh (PR #75 review)", () => {
+  it("re-reads a stale month when the window regains focus", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-15T12:00:00.000Z"));
+    mocks.fetchEventRange.mockResolvedValue([
+      calendarEvent("December practice", "2026-12-10T18:00:00.000Z"),
+    ]);
+
+    renderSchedule();
+    await userEvent.click(screen.getByRole("tab", { name: "Calendar" }));
+    await waitFor(() => expect(screen.getByText("December practice")).toBeTruthy());
+
+    const readsBefore = mocks.fetchEventRange.mock.calls.length;
+    // Someone else moves an event while this tab sits open.
+    mocks.fetchEventRange.mockResolvedValue([
+      calendarEvent("Moved practice", "2026-12-12T18:00:00.000Z"),
+    ]);
+
+    vi.setSystemTime(new Date("2026-12-15T12:05:00.000Z"));
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(screen.getByText("Moved practice")).toBeTruthy());
+    expect(mocks.fetchEventRange.mock.calls.length).toBeGreaterThan(readsBefore);
+  });
+
+  it("leaves a fresh month alone on focus", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-15T12:00:00.000Z"));
+
+    renderSchedule();
+    await userEvent.click(screen.getByRole("tab", { name: "Calendar" }));
+    await waitFor(() => expect(mocks.fetchEventRange).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.fetchEventRange).toHaveBeenCalledTimes(3));
+
+    const readsBefore = mocks.fetchEventRange.mock.calls.length;
+    // A few seconds later: nothing worth asking about.
+    vi.setSystemTime(new Date("2026-12-15T12:00:10.000Z"));
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+
+    expect(mocks.fetchEventRange.mock.calls.length).toBe(readsBefore);
+  });
+
+  it("re-reads the visible month when asked", async () => {
+    mocks.fetchEventRange.mockResolvedValue([
+      calendarEvent("December practice", "2026-12-10T18:00:00.000Z"),
+    ]);
+
+    renderSchedule();
+    await userEvent.click(screen.getByRole("tab", { name: "Calendar" }));
+    await waitFor(() => expect(screen.getByText("December practice")).toBeTruthy());
+
+    mocks.fetchEventRange.mockResolvedValue([
+      calendarEvent("Refreshed practice", "2026-12-14T18:00:00.000Z"),
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: /Refresh/i }));
+
+    await waitFor(() => expect(screen.getByText("Refreshed practice")).toBeTruthy());
+  });
+});

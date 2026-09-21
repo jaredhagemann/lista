@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, AlertTriangle, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EventFormDialog } from "./event-form-dialog";
 import { toast } from "sonner";
@@ -137,6 +137,18 @@ export function ScheduleCalendar({
       setEvents(cached); // eslint-disable-line react-hooks/set-state-in-effect
       setLoading(false);
       setFailed(false);
+
+      // Old enough that someone may have moved an event since: show what is
+      // known and check quietly. A failed check leaves the known rows alone.
+      if (loader.isStale(month)) {
+        loader
+          .revalidate(month)
+          .then((rows) => {
+            if (!showingThisMonth || startedAt !== loader.generation()) return;
+            setEvents(rows);
+          })
+          .catch(() => undefined);
+      }
       return;
     }
 
@@ -167,6 +179,23 @@ export function ScheduleCalendar({
       showingThisMonth = false;
     };
   }, [month, loader, reloadToken, zoneResolved]);
+
+  useEffect(() => {
+    function checkOnFocus() {
+      if (!loader.isStale(month)) return;
+      const startedAt = loader.generation();
+      loader
+        .revalidate(month)
+        .then((rows) => {
+          if (startedAt !== loader.generation()) return;
+          setEvents(rows);
+        })
+        .catch(() => undefined);
+    }
+
+    window.addEventListener("focus", checkOnFocus);
+    return () => window.removeEventListener("focus", checkOnFocus);
+  }, [loader, month]);
 
   const todayKey = zoneResolved ? dayKeyOf(new Date(), gridZone) : "";
   const monthLabel = monthLabelOf(month, gridZone);
@@ -245,6 +274,19 @@ export function ScheduleCalendar({
             onClick={() => onMonthChange(currentMonthKey(gridZone))}
           >
             Today
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Refresh"
+            title="Refresh"
+            onClick={() => {
+              // Asked for explicitly: read this month again whatever its age.
+              loader.invalidate();
+              setReloadToken((token) => token + 1);
+            }}
+          >
+            <RefreshCw className="size-4" />
           </Button>
           {isAdmin && (
             <Button
