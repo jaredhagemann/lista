@@ -552,7 +552,7 @@ export function AvailabilityMatrix({
   // Offered whenever the selection could have something to fill in; disabled,
   // rather than removed, while it must not be used — the controls stay visible
   // through loading and errors (spec §7.3).
-  const bulkOffered = bulkTarget !== undefined && bulkRange(window_, anchor) !== null;
+  const bulkOffered = bulkRange(window_, anchor) !== null;
   const bulkDisabled = bulkBusy || bulkRecovering || failure !== null;
   // A confirmation belongs to the selection it was opened under. If that has
   // changed, it is describing a scope nobody is looking at any more.
@@ -651,31 +651,7 @@ export function AvailabilityMatrix({
     <div className="space-y-4">
       {/* Controls stay usable while loading and while showing an error. */}
       {controls}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{windowLabel(window_, anchor, timeZone)}</p>
-        {bulkOffered && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm text-muted-foreground">Set unanswered to</span>
-            {(["available", "maybe", "unavailable"] as const).map((status) => (
-              <Button
-                key={status}
-                variant="outline"
-                size="sm"
-                disabled={bulkDisabled}
-                aria-label={`Set unanswered to ${statusConfig[status].label}`}
-                onClick={() => setBulk({ status, identity })}
-              >
-                {statusConfig[status].label}
-              </Button>
-            ))}
-            {bulkRecovering && (
-              // Says why the buttons cannot be used, and stops saying it when
-              // the read that will answer the question has landed.
-              <span className="text-xs text-muted-foreground">Checking what was saved…</span>
-            )}
-          </div>
-        )}
-      </div>
+      <p className="text-sm text-muted-foreground">{windowLabel(window_, anchor, timeZone)}</p>
 
       <AlertDialog
         open={openBulk !== null}
@@ -795,6 +771,10 @@ export function AvailabilityMatrix({
                   currentUserId={currentUserId}
                   isAdmin={isAdmin}
                   stale={failure !== null}
+                  bulkOffered={bulkOffered}
+                  bulkDisabled={bulkDisabled}
+                  bulkRecovering={bulkRecovering}
+                  onBulk={(status) => setBulk({ status, identity })}
                   statusFor={statusFor}
                   onSet={setCell}
                 />
@@ -826,6 +806,10 @@ export function AvailabilityMatrix({
                   currentUserId={currentUserId}
                   isAdmin={isAdmin}
                   stale={failure !== null}
+                  bulkOffered={bulkOffered}
+                  bulkDisabled={bulkDisabled}
+                  bulkRecovering={bulkRecovering}
+                  onBulk={(status) => setBulk({ status, identity })}
                   statusFor={statusFor}
                   onSet={setCell}
                 />
@@ -873,6 +857,10 @@ function MemberRows({
   currentUserId,
   isAdmin,
   stale,
+  bulkOffered,
+  bulkDisabled,
+  bulkRecovering,
+  onBulk,
   statusFor,
   onSet,
 }: {
@@ -883,6 +871,11 @@ function MemberRows({
   currentUserId: string;
   isAdmin: boolean;
   stale: boolean;
+  /** Whether this range has anything a bulk action could fill in. */
+  bulkOffered: boolean;
+  bulkDisabled: boolean;
+  bulkRecovering: boolean;
+  onBulk: (status: AvailabilityStatus) => void;
   statusFor: (eventId: string, profileId: string) => CellStatus;
   onSet: (eventId: string, profileId: string, next: AvailabilityStatus | null) => void;
 }) {
@@ -906,8 +899,39 @@ function MemberRows({
         return (
           <tr key={member.profileId} className={striped}>
             <td className={`sticky left-0 z-10 px-4 py-2 font-medium ${striped}`}>
-              <span>{member.name}</span>
-              {isCurrentUser && <span className="ml-1 text-xs text-muted-foreground">(you)</span>}
+              <div>
+                <span>{member.name}</span>
+                {isCurrentUser && <span className="ml-1 text-xs text-muted-foreground">(you)</span>}
+              </div>
+              {/* On the row it acts on, and only on your own row: bulk is for
+                  the active profile, never for other players (spec §8.1). */}
+              {isCurrentUser && bulkOffered && (
+                <div className="mt-1 flex items-center gap-1">
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title={
+                      bulkRecovering
+                        ? "Reading the responses again to show what the last change saved."
+                        : undefined
+                    }
+                  >
+                    {bulkRecovering ? "Checking…" : "Set multiple:"}
+                  </span>
+                  {(["available", "maybe", "unavailable"] as const).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      disabled={bulkDisabled}
+                      onClick={() => onBulk(status)}
+                      aria-label={`Set unanswered to ${statusConfig[status].label}`}
+                      title={`Set unanswered events to ${statusConfig[status].label}`}
+                      className={`rounded px-1.5 py-0.5 text-xs font-semibold transition-opacity hover:opacity-75 disabled:opacity-40 ${statusConfig[status].bg} ${statusConfig[status].text}`}
+                    >
+                      {statusConfig[status].symbol}
+                    </button>
+                  ))}
+                </div>
+              )}
             </td>
             {events.map((event) => {
               const status = statusFor(event.id, member.profileId);

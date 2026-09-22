@@ -704,3 +704,48 @@ describe("a bulk action whose outcome is unknown", () => {
     expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy();
   });
 });
+
+describe("where the bulk control lives", () => {
+  const TEAMMATE = "44444444-4444-4444-4444-444444444444";
+
+  function rowFor(name: string) {
+    const cellEl = screen.getByText(name).closest("td")!;
+    return within(cellEl);
+  }
+
+  it("sits on your own row, and on nobody else's", async () => {
+    mocks.fetchTeamRoster.mockResolvedValue([
+      { profileId: PLAYER, name: "Zoey Butler", role: "player" },
+      { profileId: TEAMMATE, name: "Sam Okafor", role: "player" },
+    ]);
+
+    render(
+      <AvailabilityMatrix teamId={TEAM} currentUserId={PLAYER} isAdmin timeZone="UTC" />
+    );
+    await waitFor(() => expect(screen.getByText("Sam Okafor")).toBeTruthy());
+
+    // Next to your name, as it was before pagination: "Set multiple:" and the
+    // three status chips.
+    expect(rowFor("Zoey Butler").getByText("Set multiple:")).toBeTruthy();
+    expect(
+      rowFor("Zoey Butler").getByRole("button", { name: "Set unanswered to Available" })
+    ).toBeTruthy();
+
+    // An admin may edit a teammate's individual cells, but bulk is only ever
+    // for the active profile (spec §8.1).
+    expect(rowFor("Sam Okafor").queryByText("Set multiple:")).toBeNull();
+    expect(
+      rowFor("Sam Okafor").queryByRole("button", { name: "Set unanswered to Available" })
+    ).toBeNull();
+  });
+
+  it("shows the status symbols, not words", async () => {
+    renderMatrix();
+    await waitFor(() => expect(screen.getByText("Set multiple:")).toBeTruthy());
+
+    const controls = screen.getByText("Set multiple:").closest("div")!;
+    expect(within(controls).getByRole("button", { name: "Set unanswered to Available" }).textContent).toBe("✓");
+    expect(within(controls).getByRole("button", { name: "Set unanswered to Maybe" }).textContent).toBe("?");
+    expect(within(controls).getByRole("button", { name: "Set unanswered to Unavailable" }).textContent).toBe("✗");
+  });
+});
