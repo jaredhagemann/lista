@@ -45,3 +45,9 @@ jobs:
       - run: pnpm install
       - name: Run RLS tests
         run: pnpm test:rls
+      # tests/tenant and tests/billing need the same stack but were run by no
+      # job at all, which is how three of them stayed broken for eighteen days
+      # (BUG-017). They cover subdomain resolution and billing authorization,
+      # so silence there is the expensive kind.
+      - name: Run tenant and billing integration tests
+        run: pnpm vitest run --config vitest.config.rls.mts tests/tenant tests/billing

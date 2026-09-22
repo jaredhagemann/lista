@@ -1,0 +1,40 @@
+
+ ✓ tests/tenant/tenant.test.ts (17 tests) 319ms
+ ✓ tests/unit/email-branding.test.ts (21 tests) 17ms
+stderr | apps/web/tests/billing-emails.test.ts > billing-emails — sendTrialConvertedEmail > swallows a Resend failure (returns false) so callers don't have to wrap try/catch
+Email send failed (trial-converted org=org-1): Error: Resend down
+    at C:/Users/jared/Projects/lista/apps/web/tests/billing-emails.test.ts:345:47
+    at file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_61d0faaf9df48e2dc943084fab31a69c/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_61d0faaf9df48e2dc943084fab31a69c/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///C:/Users/jared/Projects/lista/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+ ✓ apps/web/tests/billing-emails.test.ts (21 tests) 18ms
+ ✓ tests/unit/training.test.ts (7 tests) 17ms
+ ✓ tests/rrule.test.ts (23 tests) 12ms
+ ✓ tests/billing/club-settings.test.ts (12 tests) 9ms
+ ✓ tests/billing/webhook.test.ts (7 tests) 8ms
+ ✓ apps/web/tests/unit/auth-callback-next.test.ts (22 tests) 7ms
+stdout | tests/tenant/update-session.test.ts
+[dotenv@17.3.1] injecting env (3) from .env.test.local -- tip: ⚙️  suppress all logs with { quiet: true }
+
+ ✓ tests/tenant/update-session.test.ts (4 tests) 6ms
+ ✓ tests/tenant/middleware.test.ts (9 tests) 7ms
+ ✓ tests/unit/team-actions.test.ts (16 tests) 6ms
+ ✓ apps/web/tests/billing.test.ts (15 tests) 4ms
+ ✓ apps/web/tests/unit/google-auth-helper.test.ts (14 tests) 4ms
+ ✓ tests/unit/training-category-actions.test.ts (6 tests) 3ms
+ ✓ tests/unit/invite-helpers.test.ts (10 tests) 3ms
+ ✓ tests/unit/email.test.ts (9 tests) 2ms
+ ✓ tests/unit/password-reset.test.ts (4 tests) 2ms
+
+ Test Files  18 passed (18)
+      Tests  222 passed (222)
+   Start at  13:12:48
+   Duration  5.92s (transform 309ms, setup 0ms, import 1.17s, tests 1.94s, environment 616ms)
+
