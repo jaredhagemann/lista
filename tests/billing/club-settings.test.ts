@@ -236,7 +236,13 @@ describe("PATCH /api/club/settings — cache invalidation", () => {
     setupDb({
       profiles: { data: { id: PROFILE_ID }, error: null },
       organization_members: { data: { role: "owner" }, error: null },
-      "organizations:select": { data: { subdomain: "oldslug" }, error: null },
+      // The route reads plan alongside the subdomain: claiming one requires a
+      // club tier, and that gate rejects the request long before any cache is
+      // invalidated. A mock without a plan tested the gate, not this.
+      "organizations:select": {
+        data: { subdomain: "oldslug", subdomain_status: "active", plan: "club_small" },
+        error: null,
+      },
       "organizations:update": { data: null, error: null },
     });
 

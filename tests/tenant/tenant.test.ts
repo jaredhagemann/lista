@@ -173,10 +173,23 @@ describe("resolveTenant — DB lookup", () => {
     trackIds({ orgId });
 
     const subdomain = `test-${crypto.randomUUID().slice(0, 8)}`;
-    await adminClient
+    const { error: setupError } = await adminClient
       .from("organizations")
-      .update({ subdomain, plan: "club", org_name_public: "Test Club FC" })
+      .update({
+        subdomain,
+        // resolveTenant matches on the subdomain *and* an active status, and
+        // the column has no default — an org with a subdomain but no status is
+        // invisible to it.
+        subdomain_status: "active",
+        plan: "club_large",
+        org_name_public: "Test Club FC",
+      })
       .eq("id", orgId);
+
+    // The old fixture wrote the retired `club` plan, which the CHECK rejects.
+    // Nothing was written, the org never had a subdomain, and the test failed
+    // two assertions later on a null result — with the real cause discarded.
+    expect(setupError).toBeNull();
 
     const hostname = `${subdomain}.lista.team`;
     const result = await resolveTenant(hostname);
@@ -184,7 +197,7 @@ describe("resolveTenant — DB lookup", () => {
     expect(result).not.toBeNull();
     expect(result!.organizationId).toBe(orgId);
     expect(result!.subdomain).toBe(subdomain);
-    expect(result!.plan).toBe("club");
+    expect(result!.plan).toBe("club_large");
     expect(result!.isWhiteLabel).toBe(true);
     expect(result!.orgNamePublic).toBe("Test Club FC");
 

@@ -1,9 +1,11 @@
 /**
  * Integration tests for GET /api/billing/status.
  *
- * These tests exercise the application-layer membership guard added in Sprint 2:
- * active_team_id is a stale pointer on the profile — the route must verify
- * current team_members membership before returning org billing data.
+ * The route answers with a club's commercial state — plan, trial dates, Stripe
+ * customer and subscription ids — so it gates on an organization_members role
+ * of owner or director, not on team membership. active_team_id is only used to
+ * find which organization is being asked about, and is a stale pointer: the
+ * route re-checks the role every time rather than trusting it.
  *
  * Requires the local Supabase stack: `supabase start`
  * Run with: pnpm test:rls  (resets the DB first; picks up tests/billing too)
@@ -31,6 +33,7 @@ import {
   adminClient,
   createTestUser,
   createTestTeam,
+  addOrgMember,
   cleanupTestData,
   trackIds,
 } from "../rls/helpers";
@@ -62,11 +65,16 @@ async function setActiveTeam(authUserId: string, teamId: string) {
 // ── Happy path ────────────────────────────────────────────────────────────────
 
 describe("GET /api/billing/status — happy path", () => {
-  it("returns plan and org for an active team member", async () => {
+  it("returns plan and org for an organization owner", async () => {
     const { client, user } = await createTestUser();
     const { teamId, orgId } = await createTestTeam(user.id);
     trackIds({ teamId, orgId });
 
+    // Team membership is not enough, and deliberately so: this route returns
+    // the plan, the trial dates and the Stripe customer and subscription ids.
+    // The fixture used to stop at the coach membership createTestTeam makes,
+    // and the 403 it got was the route behaving correctly.
+    await addOrgMember(orgId, user.id, "owner");
     await setActiveTeam(user.id, teamId);
 
     const response = await statusRequest(await getAccessToken(client));
@@ -82,15 +90,39 @@ describe("GET /api/billing/status — happy path", () => {
 
 // ── Membership gate ───────────────────────────────────────────────────────────
 
-describe("GET /api/billing/status — membership gate", () => {
-  it("returns 403 when user has been removed from the team but active_team_id is stale", async () => {
+describe("GET /api/billing/status — organization role gate", () => {
+  it("refuses a team member who holds no organization role", async () => {
     const { client, user } = await createTestUser();
     const { teamId, orgId } = await createTestTeam(user.id);
     trackIds({ teamId, orgId });
 
+    // A coach on the team, and nothing more. createTestTeam makes exactly that.
     await setActiveTeam(user.id, teamId);
 
-    // Simulate being removed from the team — active_team_id is NOT cleared
+    const response = await statusRequest(await getAccessToken(client));
+
+    expect(response.status).toBe(403);
+  });
+
+  /**
+   * This case used to be called "removed from the team but active_team_id is
+   * stale", and it passed for a reason its name did not mention: the user had
+   * no organization role either, so the team removal decided nothing. The route
+   * no longer looks at team membership at all — `active_team_id` only says
+   * *which* organization is being asked about, and the role decides the answer.
+   *
+   * Which is right: an owner does not stop owning the club by leaving a team.
+   * Pinned here so the next reader does not have to rediscover it, and so the
+   * 403 above has to earn its result.
+   */
+  it("still answers for an owner who is no longer on the team", async () => {
+    const { client, user } = await createTestUser();
+    const { teamId, orgId } = await createTestTeam(user.id);
+    trackIds({ teamId, orgId });
+
+    await addOrgMember(orgId, user.id, "owner");
+    await setActiveTeam(user.id, teamId);
+
     const { data: profile } = await adminClient
       .from("profiles")
       .select("id")
@@ -104,7 +136,7 @@ describe("GET /api/billing/status — membership gate", () => {
 
     const response = await statusRequest(await getAccessToken(client));
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
   it("returns 401 for an unauthenticated request", async () => {
