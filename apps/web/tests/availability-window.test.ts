@@ -15,6 +15,8 @@ import {
   parseWindow,
   windowRange,
   windowLabel,
+  bulkRange,
+  bulkScopeSentence,
   type AvailabilityWindow,
 } from "@/lib/availability/window";
 
@@ -92,5 +94,67 @@ describe("saying what is on screen", () => {
     for (const window of AVAILABILITY_WINDOWS) {
       expect(windowLabel(window.value as AvailabilityWindow, ANCHOR, "UTC").length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("what a bulk action can reach", () => {
+  const anchor = "2026-09-21T18:00:00.000Z";
+
+  it("covers the future half of a window, and none of a past-only one", () => {
+    expect(bulkRange("past", anchor)).toBeNull();
+
+    const upcoming = bulkRange("upcoming", anchor)!;
+    expect(upcoming.fromInclusive).toBe(anchor);
+    expect(upcoming.toExclusive).toBe(windowRange("upcoming", anchor).toExclusive);
+
+    // The wider range reaches a year back, but a past event cannot be answered,
+    // so the bulk scope starts at the anchor rather than at the window's edge.
+    const wider = bulkRange("season", anchor)!;
+    expect(wider.fromInclusive).toBe(anchor);
+    expect(wider.toExclusive).toBe(windowRange("season", anchor).toExclusive);
+  });
+
+  it("names the player, status, dates, type and the pages nobody has seen", () => {
+    const sentence = bulkScopeSentence({
+      name: "Alex",
+      status: "available",
+      window: "upcoming",
+      anchor,
+      eventType: "practice",
+      timeZone: "America/Los_Angeles",
+    })!;
+
+    expect(sentence).toContain("Set Alex to Available");
+    expect(sentence).toContain("unanswered future practices");
+    expect(sentence).toContain("Sep 21, 2026");
+    expect(sentence).toContain("Mar 20, 2027");
+    expect(sentence).toContain("including events on other pages");
+    expect(sentence).toContain("Existing responses will not be changed");
+  });
+
+  it("says events, not a type, when no type is selected", () => {
+    const sentence = bulkScopeSentence({
+      name: "Alex",
+      status: "maybe",
+      window: "season",
+      anchor,
+      eventType: null,
+      timeZone: "UTC",
+    })!;
+
+    expect(sentence).toContain("Set Alex to Maybe for unanswered future events");
+  });
+
+  it("has nothing to offer for a past-only window", () => {
+    expect(
+      bulkScopeSentence({
+        name: "Alex",
+        status: "available",
+        window: "past",
+        anchor,
+        eventType: null,
+        timeZone: "UTC",
+      })
+    ).toBeNull();
   });
 });

@@ -59,6 +59,61 @@ export function windowRange(
   }
 }
 
+/**
+ * The part of a window a bulk action can reach (spec §8.1).
+ *
+ * Only future, unanswered events are eligible, so the past half of a window is
+ * never in scope — and a past-only window has no eligible action at all, which
+ * is why this returns null rather than an empty range.
+ *
+ * The anchor stands in for "now" here. The database decides the real cutoff
+ * when the statement runs, so an event that starts while the confirmation is
+ * open is excluded there, not here.
+ */
+export function bulkRange(
+  window: AvailabilityWindow,
+  anchor: string
+): { fromInclusive: string; toExclusive: string } | null {
+  if (window === "past") return null;
+  const range = windowRange(window, anchor);
+  return { fromInclusive: anchor, toExclusive: range.toExclusive };
+}
+
+const EVENT_TYPE_PLURALS: Record<string, string> = {
+  practice: "practices",
+  game: "games",
+  other: "other events",
+};
+
+/**
+ * What the reader is about to agree to.
+ *
+ * It has to name the player, the status, the dates and the event type, and say
+ * that events nobody has looked at are included — because after pagination they
+ * are, and the control sits on a page showing ten of them (spec §8.1).
+ */
+export function bulkScopeSentence(options: {
+  name: string;
+  status: "available" | "maybe" | "unavailable";
+  window: AvailabilityWindow;
+  anchor: string;
+  eventType: string | null;
+  timeZone: string | null | undefined;
+}): string | null {
+  const range = bulkRange(options.window, options.anchor);
+  if (!range) return null;
+
+  const status = options.status.charAt(0).toUpperCase() + options.status.slice(1);
+  const kind = options.eventType ? (EVENT_TYPE_PLURALS[options.eventType] ?? "events") : "events";
+
+  return (
+    `Set ${options.name} to ${status} for unanswered future ${kind} from ` +
+    `${formatDay(range.fromInclusive, options.timeZone)} through ` +
+    `${formatDay(range.toExclusive, options.timeZone)}, including events on other pages. ` +
+    `Existing responses will not be changed.`
+  );
+}
+
 function formatDay(instant: string, timeZone: string | null | undefined): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: resolveTimeZone(timeZone),

@@ -22,11 +22,23 @@ import {
 import { createRosterCache } from "@/lib/availability/roster-cache";
 import {
   AVAILABILITY_WINDOWS,
+  bulkRange,
+  bulkScopeSentence,
   newAnchor,
   windowLabel,
   windowRange,
   type AvailabilityWindow,
 } from "@/lib/availability/window";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 type EventType = "practice" | "game" | "other";
@@ -170,13 +182,28 @@ export function AvailabilityMatrix({
   // What the reader has changed since, by response row. Laid over `fetched`.
   const [overlay, setOverlay] = useState<Map<string, LocalEdit>>(new Map());
 
+  // The bulk confirmation, remembered with the exact selection it describes.
+  const [bulk, setBulk] = useState<{ status: AvailabilityStatus; identity: string } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // Bumped to read the current page again without changing what is being asked.
+  const [reloadToken, setReloadToken] = useState(0);
+
   const cursorHistory = useRef<(EventCursor | null)[]>([null]);
   const nextCursor = useRef<EventCursor | null>(null);
   const requestGeneration = useRef(0);
   // Orders reads against writes. Every read and every settled write takes a
   // tick, which is all the ordering the overlay needs.
   const clock = useRef(0);
+  // Serialisation per response row, which is why it survives a context change:
+  // leaving a team does not cancel a request already sent, so a later write to
+  // the same row must still queue behind it rather than race it.
   const writes = useRef(new Map<string, WriteChain>());
+  // How many page reads have been accepted, and when each cell was last edited.
+  // Both exist so a recovery read can tell whether it has been overtaken.
+  const readsCommitted = useRef(0);
+  const cellEditTick = useRef(new Map<string, number>());
+  // Counts visits, so returning to a team is not mistaken for never leaving.
+  const contextGeneration = useRef(0);
 
   // Whose data this is. Everything on screen belongs to one of these, and a
   // write issued under one must never be applied under another.
@@ -203,11 +230,11 @@ export function AvailabilityMatrix({
     // dates under another range's label.
     if (contextRef.current !== context) {
       contextRef.current = context;
+      contextGeneration.current += 1;
       // Another team's rows must not merely be stale here — they must be gone.
       // Left on screen they stay clickable, and a click writes to the team the
       // reader has just left (spec §7.3). Its pending writes stop applying too.
       rosterCache.invalidate();
-      writes.current.clear();
       setOverlay(new Map());
       setEvents([]);
       setMembers([]);
@@ -289,6 +316,7 @@ export function AvailabilityMatrix({
         setHasNext(eventPage.hasNext);
         nextCursor.current = eventPage.nextCursor;
         setFetched(map);
+        readsCommitted.current += 1;
         // An edit whose write finished before this read started is in the rows
         // that just arrived, so it can stop being held separately. Anything
         // newer than the read — or still in flight — stays on top of it.
@@ -309,7 +337,19 @@ export function AvailabilityMatrix({
         setLoading(false);
       }
     })();
-  }, [context, query, identity, page, supabase, teamId, typeFilter, pageSize, range, rosterCache]);
+  }, [
+    context,
+    query,
+    identity,
+    page,
+    reloadToken,
+    supabase,
+    teamId,
+    typeFilter,
+    pageSize,
+    range,
+    rosterCache,
+  ]);
 
   function restart() {
     cursorHistory.current = [null];
@@ -327,6 +367,7 @@ export function AvailabilityMatrix({
 
   function setCell(eventId: string, profileId: string, next: AvailabilityStatus | null) {
     const key = cellKey(eventId, profileId);
+    cellEditTick.current.set(key, ++clock.current);
     setOverlay((prev) => new Map(prev).set(key, { status: next, settledTick: null }));
 
     const running = writes.current.get(key);
@@ -349,7 +390,6 @@ export function AvailabilityMatrix({
     profileId: string,
     first: AvailabilityStatus | null
   ) {
-    const writeContext = contextRef.current;
     let status = first;
 
     for (;;) {
@@ -370,18 +410,20 @@ export function AvailabilityMatrix({
       if (error) {
         writes.current.delete(key);
         toast.error(error.message);
-        // A write belonging to a team the reader has left changes nothing here.
-        if (writeContext !== contextRef.current) return;
         // Roll this row back on its own — an edit elsewhere, newer or older, is
         // none of its business — and then ask what the value really is, rather
         // than trusting a page read from before the attempt (spec §7.3).
+        // Only the entry this attempt put there: anything else on screen was
+        // put there by a later click, or by a later read, and is not this
+        // failure's to undo.
         setOverlay((prev) => {
-          if (!prev.has(key)) return prev;
+          const edit = prev.get(key);
+          if (!edit || edit.status !== status || edit.settledTick !== null) return prev;
           const rest = new Map(prev);
           rest.delete(key);
           return rest;
         });
-        void revalidateCell(eventId, profileId, writeContext);
+        void revalidateCell(eventId, profileId);
         return;
       }
 
@@ -394,22 +436,43 @@ export function AvailabilityMatrix({
       writes.current.delete(key);
 
       const settledTick = ++clock.current;
-      if (writeContext !== contextRef.current) return;
       // Held on top of the page until a read that started after this moment can
-      // be trusted to contain it.
+      // be trusted to contain it. No check of which team is on screen: the only
+      // entry this can touch is one showing exactly what was written, and after
+      // leaving and returning to a team, such an entry is one the reader asked
+      // for again.
       setOverlay((prev) => {
         const edit = prev.get(key);
-        if (!edit || edit.status !== status) return prev;
+        if (!edit || edit.status !== status || edit.settledTick !== null) return prev;
         return new Map(prev).set(key, { status, settledTick });
       });
       return;
     }
   }
 
-  async function revalidateCell(eventId: string, profileId: string, writeContext: string) {
+  /**
+   * Asks what one response really is, after a write failed on it.
+   *
+   * This is the oldest kind of stale read: it was started by a failure, and
+   * everything that happens afterwards knows more than it does. So it is
+   * versioned against the page reads and the cell's own edits, and gives way to
+   * any of them rather than applying a snapshot taken before they happened.
+   */
+  async function revalidateCell(eventId: string, profileId: string) {
+    const key = cellKey(eventId, profileId);
+    const startedReads = readsCommitted.current;
+    const startedGeneration = contextGeneration.current;
+    const startedTick = ++clock.current;
+
     try {
       const rows = await fetchResponsesForEvents(supabase, [eventId]);
-      if (writeContext !== contextRef.current) return;
+      if (contextGeneration.current !== startedGeneration) return;
+      // A page read has landed since, and it read the whole page, not one row.
+      if (readsCommitted.current !== startedReads) return;
+      // The reader has touched this cell since, successfully or otherwise.
+      if ((cellEditTick.current.get(key) ?? 0) > startedTick) return;
+      if (writes.current.has(key)) return;
+
       const row = rows.find((r) => r.profile_id === profileId);
       setFetched((prev) => {
         const inner = prev.get(eventId);
@@ -425,8 +488,68 @@ export function AvailabilityMatrix({
     }
   }
 
+  /**
+   * Fills in every unanswered future event in the selected range — including
+   * the ones on pages nobody has loaded, which is the whole reason this is a
+   * database function rather than a loop over the table on screen (spec §8.2).
+   */
+  async function runBulk(status: AvailabilityStatus) {
+    const scope = bulkRange(window_, anchor);
+    if (!scope) return;
+
+    setBulkBusy(true);
+    const { data, error } = await supabase.rpc("set_unanswered_availability", {
+      p_team_id: teamId,
+      p_profile_id: currentUserId,
+      p_from: scope.fromInclusive,
+      p_to: scope.toExclusive,
+      p_status: status,
+      // Omitted rather than null: the function defaults it, and the generated
+      // type says optional because of that default.
+      p_event_type: typeFilter === "all" ? undefined : typeFilter,
+    });
+    setBulk(null);
+    setBulkBusy(false);
+
+    if (error) {
+      // The outcome is unknown: a timeout may have committed the whole thing.
+      // Announcing "0 events set" would be a guess, so it says what it knows
+      // and re-reads instead (spec §8.2).
+      toast.error(
+        `Couldn't finish setting unanswered events: ${error.message}. The page has been read again — check what was set before trying again.`
+      );
+    } else {
+      const written = typeof data === "number" ? data : 0;
+      toast.success(
+        written === 1 ? "1 event set." : `${written} events set.`
+      );
+    }
+
+    // On success, to show them. On failure, because nobody knows what happened.
+    setReloadToken((token) => token + 1);
+  }
+
   const players = members.filter((m) => m.role === "player");
   const nonPlayers = members.filter((m) => m.role !== "player");
+
+  // Bulk acts for the profile whose page this is, never for other players
+  // (spec §8.1). A past-only window has nothing it could set.
+  const bulkTarget = members.find((m) => m.profileId === currentUserId);
+  const bulkAvailable = bulkTarget !== undefined && bulkRange(window_, anchor) !== null && !failure;
+  // A confirmation belongs to the selection it was opened under. If that has
+  // changed, it is describing a scope nobody is looking at any more.
+  const openBulk = bulk && bulk.identity === identity ? bulk : null;
+  const bulkSentence =
+    openBulk && bulkTarget
+      ? bulkScopeSentence({
+          name: bulkTarget.name,
+          status: openBulk.status,
+          window: window_,
+          anchor,
+          eventType: typeFilter === "all" ? null : typeFilter,
+          timeZone,
+        })
+      : null;
 
   const controls = (
     <div className="flex flex-wrap items-center gap-2">
@@ -510,7 +633,54 @@ export function AvailabilityMatrix({
     <div className="space-y-4">
       {/* Controls stay usable while loading and while showing an error. */}
       {controls}
-      <p className="text-sm text-muted-foreground">{windowLabel(window_, anchor, timeZone)}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">{windowLabel(window_, anchor, timeZone)}</p>
+        {bulkAvailable && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-sm text-muted-foreground">Set unanswered to</span>
+            {(["available", "maybe", "unavailable"] as const).map((status) => (
+              <Button
+                key={status}
+                variant="outline"
+                size="sm"
+                disabled={bulkBusy}
+                aria-label={`Set unanswered to ${statusConfig[status].label}`}
+                onClick={() => setBulk({ status, identity })}
+              >
+                {statusConfig[status].label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <AlertDialog
+        open={openBulk !== null}
+        onOpenChange={(open) => {
+          if (!open) setBulk(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Set unanswered events?</AlertDialogTitle>
+            <AlertDialogDescription>{bulkSentence}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkBusy}
+              onClick={(event) => {
+                // Radix closes on click; the write outlives that, so the dialog
+                // is dismissed by runBulk when the call returns instead.
+                event.preventDefault();
+                if (openBulk) void runBulk(openBulk.status);
+              }}
+            >
+              Set unanswered
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {failure && events.length === 0 ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6">

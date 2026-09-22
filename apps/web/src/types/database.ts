@@ -1271,11 +1271,26 @@ export type Database = {
         Args: { p_id: string }
         Returns: boolean
       }
+      merge_managed_profiles: {
+        Args: { p_keep: string; p_merge: string }
+        Returns: Json
+      }
       profile_on_team: {
         Args: { p_profile_id: string; p_team_id: string }
         Returns: boolean
       }
       safe_team_tz: { Args: { t_id: string }; Returns: string }
+      set_unanswered_availability: {
+        Args: {
+          p_event_type?: string
+          p_from: string
+          p_profile_id: string
+          p_status: string
+          p_team_id: string
+          p_to: string
+        }
+        Returns: number
+      }
       team_org_id: { Args: { t_id: string }; Returns: string }
       training_leaderboard: {
         Args: {
