@@ -9,6 +9,11 @@ import {
   sendPaymentFailedEmail,
   sendSubscriptionCancelledEmail,
 } from "@/lib/notifications/billing-emails";
+import {
+  claimStripeEvent,
+  completeStripeEvent,
+  notOlderThanStored,
+} from "@/lib/billing/webhook-ledger";
 
 /**
  * POST /api/billing/webhook
@@ -26,6 +31,15 @@ import {
  * Stripe event" — Stripe may replay events, and conditional Stripe Schedules
  * fire `customer.subscription.updated` more than once for a single phase
  * transition, so the same value being written twice must be safe.
+ *
+ * That makes the *writes* replay-safe; it does nothing for the emails, and
+ * nothing for ordering. `stripe_webhook_events` covers the first and
+ * `organizations.stripe_event_at` the second (BUG-015).
+ *
+ * Acknowledgement rule: a 2xx tells Stripe to stop retrying, so it is only
+ * honest once the work is committed — or once something durable has taken on
+ * the obligation to finish it. This route is synchronous and takes on no such
+ * obligation, so a failed write answers 500 and lets Stripe deliver again.
  *
  * Requires the raw request body for signature verification — do NOT parse as
  * JSON before passing to stripe.webhooks.constructEvent().
@@ -50,7 +64,60 @@ export async function POST(request: Request) {
   }
 
   const admin = adminClient();
+  const eventAt = new Date(event.created * 1000).toISOString();
 
+  const claim = await claimStripeEvent(admin, event, eventAt);
+
+  if (claim === "unavailable") {
+    return NextResponse.json({ error: "ledger_unavailable" }, { status: 500 });
+  }
+  if (claim === "done") {
+    // Already processed on an earlier delivery, emails included.
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  try {
+    await handleEvent(admin, event, eventAt);
+  } catch (error) {
+    // Deliberately not acknowledged: nothing here has taken responsibility for
+    // finishing the work, so Stripe retrying is what makes it eventually true.
+    console.error(
+      `Stripe webhook ${event.type} (${event.id}) failed:`,
+      error instanceof Error ? error.message : error,
+    );
+    return NextResponse.json({ error: "processing_failed" }, { status: 500 });
+  }
+
+  if (!(await completeStripeEvent(admin, event.id))) {
+    // The work is done but unrecorded. A retry would redo it — the writes are
+    // value-idempotent, and the emails would repeat, which is the lesser harm
+    // against silently losing the record of a completed event.
+    return NextResponse.json({ error: "ledger_unavailable" }, { status: 500 });
+  }
+
+  return NextResponse.json({ received: true });
+}
+
+/** A Supabase write that failed. Unwinds to the 500 above. */
+class WebhookWriteError extends Error {}
+
+/** Every write goes through here, so none can be silently discarded. */
+async function mustWrite<T extends { error: { message: string } | null }>(
+  op: PromiseLike<T>,
+  what: string,
+): Promise<T> {
+  const result = await op;
+  if (result.error) {
+    throw new WebhookWriteError(`${what}: ${result.error.message}`);
+  }
+  return result;
+}
+
+async function handleEvent(
+  admin: AdminClient,
+  event: Stripe.Event,
+  eventAt: string,
+): Promise<void> {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -112,10 +179,14 @@ export async function POST(request: Request) {
         }
       }
 
-      await admin
-        .from("organizations")
-        .update(updates)
-        .eq("stripe_subscription_id", sub.id);
+      await mustWrite(
+        admin
+          .from("organizations")
+          .update({ ...updates, stripe_event_at: eventAt })
+          .eq("stripe_subscription_id", sub.id)
+          .or(notOlderThanStored(eventAt)),
+        "subscription.updated",
+      );
       break;
     }
 
@@ -176,10 +247,10 @@ export async function POST(request: Request) {
       const orgId = schedule.metadata?.org_id;
       if (!orgId) break;
 
-      await admin
-        .from("organizations")
-        .update({ stripe_schedule_id: null })
-        .eq("id", orgId);
+      await mustWrite(
+        admin.from("organizations").update({ stripe_schedule_id: null }).eq("id", orgId),
+        "subscription_schedule.released",
+      );
       break;
     }
 
@@ -193,14 +264,17 @@ export async function POST(request: Request) {
       const orgId = schedule.metadata?.org_id;
       if (!orgId) break;
 
-      await admin
-        .from("organizations")
-        .update({
-          pending_plan: null,
-          pending_plan_at: null,
-          stripe_schedule_id: null,
-        })
-        .eq("id", orgId);
+      await mustWrite(
+        admin
+          .from("organizations")
+          .update({
+            pending_plan: null,
+            pending_plan_at: null,
+            stripe_schedule_id: null,
+          })
+          .eq("id", orgId),
+        "subscription_schedule.canceled",
+      );
       break;
     }
 
@@ -214,10 +288,14 @@ export async function POST(request: Request) {
           : null;
       if (!subscriptionId) break;
 
-      await admin
-        .from("organizations")
-        .update({ subscription_status: "active" })
-        .eq("stripe_subscription_id", subscriptionId);
+      await mustWrite(
+        admin
+          .from("organizations")
+          .update({ subscription_status: "active", stripe_event_at: eventAt })
+          .eq("stripe_subscription_id", subscriptionId)
+          .or(notOlderThanStored(eventAt)),
+        "invoice.payment_succeeded",
+      );
 
       // Spec: "Payment confirmed" email. Fires after the status flip so the
       // billing page link in the email lands the user on the correct badge.
@@ -233,10 +311,14 @@ export async function POST(request: Request) {
           : null;
       if (!subscriptionId) break;
 
-      await admin
-        .from("organizations")
-        .update({ subscription_status: "past_due" })
-        .eq("stripe_subscription_id", subscriptionId);
+      await mustWrite(
+        admin
+          .from("organizations")
+          .update({ subscription_status: "past_due", stripe_event_at: eventAt })
+          .eq("stripe_subscription_id", subscriptionId)
+          .or(notOlderThanStored(eventAt)),
+        "invoice.payment_failed",
+      );
 
       // Spec: "Action required: payment failed" email. The org is now in
       // past_due; Stripe will smart-retry the invoice over the next few days.
@@ -245,11 +327,10 @@ export async function POST(request: Request) {
     }
 
     default:
-      // Unhandled event types are ignored — return 200 so Stripe stops retrying.
+      // Unhandled event types are ignored — acknowledged so Stripe stops
+      // retrying something this route was never going to act on.
       break;
   }
-
-  return NextResponse.json({ received: true });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

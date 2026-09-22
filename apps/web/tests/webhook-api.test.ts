@@ -78,6 +78,13 @@ const mocks = vi.hoisted(() => {
           call.filters.push({ column, value });
           // Returns a thenable so trailing-`.eq` await resolves.
           return {
+            // Billing-state writes carry an ordering guard as a trailing
+            // `.or()` (BUG-015). Recorded like any other filter so a test can
+            // assert on it, and thenable so the await still resolves.
+            or: (expression: string) => {
+              call.filters.push({ column: "or", value: expression });
+              return Promise.resolve({ data: null, error: null });
+            },
             then: (
               res: (v: unknown) => unknown,
               rej?: (e: unknown) => unknown,
@@ -142,6 +149,15 @@ vi.mock("@/lib/notifications/billing-emails", () => ({
 
 // ── Route under test (after mocks) ────────────────────────────────────────────
 
+// Delivery bookkeeping is covered by tests/billing/webhook-delivery.test.ts
+// (BUG-015). Here it is stubbed to "first delivery, ledger healthy" so these
+// tests stay about what each event means.
+vi.mock("@/lib/billing/webhook-ledger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing/webhook-ledger")>()),
+  claimStripeEvent: vi.fn().mockResolvedValue("process"),
+  completeStripeEvent: vi.fn().mockResolvedValue(true),
+}));
+
 import { POST } from "@/app/api/billing/webhook/route";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,7 +177,15 @@ function makeWebhookRequest(): Request {
 }
 
 function stubEvent(event: unknown) {
-  mocks.constructEvent.mockReturnValueOnce(event);
+  // `id` and `created` are required on every Stripe Event, and the route now
+  // reads both — one to recognise a replay, one to order two deliveries
+  // (BUG-015). These fixtures predate that and omit them, so they are stamped
+  // here rather than in a hundred object literals.
+  mocks.constructEvent.mockReturnValueOnce({
+    id: `evt_${Math.random().toString(36).slice(2)}`,
+    created: Math.floor(Date.now() / 1000),
+    ...(event as Record<string, unknown>),
+  });
 }
 
 function findUpdate(
@@ -733,6 +757,8 @@ describe("POST /api/billing/webhook — customer.subscription.updated", () => {
     await POST(makeWebhookRequest());
     expect(mocks.updateCalls[0].filters).toEqual([
       { column: "stripe_subscription_id", value: "sub_existing" },
+      // And the ordering guard, so a late older event cannot overwrite this.
+      { column: "or", value: expect.stringContaining("stripe_event_at") },
     ]);
   });
 });
@@ -885,7 +911,13 @@ describe("POST /api/billing/webhook — invoice events", () => {
       column: "stripe_subscription_id",
       value: "sub_paid",
     });
-    expect(update?.values).toEqual({ subscription_status: "active" });
+    expect(update?.values).toMatchObject({ subscription_status: "active" });
+    // Stamped so a later out-of-order event can be recognised as older.
+    expect(update?.values.stripe_event_at).toEqual(expect.any(String));
+    expect(update?.filters).toContainEqual({
+      column: "or",
+      value: expect.stringContaining("stripe_event_at"),
+    });
   });
 
   it("invoice.payment_failed → subscription_status='past_due'", async () => {
@@ -905,7 +937,12 @@ describe("POST /api/billing/webhook — invoice events", () => {
       column: "stripe_subscription_id",
       value: "sub_failed",
     });
-    expect(update?.values).toEqual({ subscription_status: "past_due" });
+    expect(update?.values).toMatchObject({ subscription_status: "past_due" });
+    expect(update?.values.stripe_event_at).toEqual(expect.any(String));
+    expect(update?.filters).toContainEqual({
+      column: "or",
+      value: expect.stringContaining("stripe_event_at"),
+    });
   });
 
   it("invoice events with no subscription parent are ignored", async () => {

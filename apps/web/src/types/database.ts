@@ -696,6 +696,7 @@ export type Database = {
           plan: string
           slug: string
           stripe_customer_id: string | null
+          stripe_event_at: string | null
           stripe_schedule_id: string | null
           stripe_subscription_id: string | null
           subdomain: string | null
@@ -725,6 +726,7 @@ export type Database = {
           plan?: string
           slug: string
           stripe_customer_id?: string | null
+          stripe_event_at?: string | null
           stripe_schedule_id?: string | null
           stripe_subscription_id?: string | null
           subdomain?: string | null
@@ -754,6 +756,7 @@ export type Database = {
           plan?: string
           slug?: string
           stripe_customer_id?: string | null
+          stripe_event_at?: string | null
           stripe_schedule_id?: string | null
           stripe_subscription_id?: string | null
           subdomain?: string | null
@@ -906,6 +909,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stripe_webhook_events: {
+        Row: {
+          completed_at: string | null
+          event_created_at: string
+          event_id: string
+          event_type: string
+          received_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          event_created_at: string
+          event_id: string
+          event_type: string
+          received_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          event_created_at?: string
+          event_id?: string
+          event_type?: string
+          received_at?: string
+        }
+        Relationships: []
       }
       team_members: {
         Row: {

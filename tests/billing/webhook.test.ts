@@ -59,6 +59,15 @@ vi.mock("@/lib/api-auth", () => ({
   adminClient: vi.fn().mockReturnValue({ from: mockFrom }),
 }));
 
+// Delivery bookkeeping is covered by tests/billing/webhook-delivery.test.ts
+// (BUG-015). Here it is stubbed to "first delivery, ledger healthy" so these
+// tests stay about what each event means.
+vi.mock("@/lib/billing/webhook-ledger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing/webhook-ledger")>()),
+  claimStripeEvent: vi.fn().mockResolvedValue("process"),
+  completeStripeEvent: vi.fn().mockResolvedValue(true),
+}));
+
 import { POST } from "@/app/api/billing/webhook/route";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,6 +83,10 @@ function makeWebhookRequest(event: object): Request {
 
 function deletionEvent(subscriptionId: string) {
   return {
+    // Required on every Stripe Event, and the route reads both: one to
+    // recognise a replay, one to order two deliveries (BUG-015).
+    id: `evt_${subscriptionId}`,
+    created: Math.floor(Date.parse("2026-09-22T10:00:00.000Z") / 1000),
     type: "customer.subscription.deleted",
     data: { object: { id: subscriptionId } },
   };
