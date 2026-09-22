@@ -1,7 +1,7 @@
 # BUG-014 — Unpaginated list queries silently omit records at season scale
 
 **Severity:** P1
-**Status:** Fixed (schedule and availability); the club directory is tracked as BUG-024
+**Status:** Fixed for the **web** schedule and availability views. The club directory is tracked as BUG-024; the mobile app is spec §15, a separate workstream.
 **Reported:** 2026-09-04 by readiness review (finding 14)
 **Area:** performance / data integrity
 **Evidence class:** Static (queries) — production row cap **confirmed 1,000** on 2026-09-15
@@ -123,3 +123,9 @@ The **club member directory**, the third query named above, is unchanged and is 
 reads across `organizations → teams → team_members → profiles` rather than events in a window, so the
 cursor work does not transfer directly, and how it should be navigated is an unanswered product
 question. This ticket is closed for the schedule and availability views only.
+
+**Web only.** Everything above is `apps/web`. The mobile Schedule and event-detail screens read the same
+way this ticket describes — every selected-team event, and every availability row for the active profile,
+neither paginated — and are covered by §15 of the specification as a separate PR and an independently
+verified release. Web acceptance was never gated on it, and closing this ticket does not imply mobile is
+fixed. When that work is picked up it should carry its own ticket referencing §15.

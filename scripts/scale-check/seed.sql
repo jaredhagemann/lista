@@ -3,14 +3,16 @@
 -- Builds one team with a long history and a crowded roster, so the reads can be
 -- measured against data that dwarfs what any page shows:
 --
---   * 100,000 events, almost all of them in the past
+--   * :events events, almost all of them in the past
 --   * 320 events inside the upcoming availability window
 --   * a roster of 150 members, so ten displayed events carry 1,500 responses
 --   * responses seeded as real rows, not merely possible event/player pairs
 --
 -- Takes a caller uuid (:caller) — a real signed-in profile — and puts it on the
 -- team, so every measurement runs under that user's own policies rather than
--- the service role's absence of them.
+-- the service role's absence of them, and an event count (:events), so the same
+-- shape can be measured as history grows (spec §13 asks for 1,000, 10,000 and
+-- 100,000 with the visible page held constant).
 --
 -- Never run against a database holding real player data (spec §13).
 
@@ -56,9 +58,9 @@ insert into team_members (team_id, profile_id, role)
 values ('5ca1e000-0000-0000-0000-000000000002', :'caller', 'player')
 on conflict do nothing;
 
--- 100,000 events. The first 99,680 are history, stretching back about 27 years
--- at four a day; the last 320 land inside the upcoming window, which is what
--- the availability matrix pages through.
+-- :events events. All but the last 320 are history, stretching back at four a
+-- day; those 320 land inside the upcoming window, which is what the schedule
+-- and the availability matrix page through.
 insert into events (id, team_id, title, event_type, start_time, end_time, is_cancelled, created_by)
 select
   ('5ca1e002-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
@@ -71,12 +73,12 @@ select
   -- all, the way rows predating the column look.
   case when n % 97 = 0 then true when n % 89 = 0 then null else false end,
   :'caller'
-from generate_series(1, 100000) as n
+from generate_series(1, :events) as n
 cross join lateral (
   select case
-    when n <= 99680
-      then now() - ((99680 - n) * interval '6 hours')
-    else now() + ((n - 99680) * interval '12 hours')
+    when n <= (:events - 320)
+      then now() - (((:events - 320) - n) * interval '6 hours')
+    else now() + ((n - (:events - 320)) * interval '12 hours')
   end as start_at
 ) as t;
 
