@@ -1,6 +1,6 @@
 # Schedule and availability pagination
 
-**Status:** Proposed implementation specification; pagination direction approved, defaults identified below remain proposals.
+**Status:** Implemented for the schedule and availability views, stages 1-5 (PRs #74, #75, #76, #77 and this one). Every default below is now settled; see the decision table.
 **Date:** September 21, 2026
 **Related work:** BUG-014, PR #73, BUG-010 (event timezones), BUG-009 (series edits).
 **Scope:** Sections 1–14 cover the web schedule list, calendar, and availability matrix. Section 15 is a separate mobile proposal with its own PR, tests, and release.
@@ -22,13 +22,13 @@ This specification supersedes the earlier BUG-014 decision to preload the entire
 | Shared pagination | Deterministic ordering, cursor continuation, explicit errors | Approved direction |
 | Availability on schedule edits | Preserve responses when dates, times, or venues change; existing notifications provide the opportunity to update them | Previously approved D4; unchanged |
 | Event timezone | Named event timezone with team default, as specified by D5/BUG-010 | Previously approved; not replaced by this specification |
-| Page navigation | Previous/Next and current page number; remove exact total pages from the critical path | Proposed default |
-| Calendar geometry | Preserve current start-date placement and blank cells outside the selected month | Proposed default; avoid coupling a calendar redesign to pagination |
-| Calendar display zone | Use team timezone for grid boundaries and placement; clearly label event-local times as required by D5 | Proposed default |
-| Cache policy | In-memory, six month entries per active context, 60-second freshness, refresh on focus/revisit | Proposed engineering defaults, subject to measurement |
-| Bulk availability | All unanswered future events matching the selected window and event-type filter, including unloaded event pages | Proposed default; explicit product clarification requested about the event-type filter |
+| Page navigation | Previous/Next and current page number; remove exact total pages from the critical path | **Approved** — shipped in stage 2 |
+| Calendar geometry | Preserve current start-date placement and blank cells outside the selected month | **Approved** — shipped in stage 2, unchanged from before |
+| Calendar display zone | Team timezone for grid boundaries and placement; when a team has none, the viewer's zone with a visible notice and a one-click fix for admins | **Approved** — amended in stage 2 after a staging report, then shipped |
+| Cache policy | In-memory, six month entries per active context, 60-second freshness, refresh on focus/revisit | **Approved** — shipped in stages 2-3; measured in the [scale verification](../reviews/2026-09-22-pagination-scale-verification.md) |
+| Bulk availability | All unanswered future events matching the selected window and event-type filter, including unloaded event pages | **Approved** — the event-type filter is respected, confirmed by the maintainer before stage 1; shipped in stage 4 |
 
-The bulk alternative is “all event types within the selected window.” It changes only the scope predicate and confirmation text in section 8, not the pagination architecture. Neither option means “only the current page.” Record the user's selection before implementing that behavior; the rest of the specification can be implemented independently.
+The bulk alternative was “all event types within the selected window.” The maintainer chose to respect the event-type filter, and section 8 is written to that choice. Neither option ever meant “only the current page.”
 
 ## 2. Current behavior and defects being addressed
 

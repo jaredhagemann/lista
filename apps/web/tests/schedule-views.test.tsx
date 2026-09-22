@@ -257,3 +257,31 @@ describe("keeping a month fresh (PR #75 review)", () => {
     await waitFor(() => expect(screen.getByText("Refreshed practice")).toBeTruthy());
   });
 });
+
+/**
+ * Acceptance check for spec §12: "Editing outside the calendar component still
+ * invalidates its cache."
+ *
+ * The two tabs are siblings, so a mutation in the list could in principle leave
+ * the calendar showing a month it cached beforehand. It cannot, and the reason
+ * is worth pinning: the inactive tab is unmounted, so its cache does not
+ * outlive the visit. If that ever changes, this fails and the invalidation has
+ * to become explicit.
+ */
+describe("what the calendar shows after the schedule changes elsewhere", () => {
+  it("reads the month again rather than reusing one cached before the change", async () => {
+    renderSchedule();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Calendar" }));
+    // The visible month, plus the two neighbours it prefetches.
+    await waitFor(() => expect(mocks.fetchEventRange).toHaveBeenCalledTimes(3));
+
+    await userEvent.click(screen.getByRole("tab", { name: "List" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Calendar" }));
+
+    // A cache kept across the switch would serve the month from memory, and an
+    // event cancelled, deleted or duplicated in the list meanwhile would still
+    // be drawn the old way.
+    await waitFor(() => expect(mocks.fetchEventRange.mock.calls.length).toBeGreaterThan(3));
+  });
+});
