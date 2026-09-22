@@ -185,6 +185,9 @@ export function AvailabilityMatrix({
   // The bulk confirmation, remembered with the exact selection it describes.
   const [bulk, setBulk] = useState<{ status: AvailabilityStatus; identity: string } | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  // True from the moment a bulk write returns until the page has been read
+  // again. Until then nobody — the reader included — knows what it did.
+  const [bulkRecovering, setBulkRecovering] = useState(false);
   // Bumped to read the current page again without changing what is being asked.
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -317,6 +320,8 @@ export function AvailabilityMatrix({
         nextCursor.current = eventPage.nextCursor;
         setFetched(map);
         readsCommitted.current += 1;
+        // The page now shows what the bulk write really did.
+        setBulkRecovering(false);
         // An edit whose write finished before this read started is in the rows
         // that just arrived, so it can stop being held separately. Anything
         // newer than the read — or still in flight — stays on top of it.
@@ -410,15 +415,18 @@ export function AvailabilityMatrix({
       if (error) {
         writes.current.delete(key);
         toast.error(error.message);
-        // Roll this row back on its own — an edit elsewhere, newer or older, is
-        // none of its business — and then ask what the value really is, rather
-        // than trusting a page read from before the attempt (spec §7.3).
-        // Only the entry this attempt put there: anything else on screen was
-        // put there by a later click, or by a later read, and is not this
-        // failure's to undo.
+        // Roll this row back on its own — a cell elsewhere is none of its
+        // business — and then ask what the value really is, rather than
+        // trusting a page read from before the attempt (spec §7.3).
+        //
+        // Deleting the chain above discarded anything queued behind the failed
+        // request, so the overlay goes too, whatever it now holds. A click that
+        // arrived while the failed one was in flight was never sent, and an
+        // unsettled chip that no request will ever save is a lie that survives
+        // every later refresh.
         setOverlay((prev) => {
           const edit = prev.get(key);
-          if (!edit || edit.status !== status || edit.settledTick !== null) return prev;
+          if (!edit || edit.settledTick !== null) return prev;
           const rest = new Map(prev);
           rest.delete(key);
           return rest;
@@ -510,13 +518,19 @@ export function AvailabilityMatrix({
     });
     setBulk(null);
     setBulkBusy(false);
+    // Holds until the read below lands, so a second attempt cannot be made
+    // over the responses from before the first one (spec §8.2).
+    setBulkRecovering(true);
 
     if (error) {
       // The outcome is unknown: a timeout may have committed the whole thing.
       // Announcing "0 events set" would be a guess, so it says what it knows
       // and re-reads instead (spec §8.2).
+      // Said in the present tense on purpose: the read has not happened yet,
+      // and claiming it has is exactly the kind of thing this page keeps
+      // getting wrong.
       toast.error(
-        `Couldn't finish setting unanswered events: ${error.message}. The page has been read again — check what was set before trying again.`
+        `Couldn't finish setting unanswered events: ${error.message}. Reading the responses again to show what was saved.`
       );
     } else {
       const written = typeof data === "number" ? data : 0;
@@ -535,7 +549,11 @@ export function AvailabilityMatrix({
   // Bulk acts for the profile whose page this is, never for other players
   // (spec §8.1). A past-only window has nothing it could set.
   const bulkTarget = members.find((m) => m.profileId === currentUserId);
-  const bulkAvailable = bulkTarget !== undefined && bulkRange(window_, anchor) !== null && !failure;
+  // Offered whenever the selection could have something to fill in; disabled,
+  // rather than removed, while it must not be used — the controls stay visible
+  // through loading and errors (spec §7.3).
+  const bulkOffered = bulkTarget !== undefined && bulkRange(window_, anchor) !== null;
+  const bulkDisabled = bulkBusy || bulkRecovering || failure !== null;
   // A confirmation belongs to the selection it was opened under. If that has
   // changed, it is describing a scope nobody is looking at any more.
   const openBulk = bulk && bulk.identity === identity ? bulk : null;
@@ -635,7 +653,7 @@ export function AvailabilityMatrix({
       {controls}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{windowLabel(window_, anchor, timeZone)}</p>
-        {bulkAvailable && (
+        {bulkOffered && (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-sm text-muted-foreground">Set unanswered to</span>
             {(["available", "maybe", "unavailable"] as const).map((status) => (
@@ -643,13 +661,18 @@ export function AvailabilityMatrix({
                 key={status}
                 variant="outline"
                 size="sm"
-                disabled={bulkBusy}
+                disabled={bulkDisabled}
                 aria-label={`Set unanswered to ${statusConfig[status].label}`}
                 onClick={() => setBulk({ status, identity })}
               >
                 {statusConfig[status].label}
               </Button>
             ))}
+            {bulkRecovering && (
+              // Says why the buttons cannot be used, and stops saying it when
+              // the read that will answer the question has landed.
+              <span className="text-xs text-muted-foreground">Checking what was saved…</span>
+            )}
           </div>
         )}
       </div>

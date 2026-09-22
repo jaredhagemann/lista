@@ -644,3 +644,63 @@ describe("a write still running when the team is left", () => {
     expect(current().getByTitle("Maybe")).toBeTruthy();
   });
 });
+
+/**
+ * Two client failure paths from the stage 4 review
+ * (docs/reviews/2026-09-22-pr77-review.md).
+ */
+describe("a failed write with another click already queued behind it", () => {
+  it("leaves nothing on screen that no request will ever save", async () => {
+    const failing = deferred<{ error: { message: string } }>();
+    mocks.upsert.mockReturnValueOnce(failing.promise);
+
+    renderMatrix();
+    const current = () => within(cell(upcomingEvent.id, PLAYER)!);
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+
+    // Available is sent; Maybe queues behind it and is never sent, because the
+    // chain that would have sent it is abandoned when Available fails.
+    await userEvent.click(current().getByRole("button"));
+    await userEvent.click(current().getByRole("button"));
+    expect(current().getByTitle("Maybe")).toBeTruthy();
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+
+    failing.resolve({ error: { message: "denied" } });
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+    // A chip nothing is trying to save is a lie that survives every refresh.
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a bulk action whose outcome is unknown", () => {
+  it("cannot be retried until the page has actually been read again", async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "timeout" } });
+    mocks.fetchResponsesForEvents.mockResolvedValueOnce([]);
+    const recovery = deferred<unknown[]>();
+    mocks.fetchResponsesForEvents.mockReturnValueOnce(recovery.promise);
+
+    renderMatrix();
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+
+    await user.click(screen.getByRole("button", { name: /Set unanswered to Available/ }));
+    await user.click(screen.getByRole("button", { name: "Set unanswered" }));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+
+    // The write may have committed everything. Offering another one over a page
+    // that still shows the responses from before it would be a retry made
+    // without knowing what the first attempt did (spec §8.2).
+    const bulkButton = () =>
+      screen.getByRole("button", { name: /Set unanswered to Available/ }) as HTMLButtonElement;
+    await waitFor(() => expect(bulkButton().disabled).toBe(true));
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+
+    recovery.resolve([{ event_id: upcomingEvent.id, profile_id: PLAYER, status: "available" }]);
+
+    await waitFor(() => expect(bulkButton().disabled).toBe(false));
+    expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy();
+  });
+});

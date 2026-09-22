@@ -204,6 +204,44 @@ describe("set_unanswered_availability", () => {
     expect(after.get(events["still-unanswered"])).toBe("available");
   });
 
+  it("lets a competing insert win rather than overwriting it", async () => {
+    const { coach, player, teamId } = await seedPlayerOnTeam();
+    const events = await seedEvents(teamId, coach.user.id, [
+      { title: "contested", daysFromNow: 2 },
+    ]);
+
+    // Genuinely at the same time, unlike the sequential case above: two
+    // transactions racing for the same (event_id, profile_id).
+    const [bulk, competing] = await Promise.all([
+      player.client.rpc("set_unanswered_availability", {
+        p_team_id: teamId,
+        p_profile_id: player.user.id,
+        p_status: "available",
+        p_event_type: null,
+        ...windowBounds(),
+      }),
+      adminClient.from("availability").insert({
+        event_id: events["contested"],
+        profile_id: player.user.id,
+        status: "unavailable",
+      }),
+    ]);
+
+    expect(bulk.error).toBeNull();
+    const after = await responsesFor(player.user.id);
+    // Whoever got there first, the unique key leaves exactly one row, and the
+    // bulk action never turns someone else's answer into its own.
+    expect(after.size).toBe(1);
+    if (bulk.data === 1) {
+      expect(after.get(events["contested"])).toBe("available");
+      expect(competing.error?.code).toBe("23505");
+    } else {
+      expect(bulk.data).toBe(0);
+      expect(after.get(events["contested"])).toBe("unavailable");
+      expect(competing.error).toBeNull();
+    }
+  });
+
   it("lets a guardian act for the player they manage", async () => {
     const coach = await createTestUser();
     const { teamId } = await createTestTeam(coach.user.id);
