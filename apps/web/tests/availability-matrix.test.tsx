@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup, within } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({
@@ -23,7 +23,9 @@ const mocks = vi.hoisted(() => ({
   fetchTeamRoster: vi.fn(),
   upsert: vi.fn(),
   del: vi.fn(),
+  rpc: vi.fn(),
   toastError: vi.fn(),
+  toastSuccess: vi.fn(),
 }));
 
 vi.mock("@/lib/events/queries", async (importOriginal) => ({
@@ -41,12 +43,13 @@ vi.mock("@/lib/supabase/client", () => {
       upsert: mocks.upsert,
       delete: () => ({ eq: () => ({ eq: mocks.del }) }),
     }),
+    rpc: mocks.rpc,
   };
   return { createClient: () => client };
 });
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: mocks.toastError, info: vi.fn() },
+  toast: { success: mocks.toastSuccess, error: mocks.toastError, info: vi.fn() },
 }));
 
 import { AvailabilityMatrix } from "@/components/availability/availability-matrix";
@@ -104,6 +107,7 @@ beforeEach(() => {
   ]);
   mocks.upsert.mockResolvedValue({ error: null });
   mocks.del.mockResolvedValue({ error: null });
+  mocks.rpc.mockResolvedValue({ data: 0, error: null });
 });
 
 afterEach(cleanup);
@@ -419,5 +423,329 @@ describe("the roster", () => {
     // Every ten-event step used to repeat the whole roster read, and wait for it
     // before showing any response (spec §7.2).
     expect(mocks.fetchTeamRoster).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Bulk availability across unloaded pages (spec §8).
+ *
+ * The control says "unanswered events in this range", and after pagination that
+ * is no longer the same thing as "the ten events on screen". So the scope goes
+ * to the database, and the confirmation has to say out loud that it covers
+ * events the reader has not seen.
+ */
+describe("filling in unanswered events", () => {
+  async function openConfirmation() {
+    renderMatrix();
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+    await user.click(screen.getByRole("button", { name: /Set unanswered to Available/ }));
+  }
+
+  it("describes the whole scope before writing anything", async () => {
+    await openConfirmation();
+
+    const dialog = await screen.findByRole("alertdialog");
+    const copy = dialog.textContent ?? "";
+    expect(copy).toContain("Set Zoey Butler to Available");
+    expect(copy).toContain("unanswered future events");
+    expect(copy).toContain("including events on other pages");
+    expect(copy).toContain("Existing responses will not be changed");
+    // Nothing is written until it is confirmed.
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("asks the database for the range, not the loaded page", async () => {
+    mocks.rpc.mockResolvedValue({ data: 7, error: null });
+    await openConfirmation();
+
+    await user.click(screen.getByRole("button", { name: "Set unanswered" }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalled());
+    const [name, args] = mocks.rpc.mock.calls[0];
+    expect(name).toBe("set_unanswered_availability");
+    expect(args.p_team_id).toBe(TEAM);
+    expect(args.p_profile_id).toBe(PLAYER);
+    expect(args.p_status).toBe("available");
+    expect(args.p_event_type).toBeUndefined();
+    expect(Date.parse(args.p_to)).toBeGreaterThan(Date.parse(args.p_from));
+
+    // The count reported is the one the database actually wrote.
+    await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalled());
+    expect(String(mocks.toastSuccess.mock.calls[0][0])).toContain("7");
+  });
+
+  it("reads the page again so the new responses are on screen", async () => {
+    mocks.rpc.mockResolvedValue({ data: 1, error: null });
+    mocks.fetchResponsesForEvents.mockResolvedValueOnce([]);
+    mocks.fetchResponsesForEvents.mockResolvedValue([
+      { event_id: upcomingEvent.id, profile_id: PLAYER, status: "available" },
+    ]);
+
+    await openConfirmation();
+    await user.click(screen.getByRole("button", { name: "Set unanswered" }));
+
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy()
+    );
+  });
+
+  it("does not claim nothing happened when the call fails", async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "timeout" } });
+
+    await openConfirmation();
+    await user.click(screen.getByRole("button", { name: "Set unanswered" }));
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+    // A timeout has an uncertain outcome: some events may have been written.
+    // Saying "0 events" would be a guess (spec §8.2).
+    const message = String(mocks.toastError.mock.calls[0][0]);
+    expect(message).not.toMatch(/\b0\b/);
+    // The page is read again so the reader can see what really happened.
+    await waitFor(() => expect(mocks.fetchResponsesForEvents.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("is not offered for a window that holds only past events", async () => {
+    renderMatrix();
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+
+    await user.click(screen.getByRole("button", { name: "Past 30 days" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Set unanswered to Available/ })).toBeNull()
+    );
+  });
+
+  it("closes the confirmation if the selection changes underneath it", async () => {
+    // The dialog is modal, so the window buttons behind it cannot be clicked.
+    // The selection changes underneath it when the app shell switches profile
+    // or team — the case this guard exists for (spec §8.1).
+    const view = render(
+      <AvailabilityMatrix teamId={TEAM} currentUserId={PLAYER} isAdmin={false} timeZone="UTC" />
+    );
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+    await user.click(screen.getByRole("button", { name: /Set unanswered to Available/ }));
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+
+    view.rerender(
+      <AvailabilityMatrix
+        teamId="33333333-3333-3333-3333-333333333333"
+        currentUserId={PLAYER}
+        isAdmin={false}
+        timeZone="UTC"
+      />
+    );
+
+    // Confirming from a dialog that describes a team nobody is looking at any
+    // more would write a scope the reader never agreed to.
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Two timing gaps the follow-up review found in the fixes above
+ * (docs/reviews/2026-09-21-pr76-followup-review.md).
+ */
+describe("a recovery read started by a failed write", () => {
+  it("does not overwrite a newer response that has since been saved and read", async () => {
+    const recovery = deferred<unknown[]>();
+    mocks.fetchResponsesForEvents
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(recovery.promise)
+      .mockResolvedValue([{ event_id: upcomingEvent.id, profile_id: PLAYER, status: "available" }]);
+    mocks.upsert
+      .mockResolvedValueOnce({ error: { message: "denied" } })
+      .mockResolvedValue({ error: null });
+
+    renderMatrix();
+    const current = () => within(cell(upcomingEvent.id, PLAYER)!);
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+
+    // The write fails and asks the server what the value really is.
+    await userEvent.click(current().getByRole("button"));
+    await waitFor(() => expect(mocks.fetchResponsesForEvents).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+
+    // The reader retries, it works, and a refresh confirms it from the server —
+    // all while that recovery read is still outstanding.
+    await userEvent.click(current().getByRole("button"));
+    await waitFor(() => expect(mocks.upsert).toHaveBeenCalledTimes(2));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(mocks.fetchResponsesForEvents).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(current().getByTitle("Available")).toBeTruthy());
+
+    // Its snapshot predates the retry, so it knows less than the screen does.
+    await act(async () => {
+      recovery.resolve([]);
+      await recovery.promise;
+    });
+    expect(current().getByTitle("Available")).toBeTruthy();
+  });
+});
+
+describe("a write still running when the team is left", () => {
+  it("still orders the writes that follow it when the team is revisited", async () => {
+    const slow = deferred<{ error: null }>();
+    let saved: string | null = null;
+    mocks.upsert
+      .mockImplementationOnce((row: { status: string }) =>
+        slow.promise.then((result) => {
+          saved = row.status;
+          return result;
+        })
+      )
+      .mockImplementation(async (row: { status: string }) => {
+        saved = row.status;
+        return { error: null };
+      });
+    mocks.fetchEventPage.mockImplementation(async (_client: unknown, args: { query: { teamId: string } }) =>
+      eventPage(args.query.teamId === TEAM ? [upcomingEvent] : [])
+    );
+
+    const view = renderMatrix();
+    const current = () => within(cell(upcomingEvent.id, PLAYER)!);
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+
+    await userEvent.click(current().getByRole("button"));
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+
+    // Away and back while that first save is still outstanding.
+    view.rerender(
+      <AvailabilityMatrix
+        teamId="33333333-3333-3333-3333-333333333333"
+        currentUserId={PLAYER}
+        isAdmin={false}
+        timeZone="UTC"
+      />
+    );
+    await waitFor(() => expect(screen.getByText(/No events in this range/)).toBeTruthy());
+    view.rerender(
+      <AvailabilityMatrix teamId={TEAM} currentUserId={PLAYER} isAdmin={false} timeZone="UTC" />
+    );
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+
+    await userEvent.click(current().getByRole("button"));
+    await userEvent.click(current().getByRole("button"));
+    expect(current().getByTitle("Maybe")).toBeTruthy();
+
+    // Leaving the team did not cancel the request already sent, so the writes
+    // that follow it must still queue behind it rather than race it.
+    await act(async () => {
+      slow.resolve({ error: null });
+      await slow.promise;
+    });
+    await waitFor(() => expect(saved).toBe("maybe"));
+    expect(current().getByTitle("Maybe")).toBeTruthy();
+  });
+});
+
+/**
+ * Two client failure paths from the stage 4 review
+ * (docs/reviews/2026-09-22-pr77-review.md).
+ */
+describe("a failed write with another click already queued behind it", () => {
+  it("leaves nothing on screen that no request will ever save", async () => {
+    const failing = deferred<{ error: { message: string } }>();
+    mocks.upsert.mockReturnValueOnce(failing.promise);
+
+    renderMatrix();
+    const current = () => within(cell(upcomingEvent.id, PLAYER)!);
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+
+    // Available is sent; Maybe queues behind it and is never sent, because the
+    // chain that would have sent it is abandoned when Available fails.
+    await userEvent.click(current().getByRole("button"));
+    await userEvent.click(current().getByRole("button"));
+    expect(current().getByTitle("Maybe")).toBeTruthy();
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+
+    failing.resolve({ error: { message: "denied" } });
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+    // A chip nothing is trying to save is a lie that survives every refresh.
+    await waitFor(() => expect(current().getByTitle("No response")).toBeTruthy());
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a bulk action whose outcome is unknown", () => {
+  it("cannot be retried until the page has actually been read again", async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "timeout" } });
+    mocks.fetchResponsesForEvents.mockResolvedValueOnce([]);
+    const recovery = deferred<unknown[]>();
+    mocks.fetchResponsesForEvents.mockReturnValueOnce(recovery.promise);
+
+    renderMatrix();
+    await waitFor(() =>
+      expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("No response")).toBeTruthy()
+    );
+
+    await user.click(screen.getByRole("button", { name: /Set unanswered to Available/ }));
+    await user.click(screen.getByRole("button", { name: "Set unanswered" }));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+
+    // The write may have committed everything. Offering another one over a page
+    // that still shows the responses from before it would be a retry made
+    // without knowing what the first attempt did (spec §8.2).
+    const bulkButton = () =>
+      screen.getByRole("button", { name: /Set unanswered to Available/ }) as HTMLButtonElement;
+    await waitFor(() => expect(bulkButton().disabled).toBe(true));
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+
+    recovery.resolve([{ event_id: upcomingEvent.id, profile_id: PLAYER, status: "available" }]);
+
+    await waitFor(() => expect(bulkButton().disabled).toBe(false));
+    expect(within(cell(upcomingEvent.id, PLAYER)!).getByTitle("Available")).toBeTruthy();
+  });
+});
+
+describe("where the bulk control lives", () => {
+  const TEAMMATE = "44444444-4444-4444-4444-444444444444";
+
+  function rowFor(name: string) {
+    const cellEl = screen.getByText(name).closest("td")!;
+    return within(cellEl);
+  }
+
+  it("sits on your own row, and on nobody else's", async () => {
+    mocks.fetchTeamRoster.mockResolvedValue([
+      { profileId: PLAYER, name: "Zoey Butler", role: "player" },
+      { profileId: TEAMMATE, name: "Sam Okafor", role: "player" },
+    ]);
+
+    render(
+      <AvailabilityMatrix teamId={TEAM} currentUserId={PLAYER} isAdmin timeZone="UTC" />
+    );
+    await waitFor(() => expect(screen.getByText("Sam Okafor")).toBeTruthy());
+
+    // Next to your name, as it was before pagination: "Set multiple:" and the
+    // three status chips.
+    expect(rowFor("Zoey Butler").getByText("Set multiple:")).toBeTruthy();
+    expect(
+      rowFor("Zoey Butler").getByRole("button", { name: "Set unanswered to Available" })
+    ).toBeTruthy();
+
+    // An admin may edit a teammate's individual cells, but bulk is only ever
+    // for the active profile (spec §8.1).
+    expect(rowFor("Sam Okafor").queryByText("Set multiple:")).toBeNull();
+    expect(
+      rowFor("Sam Okafor").queryByRole("button", { name: "Set unanswered to Available" })
+    ).toBeNull();
+  });
+
+  it("shows the status symbols, not words", async () => {
+    renderMatrix();
+    await waitFor(() => expect(screen.getByText("Set multiple:")).toBeTruthy());
+
+    const controls = screen.getByText("Set multiple:").closest("div")!;
+    expect(within(controls).getByRole("button", { name: "Set unanswered to Available" }).textContent).toBe("✓");
+    expect(within(controls).getByRole("button", { name: "Set unanswered to Maybe" }).textContent).toBe("?");
+    expect(within(controls).getByRole("button", { name: "Set unanswered to Unavailable" }).textContent).toBe("✗");
   });
 });
