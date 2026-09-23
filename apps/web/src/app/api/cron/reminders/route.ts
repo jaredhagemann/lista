@@ -55,9 +55,10 @@ export async function GET(request: Request) {
 
   for (const event of events) {
     const teamName = event.teams?.name ?? "Unknown";
-    // The server runs in UTC: format in the team's timezone, and name the event's
-    // actual day rather than assuming "tomorrow" (BUG-020).
-    const timeZone = resolveTimeZone(event.teams?.timezone);
+    // The server runs in UTC: format in the event's own zone (else the team's,
+    // for events from before event zones), and name the event's actual day
+    // rather than assuming "tomorrow" (BUG-020, BUG-010).
+    const timeZone = resolveTimeZone(event.timezone ?? event.teams?.timezone);
     const relativeDay = relativeEventDay(event.start_time, timeZone);
     const dayLabel = relativeDay ?? formatShortEventDate(event.start_time, timeZone);
 

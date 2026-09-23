@@ -226,6 +226,7 @@ export type Database = {
           score_for: number | null
           start_time: string
           team_id: string | null
+          timezone: string | null
           title: string
           uniform: string | null
         }
@@ -248,6 +249,7 @@ export type Database = {
           score_for?: number | null
           start_time: string
           team_id?: string | null
+          timezone?: string | null
           title: string
           uniform?: string | null
         }
@@ -270,6 +272,7 @@ export type Database = {
           score_for?: number | null
           start_time?: string
           team_id?: string | null
+          timezone?: string | null
           title?: string
           uniform?: string | null
         }

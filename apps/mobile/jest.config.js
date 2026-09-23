@@ -1,3 +1,8 @@
+// Pin the zone so date formatting never depends on the machine running the tests.
+// Tokyo is no event's zone and has no daylight saving, so a hidden use of the
+// phone's zone shows up as a wrong time (BUG-010).
+process.env.TZ = "Asia/Tokyo";
+
 module.exports = {
   preset: "jest-expo",
   setupFiles: ["./jest.setup.js"],

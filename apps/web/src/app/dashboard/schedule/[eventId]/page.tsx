@@ -11,7 +11,7 @@ type Event = Database["public"]["Tables"]["events"]["Row"] & {
 
 type MembershipWithTeam = {
   role: string;
-  teams: { home_uniform: string | null; away_uniform: string | null } | null;
+  teams: { home_uniform: string | null; away_uniform: string | null; timezone: string | null } | null;
 };
 
 export default async function EventDetailPage({
@@ -108,6 +108,7 @@ export default async function EventDetailPage({
       initialEdit={edit === "true"}
       homeUniform={membership.teams?.home_uniform ?? null}
       awayUniform={membership.teams?.away_uniform ?? null}
+      teamTimeZone={membership.teams?.timezone ?? null}
       currentUserId={activeProfileId}
       availabilityRows={availabilityData}
       members={membersData}

@@ -23,7 +23,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { buildRRule, expandRecurrenceFromLocalString, untilEndOfDay } from "@/lib/utils/rrule";
+import { buildRRule, untilEndOfDay } from "@/lib/utils/rrule";
+import { expandInZone, instantFromWallClock, isUsableTimeZone, wallClockIn } from "@/lib/events/event-timezone";
+import { browserTimeZone } from "@/lib/events/team-timezone";
+import { TimeZoneSelect } from "./time-zone-select";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 
@@ -32,13 +35,16 @@ type Location = Database["public"]["Tables"]["locations"]["Row"];
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
-function toLocalDatetime(date: Date): string {
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 16);
-}
+/**
+ * Start and end are wall-clock times ("YYYY-MM-DDTHH:mm") in the event's zone,
+ * never the browser's (BUG-010, D5): the coach may be anywhere.
+ */
+const wallMs = (wall: string) => Date.parse(`${wall}:00.000Z`);
+const shiftWall = (wall: string, ms: number) => new Date(wallMs(wall) + ms).toISOString().slice(0, 16);
 
-function jsToRRuleDay(jsDay: number): number {
+/** rrule weekday (0 = Monday) of a wall-clock date. */
+function wallRRuleDay(wall: string): number {
+  const jsDay = new Date(`${wall.slice(0, 10)}T00:00:00.000Z`).getUTCDay();
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
@@ -46,14 +52,18 @@ export function EventFormDialog({
   open,
   onClose,
   teamId,
-  defaultStart,
+  teamTimeZone,
+  defaultDate,
   homeUniform,
   awayUniform,
 }: {
   open: boolean;
   onClose: () => void;
   teamId: string;
-  defaultStart?: Date;
+  /** The team's zone: a new event's default. */
+  teamTimeZone?: string | null;
+  /** The day to start on ("YYYY-MM-DD"), in the event's zone. */
+  defaultDate?: string;
   homeUniform?: string | null;
   awayUniform?: string | null;
 }) {
@@ -67,31 +77,21 @@ export function EventFormDialog({
   const [locationId, setLocationId] = useState("");
   const [notes, setNotes] = useState("");
 
-  const defaultStartTime = (() => {
-    const base = defaultStart ? new Date(defaultStart) : new Date();
-    base.setHours(12, 0, 0, 0);
-    return toLocalDatetime(base);
-  })();
+  // The team's zone by default; the coach's own when the team has none yet.
+  const [timeZone, setTimeZone] = useState(() =>
+    isUsableTimeZone(teamTimeZone) ? teamTimeZone : browserTimeZone() ?? "UTC"
+  );
+  const defaultDay = defaultDate ?? wallClockIn(new Date(), timeZone).slice(0, 10);
 
-  const defaultEndTime = (() => {
-    const base = defaultStart ? new Date(defaultStart) : new Date();
-    base.setHours(13, 0, 0, 0);
-    return toLocalDatetime(base);
-  })();
-
-  const [startTime, setStartTime] = useState(defaultStartTime);
-  const [endTime, setEndTime] = useState(defaultEndTime);
+  const [startTime, setStartTime] = useState(`${defaultDay}T12:00`);
+  const [endTime, setEndTime] = useState(`${defaultDay}T13:00`);
 
   function handleStartTimeChange(newStart: string) {
     if (newStart && startTime && endTime) {
-      const durationMs =
-        new Date(endTime).getTime() - new Date(startTime).getTime();
-      setEndTime(
-        toLocalDatetime(new Date(new Date(newStart).getTime() + durationMs))
-      );
+      setEndTime(shiftWall(newStart, wallMs(endTime) - wallMs(startTime)));
     }
     if (frequencyMode === "custom" && newStart) {
-      const rruleDay = jsToRRuleDay(new Date(newStart).getDay());
+      const rruleDay = wallRRuleDay(newStart);
       setCustomDays((prev) =>
         prev.includes(rruleDay) ? prev : [...prev, rruleDay]
       );
@@ -174,8 +174,9 @@ export function EventFormDialog({
       event_type: eventType,
       location_id: resolvedLocationId,
       notes: notes || null,
-      start_time: new Date(startTime).toISOString(),
-      end_time: new Date(endTime).toISOString(),
+      start_time: instantFromWallClock(startTime, timeZone).toISOString(),
+      end_time: instantFromWallClock(endTime, timeZone).toISOString(),
+      timezone: timeZone,
       created_by: user.id,
       opponent: eventType === "game" ? opponent || null : null,
       home_away: eventType === "game" ? homeAway || null : null,
@@ -187,10 +188,8 @@ export function EventFormDialog({
     };
 
     if (isRecurring && recurUntil) {
-      const startDate = new Date(startTime);
-      const endDate = new Date(endTime);
-      const durationMs = endDate.getTime() - startDate.getTime();
-      const startDayRRule = jsToRRuleDay(startDate.getDay());
+      const durationMs = wallMs(endTime) - wallMs(startTime);
+      const startDayRRule = wallRRuleDay(startTime);
 
       const daysOfWeek =
         frequencyMode === "custom"
@@ -222,7 +221,8 @@ export function EventFormDialog({
         return;
       }
 
-      const occurrences = expandRecurrenceFromLocalString(startTime, rruleString);
+      // Each occurrence keeps the local start time in the event's zone, across DST.
+      const occurrences = expandInZone(startTime, rruleString, timeZone);
       const childEvents = occurrences.slice(1).map((date) => ({
         ...eventData,
         start_time: date.toISOString(),
@@ -281,7 +281,7 @@ export function EventFormDialog({
     return drainNotifications();
   }
 
-  const startDayRRule = jsToRRuleDay(new Date(startTime).getDay());
+  const startDayRRule = wallRRuleDay(startTime);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -418,6 +418,8 @@ export function EventFormDialog({
               </div>
             </div>
 
+            <TimeZoneSelect value={timeZone} onChange={setTimeZone} teamTimeZone={teamTimeZone} />
+
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea
@@ -482,7 +484,7 @@ export function EventFormDialog({
                   Email and push the families about this event
                 </p>
               </div>
-              <Switch checked={notifyTeam} onCheckedChange={setNotifyTeam} />
+              <Switch checked={notifyTeam} onCheckedChange={setNotifyTeam} aria-label="Notify the team" />
             </div>
 
             {/* Recurring toggle */}
@@ -493,7 +495,7 @@ export function EventFormDialog({
                   Repeat this event on a schedule
                 </p>
               </div>
-              <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+              <Switch checked={isRecurring} onCheckedChange={setIsRecurring} aria-label="Recurring event" />
             </div>
 
             {isRecurring && (

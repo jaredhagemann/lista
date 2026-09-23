@@ -22,7 +22,7 @@ All three Vercel cron jobs — event reminders, trial expiration, subdomain quar
 
 **Reproduced** by **3 cron probes** (`it.each` over the three paths). The Sept 4 probe file contains 5
 assertions in total — those 3 plus one recurrence and one email-formatting probe, which belong to
-[BUG-010](../010-event-time-and-recurrence-boundaries.md).
+[BUG-010](./010-event-time-and-recurrence-boundaries.md).
 
 1. Build a `NextRequest` for each path in `apps/web/vercel.json` with no session cookie and a `Bearer` header.
 2. Call `updateSession(request)`.
@@ -211,7 +211,7 @@ expiration on 2026-09-17.
 
 **First scheduled runs — 2026-09-17.** The 12:00 UTC reminders job **ran in production**: the user received a
 real reminder email for a same-day practice. That email exposed the timezone defect in
-[BUG-010](../010-event-time-and-recurrence-boundaries.md), which is a separate bug. The 02:00 UTC
+[BUG-010](./010-event-time-and-recurrence-boundaries.md), which is a separate bug. The 02:00 UTC
 subdomain-quarantine and 12:00 UTC trial-expiration runs have no user-visible output and are not yet confirmed.
 Check them in the Vercel Cron Jobs view.
 

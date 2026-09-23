@@ -74,7 +74,8 @@ async function runJob(db: Db, job: NotificationJob) {
     });
     const planned = planDeliveries(recipients, isChat ? ["push"] : ["email", "push"]);
 
-    const timeZone = resolveTimeZone(team.timezone);
+    // The event's own zone, else the team's for events and jobs from before event zones (BUG-010).
+    const timeZone = resolveTimeZone(isChat ? team.timezone : job.snapshot.timezone ?? team.timezone);
     const chat = isChat ? (job.snapshot as unknown as ChatSnapshot) : null;
     const subject = chat ? chat.title : jobSubject(job);
     const html = chat ? "" : buildJobEmail(job, team.name, timeZone);

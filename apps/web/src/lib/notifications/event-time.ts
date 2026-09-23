@@ -54,6 +54,13 @@ function zoneLabel(instant: string | Date, timeZone: string): string {
   );
 }
 
+/** "America/Denver (MDT)" — the zone's name, with its abbreviation at that instant. */
+export function formatZoneName(timeZone: string, at: string | Date = new Date()): string {
+  const label = zoneLabel(at, timeZone);
+  const name = timeZone.replace(/_/g, " ");
+  return label === timeZone ? name : `${name} (${label})`;
+}
+
 /** "4:00 PM PDT" */
 export function formatEventTime(instant: string | Date, timeZone: string): string {
   return `${formatTime(instant, timeZone)} ${zoneLabel(instant, timeZone)}`;

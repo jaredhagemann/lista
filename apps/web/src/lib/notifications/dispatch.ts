@@ -23,6 +23,8 @@ export type EventSnapshot = {
   location_id: string | null;
   location_name: string | null;
   is_cancelled: boolean | null;
+  /** The event's own zone (BUG-010). Absent from jobs queued before event zones. */
+  timezone?: string | null;
 };
 
 export type NotificationJob = {

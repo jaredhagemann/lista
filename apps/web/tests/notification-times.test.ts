@@ -263,3 +263,60 @@ describe("event notifications (new / updated / cancelled) use the team's timezon
     expect(sentPush().body).toBe("Thu, Sep 17 at 4:00 PM PDT — Islay Park");
   });
 });
+
+describe("notifications use the event's own timezone over the team's (BUG-010, D5)", () => {
+  // A Pacific team playing an away game in Denver: 4:00 PM Mountain is 22:00 UTC.
+  const DENVER = "America/Denver";
+  const AWAY_GAME = { start_time: "2026-09-17T22:00:00.000Z", end_time: "2026-09-17T23:30:00.000Z" };
+
+  it("the reminder shows the event's local time and zone", async () => {
+    configureTeam([{ ...eventFor(PACIFIC, AWAY_GAME), timezone: DENVER }]);
+
+    await runReminders(new Request("http://localhost/api/cron/reminders", {
+      headers: { authorization: "Bearer secret" },
+    }));
+
+    expect(sentEmail().html).toContain("4:00 PM – 5:30 PM MDT");
+    expect(sentPush().body).toBe("Today at 4:00 PM MDT — Islay Park");
+  });
+
+  it("a reminder for an event with no zone of its own still uses the team's", async () => {
+    configureTeam([{ ...eventFor(PACIFIC), timezone: null }]);
+
+    await runReminders(new Request("http://localhost/api/cron/reminders", {
+      headers: { authorization: "Bearer secret" },
+    }));
+
+    expect(sentPush().body).toBe("Today at 4:00 PM PDT — Islay Park");
+  });
+
+  it("a queued change notice uses the zone in its snapshot", async () => {
+    configureTeam(eventFor(PACIFIC));
+    mocks.tables.teams = { name: "AYSO Girls U10", timezone: PACIFIC };
+    mocks.jobs.push({
+      id: "job-2",
+      team_id: "team-1",
+      event_id: "evt-1",
+      action: "updated",
+      kind: "event",
+      occurrence_count: 1,
+      attempts: 1,
+      recipient_profile_ids: null,
+      snapshot: {
+        title: "Away game",
+        event_type: "game",
+        ...AWAY_GAME,
+        timezone: DENVER,
+        arrival_time: 30,
+        location_id: null,
+        location_name: "Islay Park",
+        is_cancelled: false,
+      },
+    });
+
+    await drainNotificationJobs();
+
+    expect(sentEmail().html).toContain("4:00 PM – 5:30 PM MDT");
+    expect(sentPush().body).toBe("Thu, Sep 17 at 4:00 PM MDT — Islay Park");
+  });
+});

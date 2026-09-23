@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../lib/supabase";
+import { eventZone, formatEventClock, formatEventDay } from "../../lib/event-time";
 import { useAppContext } from "../../contexts/AppContext";
 
 type Event = {
@@ -19,17 +20,15 @@ type Event = {
   title: string;
   event_type: string;
   start_time: string;
+  timezone: string | null;
+  teams: { timezone: string | null } | null;
   locations: { name: string } | null;
 };
 
-function formatEventTime(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+/** "Thu, Sep 17, 4:00 PM MDT", in the event's own zone (BUG-010). */
+function formatEventTime(event: Event) {
+  const zone = eventZone(event);
+  return `${formatEventDay(event.start_time, zone)}, ${formatEventClock(event.start_time, zone)}`;
 }
 
 function eventTypeBadgeClass(type: string) {
@@ -62,7 +61,7 @@ export default function HomeScreen() {
     const [eventsResult, countResult] = await Promise.all([
       supabase
         .from("events")
-        .select("id, title, event_type, start_time, locations(name)")
+        .select("id, title, event_type, start_time, timezone, teams(timezone), locations(name)")
         .eq("team_id", membership.teamId)
         .eq("is_cancelled", false)
         .gte("start_time", new Date().toISOString())
@@ -221,7 +220,7 @@ export default function HomeScreen() {
                       </View>
                     </View>
                     <Text className="text-sm text-gray-500 mt-0.5">
-                      {formatEventTime(event.start_time)}
+                      {formatEventTime(event)}
                     </Text>
                     {event.locations?.name ? (
                       <Text className="text-sm text-gray-400">
