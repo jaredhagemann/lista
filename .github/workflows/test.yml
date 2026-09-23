@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# A newer push to the same PR supersedes the run in progress, so two runs never
+# pull the Supabase images at once. Runs on main always finish.
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   unit:
     name: Unit tests
@@ -38,8 +44,27 @@ jobs:
           # anon role and every test failed with "permission denied for table
           # organizations". 2.78.1 is verified to work with those keys.
           version: 2.78.1
+      # Only the containers the tests use: the database, auth, the REST API, storage
+      # (storage.test.ts, team-deletion.test.ts) and the gateway in front of them.
+      # Every other image was downloaded on every run for nothing, and on
+      # 2026-09-23 the registry refused those downloads (toomanyrequests) three
+      # times in a row before a single test ran.
+      #
+      # A refused download is usually brief, so retry with a growing wait rather
+      # than fail the job.
       - name: Start local Supabase stack
-        run: supabase start
+        run: |
+          for attempt in 1 2 3; do
+            if supabase start -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor; then
+              exit 0
+            fi
+            supabase stop --no-backup || true
+            if [ "$attempt" -lt 3 ]; then
+              echo "supabase start failed (attempt $attempt); retrying in $((attempt * 60))s"
+              sleep $((attempt * 60))
+            fi
+          done
+          exit 1
       - name: Copy test env
         run: cp .env.test.local.example .env.test.local
       - run: pnpm install
