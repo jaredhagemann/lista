@@ -12,7 +12,7 @@ import {
 import {
   claimStripeEvent,
   completeStripeEvent,
-  notOlderThanStored,
+  releaseStripeEvent,
 } from "@/lib/billing/webhook-ledger";
 
 /**
@@ -27,14 +27,16 @@ import {
  * "Trial Expiration (Day 91 Cron)" (`customer.subscription.created` is a
  * deliberate no-op so the cron's `subscriptions.create` doesn't double-write).
  *
- * Idempotency: every write is shaped as "set DB to the value observed in the
- * Stripe event" — Stripe may replay events, and conditional Stripe Schedules
- * fire `customer.subscription.updated` more than once for a single phase
- * transition, so the same value being written twice must be safe.
+ * Replay and ordering, the two things Stripe does not spare you (BUG-015):
  *
- * That makes the *writes* replay-safe; it does nothing for the emails, and
- * nothing for ordering. `stripe_webhook_events` covers the first and
- * `organizations.stripe_event_at` the second (BUG-015).
+ *   * Replay — `stripe_webhook_events` records each event and whether it
+ *     finished, and a delivery takes an exclusive claim before doing any work,
+ *     so two overlapping deliveries cannot both send the same email. A claim
+ *     that goes stale is reclaimable, so an attempt that dies is retried.
+ *   * Ordering — not solved, avoided. Stripe promises no order and says its
+ *     event timestamps must not be used to infer one, so subscription state is
+ *     read back from Stripe rather than taken from the event snapshot. Whichever
+ *     delivery lands last writes the same present-tense answer.
  *
  * Acknowledgement rule: a 2xx tells Stripe to stop retrying, so it is only
  * honest once the work is committed — or once something durable has taken on
@@ -75,9 +77,14 @@ export async function POST(request: Request) {
     // Already processed on an earlier delivery, emails included.
     return NextResponse.json({ received: true, duplicate: true });
   }
+  if (claim === "busy") {
+    // Another delivery of this same event is mid-flight. Acknowledging would
+    // vouch for work this request is not doing and cannot see the end of.
+    return NextResponse.json({ error: "already_processing" }, { status: 409 });
+  }
 
   try {
-    await handleEvent(admin, event, eventAt);
+    await handleEvent(admin, event);
   } catch (error) {
     // Deliberately not acknowledged: nothing here has taken responsibility for
     // finishing the work, so Stripe retrying is what makes it eventually true.
@@ -85,6 +92,9 @@ export async function POST(request: Request) {
       `Stripe webhook ${event.type} (${event.id}) failed:`,
       error instanceof Error ? error.message : error,
     );
+    // Step aside so the retry can start immediately rather than waiting out a
+    // claim held by an attempt that already knows it failed.
+    await releaseStripeEvent(admin, event.id);
     return NextResponse.json({ error: "processing_failed" }, { status: 500 });
   }
 
@@ -92,10 +102,70 @@ export async function POST(request: Request) {
     // The work is done but unrecorded. A retry would redo it — the writes are
     // value-idempotent, and the emails would repeat, which is the lesser harm
     // against silently losing the record of a completed event.
+    await releaseStripeEvent(admin, event.id);
     return NextResponse.json({ error: "ledger_unavailable" }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
+}
+
+/**
+ * Writes what the subscription *is*, rather than what an event said it became.
+ *
+ * Stripe does not promise delivery order and says its event timestamps must not
+ * be used to infer one, so two invoice events for a subscription can arrive
+ * either way round. Asking Stripe for the subscription makes that harmless:
+ * whichever delivery lands last writes the same present-tense answer. It is
+ * also what stops a delayed paid invoice reviving a cancelled club — by then
+ * Stripe reports the subscription as cancelled, so that is what gets written.
+ */
+async function reconcileSubscription(
+  admin: AdminClient,
+  subscriptionId: string,
+  what: string,
+): Promise<void> {
+  const sub = await getStripe().subscriptions.retrieve(subscriptionId);
+  const status = subscriptionStatusFor(sub.status);
+  const updates: Record<string, unknown> = {};
+
+  // An unrecognised Stripe status is not written at all: the column permits
+  // four values, and choosing one of them for "incomplete" or "paused" would be
+  // a guess about somebody's access.
+  if (status) updates.subscription_status = status;
+
+  updates.subscription_cancel_at =
+    sub.cancel_at_period_end && sub.cancel_at
+      ? new Date(sub.cancel_at * 1000).toISOString()
+      : null;
+
+  const priceId = sub.items?.data?.[0]?.price?.id;
+  const mapped = priceId ? planFromPriceId(priceId) : null;
+  if (mapped) {
+    updates.plan = mapped.plan;
+    updates.team_limit = mapped.teamLimit;
+  }
+
+  await mustWrite(
+    admin.from("organizations").update(updates).eq("stripe_subscription_id", subscriptionId),
+    what,
+  );
+}
+
+/** Stripe has more statuses than this column allows; map only the clear ones. */
+function subscriptionStatusFor(status: string): string | null {
+  switch (status) {
+    case "trialing":
+    case "active":
+      return status;
+    case "past_due":
+    case "unpaid":
+      return "past_due";
+    case "canceled":
+    case "incomplete_expired":
+      return "canceled";
+    default:
+      return null;
+  }
 }
 
 /** A Supabase write that failed. Unwinds to the 500 above. */
@@ -113,11 +183,7 @@ async function mustWrite<T extends { error: { message: string } | null }>(
   return result;
 }
 
-async function handleEvent(
-  admin: AdminClient,
-  event: Stripe.Event,
-  eventAt: string,
-): Promise<void> {
+async function handleEvent(admin: AdminClient, event: Stripe.Event): Promise<void> {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -180,11 +246,7 @@ async function handleEvent(
       }
 
       await mustWrite(
-        admin
-          .from("organizations")
-          .update({ ...updates, stripe_event_at: eventAt })
-          .eq("stripe_subscription_id", sub.id)
-          .or(notOlderThanStored(eventAt)),
+        admin.from("organizations").update(updates).eq("stripe_subscription_id", sub.id),
         "subscription.updated",
       );
       break;
@@ -195,31 +257,37 @@ async function handleEvent(
 
       // Read the current row first so we know which Redis cache keys to bust
       // for the white-label tenant resolver.
-      const { data: currentOrg } = await admin
-        .from("organizations")
-        .select("subdomain, subdomain_status, custom_domain")
-        .eq("stripe_subscription_id", sub.id)
-        .maybeSingle();
+      const { data: currentOrg } = await mustWrite(
+        admin
+          .from("organizations")
+          .select("subdomain, subdomain_status, custom_domain")
+          .eq("stripe_subscription_id", sub.id)
+          .maybeSingle(),
+        "subscription.deleted read",
+      );
 
       // Subdomain is quarantined (not cleared) — the value stays on the row so
       // no other org can claim it for 180 days. `resolveTenant()` only returns
       // a tenant context when subdomain_status = 'active', so the host
       // immediately stops serving the white-label experience after the
       // invalidation below.
-      await admin
-        .from("organizations")
-        .update({
-          plan: "free",
-          team_limit: teamLimitForPlan("free"),
-          subscription_status: "canceled",
-          subscription_cancel_at: null,
-          subdomain_status: currentOrg?.subdomain ? "quarantined" : null,
-          subdomain_quarantined_at: currentOrg?.subdomain
-            ? new Date().toISOString()
-            : null,
-          custom_domain: null,
-        })
-        .eq("stripe_subscription_id", sub.id);
+      await mustWrite(
+        admin
+          .from("organizations")
+          .update({
+            plan: "free",
+            team_limit: teamLimitForPlan("free"),
+            subscription_status: "canceled",
+            subscription_cancel_at: null,
+            subdomain_status: currentOrg?.subdomain ? "quarantined" : null,
+            subdomain_quarantined_at: currentOrg?.subdomain
+              ? new Date().toISOString()
+              : null,
+            custom_domain: null,
+          })
+          .eq("stripe_subscription_id", sub.id),
+        "subscription.deleted",
+      );
 
       const invalidations: Promise<void>[] = [];
       if (currentOrg?.subdomain) {
@@ -288,14 +356,7 @@ async function handleEvent(
           : null;
       if (!subscriptionId) break;
 
-      await mustWrite(
-        admin
-          .from("organizations")
-          .update({ subscription_status: "active", stripe_event_at: eventAt })
-          .eq("stripe_subscription_id", subscriptionId)
-          .or(notOlderThanStored(eventAt)),
-        "invoice.payment_succeeded",
-      );
+      await reconcileSubscription(admin, subscriptionId, "invoice.payment_succeeded");
 
       // Spec: "Payment confirmed" email. Fires after the status flip so the
       // billing page link in the email lands the user on the correct badge.
@@ -311,14 +372,7 @@ async function handleEvent(
           : null;
       if (!subscriptionId) break;
 
-      await mustWrite(
-        admin
-          .from("organizations")
-          .update({ subscription_status: "past_due", stripe_event_at: eventAt })
-          .eq("stripe_subscription_id", subscriptionId)
-          .or(notOlderThanStored(eventAt)),
-        "invoice.payment_failed",
-      );
+      await reconcileSubscription(admin, subscriptionId, "invoice.payment_failed");
 
       // Spec: "Action required: payment failed" email. The org is now in
       // past_due; Stripe will smart-retry the invoice over the next few days.
@@ -353,13 +407,16 @@ async function handleSubscriptionSession(
   const subscriptionId = session.subscription as string | null;
   if (!subscriptionId) return;
 
-  const { data: currentOrg } = await admin
-    .from("organizations")
-    .select(
-      "subdomain, subdomain_status, stripe_customer_id, subscription_status",
-    )
-    .eq("id", orgId)
-    .maybeSingle();
+  const { data: currentOrg } = await mustWrite(
+    admin
+      .from("organizations")
+      .select(
+        "subdomain, subdomain_status, stripe_customer_id, subscription_status",
+      )
+      .eq("id", orgId)
+      .maybeSingle(),
+    "checkout.subscription read",
+  );
 
   // Guard: only activate if the org's stripe_customer_id matches this session's
   // customer AND the org is not already in a 'canceled' state. The
@@ -392,16 +449,19 @@ async function handleSubscriptionSession(
       ? { subdomain_status: "active", subdomain_quarantined_at: null }
       : {};
 
-  await admin
-    .from("organizations")
-    .update({
-      plan: mapped.plan,
-      team_limit: mapped.teamLimit,
-      stripe_subscription_id: subscriptionId,
-      subscription_status: "active",
-      ...subdomainRestore,
-    })
-    .eq("id", orgId);
+  await mustWrite(
+    admin
+      .from("organizations")
+      .update({
+        plan: mapped.plan,
+        team_limit: mapped.teamLimit,
+        stripe_subscription_id: subscriptionId,
+        subscription_status: "active",
+        ...subdomainRestore,
+      })
+      .eq("id", orgId),
+    "checkout.subscription activation",
+  );
 
   if (
     "subdomain_status" in subdomainRestore &&
@@ -449,8 +509,8 @@ async function handleSetupSession(
   // creation, but Stripe's setup-session flow can also be invoked outside
   // create-setup (e.g. legacy seed data) — writing here guarantees the column
   // is populated by the time the cron runs.
-  await admin
-    .from("organizations")
-    .update({ stripe_customer_id: customerId })
-    .eq("id", orgId);
+  await mustWrite(
+    admin.from("organizations").update({ stripe_customer_id: customerId }).eq("id", orgId),
+    "checkout.setup customer",
+  );
 }

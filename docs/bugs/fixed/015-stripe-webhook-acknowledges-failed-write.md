@@ -91,7 +91,7 @@ for. This is also what stops the billing emails going out twice, which the "ever
 DB to the observed value" idempotency note in the route never covered — it made the writes replay-safe
 and said nothing about side effects.
 
-**3. An ordering guard, because Stripe does not promise order.** `organizations.stripe_event_at` records
+**3. (Superseded — see the review round below.) An ordering guard.** `organizations.stripe_event_at` records
 the Stripe timestamp behind the current billing state, and every state write carries
 `stripe_event_at.is.null,stripe_event_at.lt."<event time>"`. Expressed as a filter rather than a
 read-then-write so the comparison and the write are one statement: two deliveries racing cannot both
@@ -125,3 +125,63 @@ a correctness fix.
 - Full suites: `apps/web` **910**, RLS **458**, root selection **228**, `tsc` and eslint clean.
 - Not verified against live Stripe. The ticket asks explicitly not to force a failure by changing
   permissions on a real project, so the failure paths are exercised with mocked errors.
+
+---
+
+## Review round (docs/reviews/2026-09-22-pr80-bug015-review.md)
+
+Four findings, all reproduced by the reviewer's probes before any change. Two of them say the first
+attempt was wrong rather than incomplete.
+
+**Three writes were never checked, and the claim that they were was false.** The terminal cancellation
+write and both checkout helpers still called `await admin.from(...).update(...)` directly. The PR said
+"nothing can be discarded silently without deleting that helper"; three of the seven writes had never
+been routed through it. Two required *reads* discarded their errors too — the checkout eligibility read
+treated a failed read as "not eligible" and returned normally, leaving a paid activation unapplied and
+the event recorded as completed. All of them now go through `mustWrite`, reads included, and there is no
+bare `await admin` left in the file.
+
+**Ordering events was the wrong problem.** The watermark failed in three ways: Stripe says its event
+timestamps must not be used to infer order and two distinct events can share a second, so a strict
+comparison silently dropped the second; one watermark for several independent fields let a status-only
+invoice write discard an older subscription event carrying a tier change the invoice never supplied; and
+terminal cancellation never participated at all, so a delayed paid invoice could flip a cancelled club
+back to active.
+
+Patching those individually leads to per-field versioning, which still cannot order two events from the
+same second. So the mechanism is gone. The route now asks Stripe what the subscription *currently* is
+whenever one of its events arrives, and writes that — which is Stripe's own guidance. Whichever delivery
+lands last writes the same present-tense answer, so there is nothing left to order. `stripe_event_at` is
+dropped.
+
+**An incomplete ledger row was not an exclusive claim.** Two overlapping deliveries of one event both saw
+`completed_at` null and both processed it, emailing the owner twice. Claiming is now insert-or-take:
+a later delivery may only take the row if the event never finished *and* the previous claim has gone
+stale, in one statement, so two live handlers cannot both own it. A delivery that finds it genuinely busy
+answers 409 rather than acknowledging work it is not doing.
+
+Writing that guard surfaced a problem the review did not raise: a delivery that failed *cleanly* kept
+holding its claim and answered 409 to its own retry until the lease expired, turning a transient database
+error into five minutes of refusals. A failed attempt now releases its claim; the lease is only for
+handlers that die without saying so.
+
+### On the reviewer's probes
+
+Three of the seven cannot run against this design — they fail with
+`admin.from(...).update(...).eq(...).is is not a function`, because their database double predates the
+exclusive claim. They are not evidence either way now. Every behaviour they assert is covered in
+`tests/billing/webhook-delivery.test.ts` instead, including the independent-tier case, which is
+demonstrated rather than assumed to follow from removing the watermark.
+
+### Verification, second round
+
+- `tests/billing/webhook-delivery.test.ts` — **15** cases: four failing-write paths (invoice, terminal
+  cancellation, checkout activation, checkout setup) each unacknowledged and unrecorded; a failed
+  delivery releasing its claim so the retry is not refused; a stale claim reclaimable but a live one not;
+  sequential and *overlapping* duplicates each having one effect and one email; same-second distinct
+  events both applied; an independent tier change surviving a newer invoice; a cancelled subscription not
+  revived by a late paid invoice; and signature rejection untouched.
+- `apps/web/tests/webhook-api.test.ts` (37) and the rest of `tests/billing` (74) pass. The invoice tests
+  now stub what Stripe currently reports, because the event type no longer decides the status — a failed
+  payment Stripe has since retried successfully reconciles to active, and that is the right answer.
+- Full suites: `apps/web` **910**, RLS **458**, root selection **237**, `tsc` and eslint clean.

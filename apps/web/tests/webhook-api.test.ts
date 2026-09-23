@@ -211,6 +211,15 @@ function resetState() {
 
 beforeEach(() => {
   resetState();
+  // Invoice and subscription events reconcile against Stripe rather than
+  // trusting the event snapshot (BUG-015 review), so retrieve must answer.
+  mocks.subscriptionsRetrieve.mockResolvedValue({
+    id: "sub_reconciled",
+    status: "active",
+    cancel_at_period_end: false,
+    cancel_at: null,
+    items: { data: [] },
+  });
   vi.stubEnv("STRIPE_CLUB_SMALL_PRICE_ID", SMALL_PRICE);
   vi.stubEnv("STRIPE_CLUB_LARGE_PRICE_ID", LARGE_PRICE);
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test");
@@ -757,8 +766,6 @@ describe("POST /api/billing/webhook — customer.subscription.updated", () => {
     await POST(makeWebhookRequest());
     expect(mocks.updateCalls[0].filters).toEqual([
       { column: "stripe_subscription_id", value: "sub_existing" },
-      // And the ordering guard, so a late older event cannot overwrite this.
-      { column: "or", value: expect.stringContaining("stripe_event_at") },
     ]);
   });
 });
@@ -911,16 +918,23 @@ describe("POST /api/billing/webhook — invoice events", () => {
       column: "stripe_subscription_id",
       value: "sub_paid",
     });
+    // Written because Stripe says the subscription is active right now, not
+    // because a payment_succeeded event implied it.
+    expect(mocks.subscriptionsRetrieve).toHaveBeenCalledWith("sub_paid");
     expect(update?.values).toMatchObject({ subscription_status: "active" });
-    // Stamped so a later out-of-order event can be recognised as older.
-    expect(update?.values.stripe_event_at).toEqual(expect.any(String));
-    expect(update?.filters).toContainEqual({
-      column: "or",
-      value: expect.stringContaining("stripe_event_at"),
-    });
   });
 
   it("invoice.payment_failed → subscription_status='past_due'", async () => {
+    // The event type no longer decides the status; Stripe does. A failed
+    // payment that Stripe has already retried successfully would reconcile to
+    // active, and that would be the right answer.
+    mocks.subscriptionsRetrieve.mockResolvedValue({
+      id: "sub_failed",
+      status: "past_due",
+      cancel_at_period_end: false,
+      cancel_at: null,
+      items: { data: [] },
+    });
     stubEvent({
       type: "invoice.payment_failed",
       data: {
@@ -937,12 +951,8 @@ describe("POST /api/billing/webhook — invoice events", () => {
       column: "stripe_subscription_id",
       value: "sub_failed",
     });
+    expect(mocks.subscriptionsRetrieve).toHaveBeenCalledWith("sub_failed");
     expect(update?.values).toMatchObject({ subscription_status: "past_due" });
-    expect(update?.values.stripe_event_at).toEqual(expect.any(String));
-    expect(update?.filters).toContainEqual({
-      column: "or",
-      value: expect.stringContaining("stripe_event_at"),
-    });
   });
 
   it("invoice events with no subscription parent are ignored", async () => {
