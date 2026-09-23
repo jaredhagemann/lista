@@ -134,7 +134,7 @@ with no label. Timezone-aware event forms should format these in the event's tim
 ## Fix as implemented
 
 **Branch:** `fix/010-event-time-and-recurrence-boundaries`
-**PR:** #NN
+**PR:** #81
 **Migration:** `supabase/migrations/20260923000001_event_timezone.sql`
 
 The cause was that every conversion between a wall-clock time and an instant used whichever zone the code
