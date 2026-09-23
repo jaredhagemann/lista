@@ -907,6 +907,33 @@ export type Database = {
           },
         ]
       }
+      stripe_webhook_events: {
+        Row: {
+          claimed_at: string | null
+          completed_at: string | null
+          event_created_at: string
+          event_id: string
+          event_type: string
+          received_at: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          completed_at?: string | null
+          event_created_at: string
+          event_id: string
+          event_type: string
+          received_at?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          completed_at?: string | null
+          event_created_at?: string
+          event_id?: string
+          event_type?: string
+          received_at?: string
+        }
+        Relationships: []
+      }
       team_members: {
         Row: {
           created_at: string | null

@@ -78,6 +78,13 @@ const mocks = vi.hoisted(() => {
           call.filters.push({ column, value });
           // Returns a thenable so trailing-`.eq` await resolves.
           return {
+            // Billing-state writes carry an ordering guard as a trailing
+            // `.or()` (BUG-015). Recorded like any other filter so a test can
+            // assert on it, and thenable so the await still resolves.
+            or: (expression: string) => {
+              call.filters.push({ column: "or", value: expression });
+              return Promise.resolve({ data: null, error: null });
+            },
             then: (
               res: (v: unknown) => unknown,
               rej?: (e: unknown) => unknown,
@@ -142,6 +149,15 @@ vi.mock("@/lib/notifications/billing-emails", () => ({
 
 // ── Route under test (after mocks) ────────────────────────────────────────────
 
+// Delivery bookkeeping is covered by tests/billing/webhook-delivery.test.ts
+// (BUG-015). Here it is stubbed to "first delivery, ledger healthy" so these
+// tests stay about what each event means.
+vi.mock("@/lib/billing/webhook-ledger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing/webhook-ledger")>()),
+  claimStripeEvent: vi.fn().mockResolvedValue("process"),
+  completeStripeEvent: vi.fn().mockResolvedValue(true),
+}));
+
 import { POST } from "@/app/api/billing/webhook/route";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,7 +177,15 @@ function makeWebhookRequest(): Request {
 }
 
 function stubEvent(event: unknown) {
-  mocks.constructEvent.mockReturnValueOnce(event);
+  // `id` and `created` are required on every Stripe Event, and the route now
+  // reads both — one to recognise a replay, one to order two deliveries
+  // (BUG-015). These fixtures predate that and omit them, so they are stamped
+  // here rather than in a hundred object literals.
+  mocks.constructEvent.mockReturnValueOnce({
+    id: `evt_${Math.random().toString(36).slice(2)}`,
+    created: Math.floor(Date.now() / 1000),
+    ...(event as Record<string, unknown>),
+  });
 }
 
 function findUpdate(
@@ -187,6 +211,15 @@ function resetState() {
 
 beforeEach(() => {
   resetState();
+  // Invoice and subscription events reconcile against Stripe rather than
+  // trusting the event snapshot (BUG-015 review), so retrieve must answer.
+  mocks.subscriptionsRetrieve.mockResolvedValue({
+    id: "sub_reconciled",
+    status: "active",
+    cancel_at_period_end: false,
+    cancel_at: null,
+    items: { data: [] },
+  });
   vi.stubEnv("STRIPE_CLUB_SMALL_PRICE_ID", SMALL_PRICE);
   vi.stubEnv("STRIPE_CLUB_LARGE_PRICE_ID", LARGE_PRICE);
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test");
@@ -885,10 +918,23 @@ describe("POST /api/billing/webhook — invoice events", () => {
       column: "stripe_subscription_id",
       value: "sub_paid",
     });
-    expect(update?.values).toEqual({ subscription_status: "active" });
+    // Written because Stripe says the subscription is active right now, not
+    // because a payment_succeeded event implied it.
+    expect(mocks.subscriptionsRetrieve).toHaveBeenCalledWith("sub_paid");
+    expect(update?.values).toMatchObject({ subscription_status: "active" });
   });
 
   it("invoice.payment_failed → subscription_status='past_due'", async () => {
+    // The event type no longer decides the status; Stripe does. A failed
+    // payment that Stripe has already retried successfully would reconcile to
+    // active, and that would be the right answer.
+    mocks.subscriptionsRetrieve.mockResolvedValue({
+      id: "sub_failed",
+      status: "past_due",
+      cancel_at_period_end: false,
+      cancel_at: null,
+      items: { data: [] },
+    });
     stubEvent({
       type: "invoice.payment_failed",
       data: {
@@ -905,7 +951,8 @@ describe("POST /api/billing/webhook — invoice events", () => {
       column: "stripe_subscription_id",
       value: "sub_failed",
     });
-    expect(update?.values).toEqual({ subscription_status: "past_due" });
+    expect(mocks.subscriptionsRetrieve).toHaveBeenCalledWith("sub_failed");
+    expect(update?.values).toMatchObject({ subscription_status: "past_due" });
   });
 
   it("invoice events with no subscription parent are ignored", async () => {
