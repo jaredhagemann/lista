@@ -1,7 +1,7 @@
 # BUG-013 — Director invite/remove routes are missing and club ownership cannot be handed over
 
 **Severity:** P1
-**Status:** Fixed — part 1 in PR #83, parts 2 and 3 in PR #NN
+**Status:** Fixed — part 1 in PR #83, parts 2 and 3 in PR #84
 **Reported:** 2026-09-04 by readiness review (finding 13)
 **Area:** club / account
 **Evidence class:** Static — code inspection only
@@ -27,7 +27,7 @@ Area 1 should not wait on the D7 policy work in areas 2 and 3.
 | Part | Scope | State |
 | --- | --- | --- |
 | 1 | Director invite and remove | In review: PR #83 |
-| 2 | Ownership transfer with recipient acceptance; block deletion for a sole org owner; written admin-recovery process | PR #NN (`fix/013-ownership-and-closure`) |
+| 2 | Ownership transfer with recipient acceptance; block deletion for a sole org owner; written admin-recovery process | PR #84 (`fix/013-ownership-and-closure`) |
 | 3 | Club closure by archiving; drop the "Orgs deletable by org owner" policy | Same PR as part 2 |
 
 Parts 2 and 3 ship together (user decision, 2026-09-24). An owner cannot be allowed to delete their account
@@ -227,7 +227,7 @@ Then remove them from club settings and confirm they lose access.
 ## Parts 2 and 3 as implemented — ownership transfer, recovery and closure
 
 **Branch:** `fix/013-ownership-and-closure` (branched from part 1)
-**PR:** #NN
+**PR:** #84
 **Migration:** `supabase/migrations/20260924000001_club_ownership_and_closure.sql`
 
 **Ownership (part 2):**
