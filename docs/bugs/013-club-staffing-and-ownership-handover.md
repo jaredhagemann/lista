@@ -26,7 +26,7 @@ Area 1 should not wait on the D7 policy work in areas 2 and 3.
 
 | Part | Scope | State |
 | --- | --- | --- |
-| 1 | Director invite and remove | In review: `fix/013-director-invite-remove` |
+| 1 | Director invite and remove | In review: PR #83 |
 | 2 | Ownership transfer with recipient acceptance; block deletion for a sole org owner; written admin-recovery process | Not started |
 | 3 | Club closure by archiving; drop the "Orgs deletable by org owner" policy | Not started |
 
@@ -127,7 +127,7 @@ reason: no app code used it.
 ## Part 1 as implemented — director invite and remove
 
 **Branch:** `fix/013-director-invite-remove`
-**PR:** #NN
+**PR:** #83
 **Migration:** `supabase/migrations/20260924000000_director_invitations.sql`
 
 **Database:**
