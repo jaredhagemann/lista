@@ -66,9 +66,14 @@ export async function POST(request: Request) {
   // actually free a slot. The RPC enforces the same active-only count.
   const { data: org } = await admin
     .from("organizations")
-    .select("team_limit")
+    .select("team_limit, closed_at")
     .eq("id", orgId)
     .single();
+
+  // A closed club takes nothing new (BUG-013); the database refuses it too.
+  if (org?.closed_at) {
+    return NextResponse.json({ error: "This club is closed" }, { status: 409 });
+  }
 
   if (org?.team_limit != null) {
     const { count } = await admin

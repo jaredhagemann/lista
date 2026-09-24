@@ -419,9 +419,11 @@ function billingFooter(): string {
 function billingShell({
   preheader,
   body,
+  footer = billingFooter(),
 }: {
   preheader: string;
   body: string;
+  footer?: string;
 }): string {
   return `
     <!DOCTYPE html>
@@ -446,7 +448,7 @@ function billingShell({
               <tr>
                 <td align="center" style="padding-top: 24px;">
                   <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-                    ${billingFooter()}
+                    ${footer}
                   </p>
                 </td>
               </tr>
@@ -774,4 +776,55 @@ export function buildInviteEmailHtml({
     </body>
     </html>
   `;
+}
+
+/** Escapes text from users (names, club names) for an HTML email. */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * A short notice about a club: ownership offers and changes, and closure
+ * (BUG-013). `paragraphs` are HTML: escape any user text in them.
+ */
+export function buildClubNoticeEmailHtml({
+  heading,
+  paragraphs,
+  cta,
+  footer,
+}: {
+  heading: string;
+  paragraphs: string[];
+  cta?: { label: string; url: string };
+  footer: string;
+}): string {
+  return billingShell({
+    preheader: heading,
+    footer,
+    body: `
+      <h1 style="margin: 0 0 16px; font-size: 22px; font-weight: 700; color: #111827; line-height: 1.3;">${heading}</h1>
+      ${paragraphs
+        .map((p) => `<p style="margin: 0 0 16px; font-size: 15px; color: #374151; line-height: 1.6;">${p}</p>`)
+        .join("")}
+      ${
+        cta
+          ? `<table cellpadding="0" cellspacing="0" style="margin: 8px 0;">
+        <tr>
+          <td align="center" style="background-color: #2563eb; border-radius: 8px;">
+            <a href="${cta.url}"
+               style="display: inline-block; padding: 14px 32px; font-size: 15px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 8px;">
+              ${cta.label}
+            </a>
+          </td>
+        </tr>
+      </table>`
+          : ""
+      }
+    `,
+  });
 }

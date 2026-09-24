@@ -272,6 +272,15 @@ describe("POST /api/club/teams — team limit", () => {
     expect(body.ok).toBe(true);
   });
 
+  it("refuses any new team in a closed club (BUG-013)", async () => {
+    mocks.tableData.organizations = { team_limit: null, closed_at: "2026-09-24T00:00:00Z" };
+    const res = await POST(
+      makeTeamsRequest({ orgId: "org-1", teamName: "Late Team" })
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("This club is closed");
+  });
+
   it("rejects a 2nd team for a free org (regression — limit 1)", async () => {
     mocks.tableData.organizations = { team_limit: 1 };
     mocks.tableCounts.teams = 1;

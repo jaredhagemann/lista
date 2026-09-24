@@ -636,3 +636,23 @@ begin
     );
 end;
 $$;
+
+-- ── 7. Account deletion ──────────────────────────────────────────────────────
+
+-- The open clubs a person owns: /api/account/delete explains the refusal the
+-- owner check (section 4) would otherwise give at commit.
+create or replace function owned_open_clubs(p_profile_id uuid)
+returns table (id uuid, name text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select o.id, o.name
+  from organization_members om
+  join organizations o on o.id = om.organization_id
+  where om.profile_id = p_profile_id and om.role = 'owner' and o.closed_at is null
+  order by o.name;
+$$;
+
+revoke execute on function owned_open_clubs(uuid) from public, anon, authenticated;
