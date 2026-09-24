@@ -1263,3 +1263,18 @@ describe("trial-expiration cron — email fan-out (conversion / downgrade)", () 
     expect(mocks.sendTrialConvertedEmail).not.toHaveBeenCalled();
   });
 });
+
+// ── Closed clubs (BUG-013, PR #84 review) ─────────────────────────────────────
+
+describe("trial-expiration cron — closed clubs", () => {
+  it("neither reminds nor converts a closed club", async () => {
+    mocks.selectQueues.organizations = [[], [], [], []];
+    await POST(makeRequest({ secret: CRON_SECRET }));
+
+    const orgSelects = mocks.selectCalls.filter((c) => c.table === "organizations");
+    expect(orgSelects).toHaveLength(4);
+    for (const select of orgSelects) {
+      expect(select.filters).toContainEqual({ op: "is", column: "closed_at", value: null });
+    }
+  });
+});

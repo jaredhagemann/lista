@@ -228,7 +228,7 @@ Then remove them from club settings and confirm they lose access.
 
 **Branch:** `fix/013-ownership-and-closure` (branched from part 1)
 **PR:** #84
-**Migration:** `supabase/migrations/20260924000001_club_ownership_and_closure.sql`
+**Migrations:** `supabase/migrations/20260924000001_club_ownership_and_closure.sql`, `20260924000002_club_review_fixes.sql`
 
 **Ownership (part 2):**
 - `organization_ownership_transfers` records each offer. `start_ownership_transfer`,
@@ -320,9 +320,67 @@ Then remove them from club settings and confirm they lose access.
 
 `tsc` is clean, and ESLint reports nothing new in changed files.
 
+### Review follow-up (2026-09-24)
+
+The [PR #84 review](../../reviews/2026-09-24-bug013-review.md) reproduced three gaps in the accepted
+contract. All three are fixed in `20260924000002_club_review_fixes.sql` and the app. The review's probe
+script ([2026-09-24-bug013-gap-probes.sql](../../reviews/2026-09-24-bug013-gap-probes.sql)) now shows the
+intended behavior on every probe. It is a new migration rather than an edit, because staging has
+already applied `20260924000001`.
+
+1. **Closing a trial club did not stop it converting to paid.** An app-run trial has no Stripe
+   subscription to cancel, and the trial-expiry job selected it anyway.
+   - `close_club` now ends such a trial (`subscription_status = 'canceled'`).
+   - The trial job's reminder and expiry queries exclude closed clubs.
+   - Checkout, card setup, start-trial, reactivate and change-plan refuse a closed club
+     (`409 club_closed`).
+   - The webhook is the backstop: a subscription created for a closed club
+     (`customer.subscription.created`, or a completed checkout) is cancelled at once, with no refund,
+     and never activates the club. That covers a trial conversion already running when the club closed.
+2. **Direct writes to club membership bypassed the transfer and removal rules.** The policy
+   `org owners can manage org_members` let an owner give ownership to anyone with no acceptance or
+   record. It also let them delete a director's membership while the director's team places stayed. It
+   is dropped: nothing in the apps wrote the table directly, and every change now goes through the club
+   functions. The owner check still backs every remaining path, account deletion included.
+3. **Closure froze revocation.** D7 keeps removal rules after closure, but the read-only trigger refused
+   roster removals.
+   - Deleting from `team_members` and `channel_members` is now allowed in a closed club, under the same
+     policies as before.
+   - `remove_org_director` works on a closed club.
+   - Additions and every other change stay refused. Removal cleanup that would change history (future
+     availability, invitations) is still refused, and the removal action ignores it.
+   - A removed member loses the team, its group chats and their DMs, because all of them require team
+     membership. The history itself stays.
+
+Regression tests, all failing before the follow-up:
+- `tests/rls/club-closure.test.ts`:
+  - a trial ended by closure
+  - revocation from the roster, a private group, and a director, each losing access while history
+    stays
+  - re-adding refused (a guard; it already passed)
+- `tests/rls/club-ownership.test.ts`: direct ownership handover, director removal and director
+  insertion are all refused. The owner check refuses a direct delete even with full rights.
+- `apps/web/tests/{create-checkout,create-setup,start-trial,reactivate,change-plan}-api.test.ts`: each
+  refuses a closed club.
+- `apps/web/tests/webhook-api.test.ts`: subscriptions for a closed club are cancelled, not activated. An
+  open club's `subscription.created` is still a no-op.
+- `apps/web/tests/trial-expiration-cron.test.ts`: every organization query excludes closed clubs.
+
+Full runs after the follow-up:
+
+| Suite | Result |
+| --- | --- |
+| `apps/web` Vitest | 1025 passed |
+| Root unit | 132 passed |
+| `pnpm test:rls` | 539 passed |
+| Tenant + billing | 105 passed |
+
+`tsc` is clean.
+
 **After deploy — required:**
 1. **Staging, when the PR's migration run finishes:** confirm that the `Orgs deletable by org owner` policy
-   is gone (`select policyname from pg_policies where tablename = 'organizations'`). Confirm that
+   and `org owners can manage org_members` policies are gone
+   (`select tablename, policyname from pg_policies where tablename in ('organizations', 'organization_members')`). Confirm that
    `select count(*) from organizations where closed_at is not null` is 0.
 2. **Production, after merge:**
    - As a test club's owner, offer ownership to a director. Accept as the director, and check Stripe's

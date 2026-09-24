@@ -328,10 +328,38 @@ describe("recover_club_ownership (support only)", () => {
 // ── Never ownerless ───────────────────────────────────────────────────────────
 
 describe("an open club always has an owner", () => {
+  // Clients cannot write club membership at all (PR #84 review, finding 2), so
+  // these are refused before the owner check is reached; the check still backs
+  // every other path, account deletion included.
   it("the owner cannot delete their own owner row", async () => {
     const { owner, orgId } = await setupClub();
 
-    const { error } = await owner.client
+    await owner.client
+      .from("organization_members")
+      .delete()
+      .eq("organization_id", orgId)
+      .eq("profile_id", owner.user.id);
+
+    expect((await roles(orgId))[owner.user.id]).toBe("owner");
+  });
+
+  it("the owner cannot demote themselves", async () => {
+    const { owner, orgId } = await setupClub();
+
+    await owner.client
+      .from("organization_members")
+      .update({ role: "director" })
+      .eq("organization_id", orgId)
+      .eq("profile_id", owner.user.id);
+
+    expect((await roles(orgId))[owner.user.id]).toBe("owner");
+  });
+
+  it("the database refuses an ownerless open club on any path, at commit", async () => {
+    const { owner, orgId } = await setupClub();
+
+    // A path with full rights: the owner check itself must refuse.
+    const { error } = await adminClient
       .from("organization_members")
       .delete()
       .eq("organization_id", orgId)
@@ -339,18 +367,6 @@ describe("an open club always has an owner", () => {
 
     expect(error?.message).toMatch(/OWNER_REQUIRED/);
     expect((await roles(orgId))[owner.user.id]).toBe("owner");
-  });
-
-  it("the owner cannot demote themselves", async () => {
-    const { owner, orgId } = await setupClub();
-
-    const { error } = await owner.client
-      .from("organization_members")
-      .update({ role: "director" })
-      .eq("organization_id", orgId)
-      .eq("profile_id", owner.user.id);
-
-    expect(error?.message).toMatch(/OWNER_REQUIRED/);
   });
 
   it("deleting the owner's account is refused while the club is open", async () => {
@@ -406,3 +422,48 @@ describe("organizations without club access keep today's rule", () => {
   });
 });
 
+
+describe("club membership changes only through the club functions (PR #84 review, finding 2)", () => {
+  it("the owner cannot hand ownership to someone directly, bypassing acceptance", async () => {
+    const { owner, orgId } = await setupClub();
+    const outsider = await createTestUser();
+
+    await owner.client
+      .from("organization_members")
+      .update({ profile_id: outsider.user.id })
+      .eq("organization_id", orgId)
+      .eq("role", "owner");
+
+    expect((await roles(orgId))[owner.user.id]).toBe("owner");
+    expect((await roles(orgId))[outsider.user.id]).toBeUndefined();
+    const { data: transfers } = await adminClient
+      .from("organization_ownership_transfers")
+      .select("id")
+      .eq("organization_id", orgId);
+    expect(transfers).toEqual([]);
+  });
+
+  it("the owner cannot remove a director directly, leaving their team places behind", async () => {
+    const { owner, director, orgId } = await setupClub();
+
+    await owner.client
+      .from("organization_members")
+      .delete()
+      .eq("organization_id", orgId)
+      .eq("profile_id", director.user.id);
+
+    expect((await roles(orgId))[director.user.id]).toBe("director");
+  });
+
+  it("the owner cannot add a director directly, without an invitation", async () => {
+    const { owner, orgId } = await setupClub();
+    const outsider = await createTestUser();
+
+    const { error } = await owner.client
+      .from("organization_members")
+      .insert({ organization_id: orgId, profile_id: outsider.user.id, role: "director" });
+
+    expect(error).not.toBeNull();
+    expect((await roles(orgId))[outsider.user.id]).toBeUndefined();
+  });
+});

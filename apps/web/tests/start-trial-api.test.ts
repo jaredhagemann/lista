@@ -331,3 +331,20 @@ describe("POST /api/billing/start-trial — success", () => {
     expect((await res.json()).error).toBe("db error");
   });
 });
+
+// ── Closed clubs (BUG-013, PR #84 review) ─────────────────────────────────────
+
+describe("POST /api/billing/start-trial — closed club", () => {
+  // A closed club is archived: it must not start or resume billing, whatever
+  // state its billing columns are in.
+  const CLOSED_AT = "2026-09-24T00:00:00.000Z";
+
+  it("refuses with 409 club_closed", async () => {
+    seedOwner({ plan: "free", trial_ends_at: null, stripe_subscription_id: null, closed_at: CLOSED_AT });
+
+    const res = await POST(makeRequest({ orgId: "org-1", plan: "club_small" }));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "club_closed" });
+  });
+});

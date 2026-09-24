@@ -343,3 +343,125 @@ describe("club_member_emails", () => {
   });
 });
 
+
+// ── PR #84 review ─────────────────────────────────────────────────────────────
+
+describe("closing ends billing (PR #84 review, finding 1)", () => {
+  it("a trial the app runs itself is ended, so the expiry job no longer converts it", async () => {
+    const { owner, orgId, orgName } = await setupClub();
+    await adminClient
+      .from("organizations")
+      .update({
+        subscription_status: "trialing",
+        stripe_subscription_id: null,
+        stripe_customer_id: "cus_review_fake",
+        trial_ends_at: new Date(Date.now() - 24 * HOUR).toISOString(),
+      })
+      .eq("id", orgId);
+
+    await close(owner.user.id, orgId, orgName);
+
+    expect((await org(orgId))?.subscription_status).toBe("canceled");
+    // The trial-expiration job's own selection.
+    const { data } = await adminClient
+      .from("organizations")
+      .select("id")
+      .eq("id", orgId)
+      .eq("subscription_status", "trialing")
+      .lt("trial_ends_at", new Date().toISOString())
+      .is("stripe_subscription_id", null);
+    expect(data).toEqual([]);
+  });
+});
+
+describe("revocation still works after closure (PR #84 review, finding 3)", () => {
+  /** A group channel with the player in it, a DM with the player, both with a message. */
+  async function withPrivateChat(club: Awaited<ReturnType<typeof setupClub>>) {
+    const groupId = crypto.randomUUID();
+    await adminClient.from("channels").insert({ id: groupId, team_id: club.teamId, name: "Defenders", type: "group" });
+    await adminClient.from("channel_members").insert([
+      { channel_id: groupId, profile_id: club.player.user.id },
+      { channel_id: groupId, profile_id: club.coach.user.id },
+    ]);
+    await adminClient.from("messages").insert({ channel_id: groupId, sender_id: club.coach.user.id, body: "Group only" });
+    const dmId = crypto.randomUUID();
+    await adminClient
+      .from("dm_channels")
+      .insert({ id: dmId, team_id: club.teamId, profile_a: club.coach.user.id, profile_b: club.player.user.id });
+    await adminClient.from("messages").insert({ dm_channel_id: dmId, sender_id: club.coach.user.id, body: "Just us" });
+    return { groupId, dmId };
+  }
+
+  it("a coach can remove a player; the player loses the team, group chat and DMs, and the history stays", async () => {
+    const club = await setupClub();
+    const { groupId, dmId } = await withPrivateChat(club);
+    await close(club.owner.user.id, club.orgId, club.orgName);
+
+    const { error } = await club.coach.client
+      .from("team_members")
+      .delete()
+      .eq("team_id", club.teamId)
+      .eq("profile_id", club.player.user.id);
+    expect(error).toBeNull();
+
+    const read = (q: PromiseLike<{ data: unknown[] | null }>) => q.then((r) => r.data ?? []);
+    expect(await read(club.player.client.from("events").select("id").eq("team_id", club.teamId))).toEqual([]);
+    expect(await read(club.player.client.from("messages").select("id").eq("channel_id", club.channelId))).toEqual([]);
+    expect(await read(club.player.client.from("messages").select("id").eq("channel_id", groupId))).toEqual([]);
+    expect(await read(club.player.client.from("messages").select("id").eq("dm_channel_id", dmId))).toEqual([]);
+
+    // Nothing was erased: the event, the player's response and the messages remain.
+    const { data: availability } = await adminClient.from("availability").select("status").eq("event_id", club.eventId);
+    const { data: messages } = await adminClient.from("messages").select("id").in("channel_id", [club.channelId, groupId]);
+    expect(availability).toEqual([{ status: "available" }]);
+    expect(messages).toHaveLength(2);
+  });
+
+  it("a player can be taken out of a private group, and loses its messages", async () => {
+    const club = await setupClub();
+    const { groupId } = await withPrivateChat(club);
+    await close(club.owner.user.id, club.orgId, club.orgName);
+
+    const { error } = await club.coach.client
+      .from("channel_members")
+      .delete()
+      .eq("channel_id", groupId)
+      .eq("profile_id", club.player.user.id);
+
+    expect(error).toBeNull();
+    const { data } = await club.player.client.from("messages").select("id").eq("channel_id", groupId);
+    expect(data).toEqual([]);
+  });
+
+  it("the owner can remove a director, who loses access", async () => {
+    const club = await setupClub();
+    await close(club.owner.user.id, club.orgId, club.orgName);
+
+    const { error } = await adminClient.rpc("remove_org_director", {
+      p_actor_id: club.owner.user.id,
+      p_org_id: club.orgId,
+      p_profile_id: club.director.user.id,
+    });
+
+    expect(error).toBeNull();
+    const { data } = await club.director.client.from("events").select("id").eq("team_id", club.teamId);
+    expect(data).toEqual([]);
+  });
+
+  it("but nobody can be added back, and nothing else changes", async () => {
+    const club = await closedClub();
+    await adminClient.from("team_members").delete().eq("team_id", club.teamId).eq("profile_id", club.player.user.id);
+
+    const { error: readd } = await club.coach.client
+      .from("team_members")
+      .insert({ team_id: club.teamId, profile_id: club.player.user.id, role: "player" });
+    const { error: promote } = await club.coach.client
+      .from("team_members")
+      .update({ role: "coach" })
+      .eq("team_id", club.teamId)
+      .eq("profile_id", club.coach.user.id);
+
+    expect(readd?.message).toMatch(/CLUB_CLOSED/);
+    expect(promote?.message).toMatch(/CLUB_CLOSED/);
+  });
+});
