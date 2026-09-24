@@ -18,7 +18,7 @@ vi.hoisted(() => {
 });
 
 import { RRule } from "rrule";
-import { planSeriesEdit, pinnedStartRule, SeriesEditError } from "@/lib/events/series-edit";
+import { planSeriesEdit, pinnedStartRule, seriesTimeZone, SeriesEditError } from "@/lib/events/series-edit";
 import { instantFromWallClock, wallClockIn } from "@/lib/events/event-timezone";
 import type { Database } from "@/types/database";
 
@@ -386,12 +386,12 @@ describe("deleting the series head (BUG-009)", () => {
     expect(rule.origOptions.byweekday).toBeDefined();
   });
 
-  it("keeps an existing DTSTART unchanged", () => {
+  it("keeps an existing DTSTART unchanged, and records the series' zone", () => {
     const [head] = practiceSeries({ from: "2026-09-10" });
+    const pinned = RRule.fromString(pinnedStartRule(head, PACIFIC)).origOptions;
 
-    expect(RRule.fromString(pinnedStartRule(head, PACIFIC)).origOptions.dtstart!.toISOString()).toBe(
-      "2026-09-10T16:00:00.000Z"
-    );
+    expect(pinned.dtstart!.toISOString()).toBe("2026-09-10T16:00:00.000Z");
+    expect(pinned.tzid).toBe(PACIFIC);
   });
 });
 
@@ -469,5 +469,61 @@ describe("the series' own timezone (BUG-010, D5)", () => {
     expect(RRule.fromString(pinnedStartRule(head, DENVER)).origOptions.dtstart!.toISOString()).toBe(
       "2026-09-03T16:00:00.000Z"
     );
+  });
+});
+
+describe("the pattern's zone is the series', not the opened occurrence's (PR #81 review)", () => {
+  /** A Denver series whose rule names its zone, as rules created after BUG-010 do. */
+  function denverWithTzid() {
+    return practiceSeries({ zone: DENVER }).map((r) =>
+      r.recurrence_rule
+        ? { ...r, recurrence_rule: new RRule({ ...RRule.fromString(r.recurrence_rule).origOptions, tzid: DENVER }).toString() }
+        : r
+    );
+  }
+
+  /** Move one occurrence to 4 PM Pacific on its own. */
+  function toPacific(rows: EventRow[], id: string) {
+    const date = id.slice(4);
+    return with_(rows, id, {
+      timezone: PACIFIC,
+      start_time: instantFromWallClock(`${date}T16:00`, PACIFIC).toISOString(),
+      end_time: instantFromWallClock(`${date}T17:30`, PACIFIC).toISOString(),
+    });
+  }
+
+  it("opened from an occurrence moved to another zone, the regular ones are still edited", () => {
+    // The caller's zone is only a fallback: the head says Denver.
+    const rows = toPacific(practiceSeries({ zone: DENVER }), "occ-2026-09-24");
+
+    const p = plan({ occurrences: rows, openedId: "occ-2026-09-24", timeZone: PACIFIC, fields: { title: "Updated" } });
+
+    expect(ids(p.updates)).toContain("occ-2026-09-17");
+    expect(ids(p.updates)).toContain("occ-2026-10-01");
+    // The moved one is an exception, and is left as it is.
+    expect(ids(p.updates)).not.toContain("occ-2026-09-24");
+  });
+
+  it("a head moved to another zone on its own does not move the pattern", () => {
+    const rows = toPacific(denverWithTzid(), "occ-2026-09-03");
+
+    expect(seriesTimeZone(rows[0], PACIFIC)).toBe(DENVER);
+    const p = plan({ occurrences: rows, timeZone: PACIFIC, fields: { title: "Updated" } });
+    expect(ids(p.updates)).toEqual(weeklyThursdays("2026-09-17", "2026-10-29").map((d) => `occ-${d}`));
+  });
+
+  it("pinning a legacy head records the zone it had before its own edit", () => {
+    const [head] = practiceSeries({ legacy: true, zone: DENVER });
+
+    const pinned = RRule.fromString(pinnedStartRule(head, PACIFIC)).origOptions;
+    expect(pinned.tzid).toBe(DENVER);
+    expect(pinned.dtstart!.toISOString()).toBe("2026-09-03T16:00:00.000Z");
+  });
+
+  it("the new head's rule names the new zone; the truncated rule keeps the old", () => {
+    const p = plan({ occurrences: practiceSeries(), timeZone: PACIFIC, newTimeZone: DENVER });
+
+    expect(RRule.fromString(p.newHeadRule).origOptions.tzid).toBe(DENVER);
+    expect(RRule.fromString(p.truncateRule!).origOptions.tzid).toBe(PACIFIC);
   });
 });

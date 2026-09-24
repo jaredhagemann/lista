@@ -167,6 +167,8 @@ describe("creating a series", () => {
     expect(children.map((c) => c.start_time)).toEqual(["2026-11-05T23:00:00.000Z"]); // MST, UTC-7
     expect(children.map((c) => c.end_time)).toEqual(["2026-11-06T00:30:00.000Z"]);
     expect(children.every((c) => c.timezone === DENVER)).toBe(true);
+    // The pattern keeps its zone even if the head is later moved on its own.
+    expect(head.recurrence_rule).toContain("TZID=America/Denver");
   });
 });
 
@@ -234,5 +236,43 @@ describe("editing an event", () => {
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0].start_time).toBe("2026-09-17T23:00:00.000Z");
     expect(mocks.updates[0].timezone).toBe("America/Los_Angeles");
+  });
+
+  describe("in the hour that happens twice (PR #81 review)", () => {
+    // Denver falls back at 2 AM on Nov 1, 2026: 1:00-1:59 happens in MDT, then in MST.
+    // This event is the second 1:15-1:45, in MST.
+    const secondPass = { ...awayGame, start_time: "2026-11-01T08:15:00.000Z", end_time: "2026-11-01T08:45:00.000Z" };
+
+    function renderSecondPass() {
+      return render(
+        <EventEditForm
+          editingEvent={secondPass}
+          teamId="team-1"
+          timeZone={DENVER}
+          teamTimeZone="America/Los_Angeles"
+          onSave={() => {}}
+          onCancel={() => {}}
+        />
+      );
+    }
+
+    it("saving without touching the times keeps both instants", async () => {
+      renderSecondPass();
+      fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+      await waitFor(() => expect(mocks.updates).toHaveLength(1));
+      expect(mocks.updates[0].start_time).toBe(secondPass.start_time);
+      expect(mocks.updates[0].end_time).toBe(secondPass.end_time);
+    });
+
+    it("changing only the end keeps the start instant", async () => {
+      renderSecondPass();
+      fireEvent.change(screen.getByLabelText("End"), { target: { value: "2026-11-01T03:00" } });
+      fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+      await waitFor(() => expect(mocks.updates).toHaveLength(1));
+      expect(mocks.updates[0].start_time).toBe(secondPass.start_time);
+      expect(mocks.updates[0].end_time).toBe("2026-11-01T10:00:00.000Z");
+    });
   });
 });

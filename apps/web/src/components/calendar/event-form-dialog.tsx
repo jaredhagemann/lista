@@ -205,6 +205,7 @@ export function EventFormDialog({
         // "Repeat until" includes that day; the pattern start is stored with the rule.
         until: untilEndOfDay(recurUntil),
         dtstart: new Date(`${startTime}:00.000Z`),
+        tzid: timeZone,
       });
 
       const { data: rawParentEvent, error: parentError } = await supabase

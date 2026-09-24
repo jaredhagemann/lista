@@ -12,6 +12,7 @@
  */
 
 import { RRule, RRuleSet } from "rrule";
+import { expansionOptions } from "@/lib/utils/rrule";
 
 /** The zones offered first in a picker, and on the team settings form. */
 export const COMMON_TIME_ZONES = [
@@ -179,9 +180,12 @@ export function wallClockIn(instant: string | Date, timeZone: string): string {
  * The instant a wall-clock time names in the zone.
  *
  * Around a daylight-saving change a wall-clock time can happen twice or not at
- * all. The offsets twelve hours either side cover both readings: a repeated time
- * takes the earlier instant, and a skipped one moves forward past the gap (2:30
- * AM on a spring-forward night becomes 3:30 AM), as calendar apps do.
+ * all. Every reading of it lies within fourteen hours of the same clock time in
+ * UTC (offsets run from -12 to +14), so the offsets 36 hours either side are the
+ * ones in force before and after any change near it — twelve hours was not
+ * enough for Auckland, at +12/+13 (PR #81 review). A repeated time takes the
+ * earlier instant, and a skipped one moves forward past the gap (2:30 AM on a
+ * spring-forward night becomes 3:30 AM), as calendar apps do.
  */
 export function instantFromWallClock(wall: string, timeZone: string): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(wall);
@@ -190,9 +194,9 @@ export function instantFromWallClock(wall: string, timeZone: string): Date {
   const asIfUtc = Date.UTC(y, mo - 1, d, h, mi);
   const target = wall.slice(0, 16);
 
-  const HALF_DAY = 12 * 60 * 60 * 1000;
-  const before = asIfUtc - offsetAt(asIfUtc - HALF_DAY, timeZone);
-  const after = asIfUtc - offsetAt(asIfUtc + HALF_DAY, timeZone);
+  const MARGIN = 36 * 60 * 60 * 1000;
+  const before = asIfUtc - offsetAt(asIfUtc - MARGIN, timeZone);
+  const after = asIfUtc - offsetAt(asIfUtc + MARGIN, timeZone);
   const matching = [before, after].filter((ms) => wallClockIn(new Date(ms), timeZone) === target);
   if (matching.length > 0) return new Date(Math.min(...matching));
   // Skipped by a spring-forward change: read with the offset in force before it.
@@ -210,7 +214,7 @@ export function instantFromWallClock(wall: string, timeZone: string): Date {
  */
 export function expandInZone(startWall: string, rruleString: string, timeZone: string): Date[] {
   const set = new RRuleSet();
-  set.rrule(new RRule({ ...RRule.fromString(rruleString).origOptions, dtstart: new Date(`${startWall}:00.000Z`) }));
+  set.rrule(new RRule({ ...expansionOptions(rruleString), dtstart: new Date(`${startWall}:00.000Z`) }));
   // Series always have an end date; the cap only guards against a malformed rule.
   return set
     .all((_, i) => i < 1000)

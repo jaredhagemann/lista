@@ -1,6 +1,7 @@
 import { RRule, RRuleSet, type Weekday } from "rrule";
 import type { Database } from "@/types/database";
-import { instantFromWallClock, wallClockIn } from "@/lib/events/event-timezone";
+import { instantFromWallClock, isUsableTimeZone, wallClockIn } from "@/lib/events/event-timezone";
+import { expansionOptions, ruleTimeZone } from "@/lib/utils/rrule";
 
 /**
  * Planning edits to a recurring series (BUG-009, decision D4).
@@ -64,7 +65,10 @@ export interface SeriesEditInput {
   now: Date;
   /** Only the fields that changed. */
   fields: BulkFields;
-  /** The zone the series is in now: its own, or the team's for a series from before event zones. */
+  /**
+   * The zone to fall back on when neither the rule nor the head names one: the
+   * team's, else the viewer's. Never the opened occurrence's — see seriesTimeZone.
+   */
   timeZone: string;
   /** A new zone for the series, when it changed. Occurrences keep their local clock time in it. */
   newTimeZone?: string;
@@ -114,6 +118,22 @@ function normalizeDays(byweekday: unknown): number[] {
   return list.map((d) => (typeof d === "number" ? d : (d as Weekday).weekday));
 }
 
+/**
+ * The zone a series' pattern is in (PR #81 review).
+ *
+ * The rule's own TZID first: it belongs to the pattern, so it holds when any one
+ * occurrence — the head included — has been moved to another zone. A rule from
+ * before BUG-010 names none; its head's zone stands in, and the rule gets a
+ * TZID (pinnedStartRule) before the head is ever edited on its own or deleted.
+ * The opened occurrence never decides: it may be the exception.
+ */
+export function seriesTimeZone(head: EventRow, fallback: string): string {
+  const fromRule = ruleTimeZone(head.recurrence_rule!);
+  if (isUsableTimeZone(fromRule)) return fromRule;
+  if (isUsableTimeZone(head.timezone)) return head.timezone;
+  return fallback;
+}
+
 /** Where a series' pattern starts: its rule's DTSTART, or (for older rules) the head's start. */
 function patternStartWall(head: EventRow, timeZone: string): string {
   const dtstart = RRule.fromString(head.recurrence_rule!).origOptions.dtstart;
@@ -123,30 +143,41 @@ function patternStartWall(head: EventRow, timeZone: string): string {
 /** Every slot of a rule starting at a wall-clock time, as wall-clock strings. */
 function expandSlots(startWall: string, ruleString: string): string[] {
   const set = new RRuleSet();
-  set.rrule(new RRule({ ...RRule.fromString(ruleString).origOptions, dtstart: asRRuleDate(startWall) }));
+  set.rrule(new RRule({ ...expansionOptions(ruleString), dtstart: asRRuleDate(startWall) }));
   // Series always have an end date; the cap only guards against a malformed rule.
   return set.all((_, i) => i < 1000).map(fromRRuleDate);
 }
 
-function buildRule(options: { interval: number; days: number[]; until: Date | null | undefined }, startWall: string) {
+function buildRule(
+  options: { interval: number; days: number[]; until: Date | null | undefined },
+  startWall: string,
+  timeZone: string
+) {
   return new RRule({
     freq: RRule.WEEKLY,
     interval: options.interval,
     byweekday: options.days,
     until: options.until ?? null,
     dtstart: asRRuleDate(startWall),
+    tzid: timeZone,
   }).toString();
 }
 
 /**
- * The head's rule with DTSTART pinned to the original pattern start. Used when the head is
- * deleted (the next occurrence is promoted) or its own time is edited, so the pattern does not
- * shift with it. Rules created before BUG-009 have no DTSTART.
+ * The head's rule with the pattern's start and zone pinned. Used when the head is deleted
+ * (the next occurrence is promoted) or its own time or zone is edited, so the pattern does not
+ * shift with it. Rules created before BUG-009 have no DTSTART, and before BUG-010 no TZID: both
+ * are taken from the head as it is before the edit. `fallback` is as for planSeriesEdit.
  */
-export function pinnedStartRule(head: EventRow, timeZone: string): string {
+export function pinnedStartRule(head: EventRow, fallback: string): string {
   const options = RRule.fromString(head.recurrence_rule!).origOptions;
-  if (options.dtstart) return head.recurrence_rule!;
-  return new RRule({ ...options, dtstart: asRRuleDate(toWallClock(head.start_time, timeZone)) }).toString();
+  if (options.dtstart && options.tzid) return head.recurrence_rule!;
+  const zone = seriesTimeZone(head, fallback);
+  return new RRule({
+    ...options,
+    dtstart: options.dtstart ?? asRRuleDate(toWallClock(head.start_time, zone)),
+    tzid: zone,
+  }).toString();
 }
 
 function pickFields(row: EventRow): BulkFields {
@@ -203,7 +234,7 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
   const earlier = sorted.filter((o) => !affectedIds.has(o.id));
 
   // A new zone keeps each occurrence's local clock time, so it moves every instant.
-  const oldZone = input.timeZone;
+  const oldZone = seriesTimeZone(head, input.timeZone);
   const newZone = input.newTimeZone ?? oldZone;
   const zoneChanged = newZone !== oldZone;
   const retime = !!input.time || zoneChanged;
@@ -224,7 +255,7 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
       }
     : { interval: oldOptions.interval ?? 1, days: normalizeDays(oldOptions.byweekday), until: oldOptions.until };
   const newStartWall = `${datePart(toWallClock(anchor.start_time, oldZone))}T${input.time?.start ?? timePart(oldStartWall)}`;
-  const newHeadRuleString = buildRule(newOptions, newStartWall);
+  const newHeadRuleString = buildRule(newOptions, newStartWall, newZone);
   const newSlotsByDate = new Map(expandSlots(newStartWall, newHeadRuleString).map((w) => [datePart(w), w]));
 
   const template = affected.find((o) => !isException(o)) ?? anchor;
@@ -301,7 +332,8 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
           days: normalizeDays(oldOptions.byweekday),
           until: new Date(asRRuleDate(`${datePart(newStartWall)}T00:00`).getTime() - 60 * 1000),
         },
-        oldStartWall
+        oldStartWall,
+        oldZone
       );
 
   const byId = new Map(sorted.map((o) => [o.id, o]));

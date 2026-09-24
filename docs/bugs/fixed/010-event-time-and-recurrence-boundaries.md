@@ -135,7 +135,7 @@ with no label. Timezone-aware event forms should format these in the event's tim
 
 **Branch:** `fix/010-event-time-and-recurrence-boundaries`
 **PR:** #81
-**Migration:** `supabase/migrations/20260923000001_event_timezone.sql`
+**Migrations:** `supabase/migrations/20260923000001_event_timezone.sql`, `20260923000002_event_timezone_first_record_is_not_news.sql`
 
 The cause was that every conversion between a wall-clock time and an instant used whichever zone the code
 happened to run in: the coach's browser for forms and series, the phone for the mobile app. An event now
@@ -229,12 +229,58 @@ Results:
 
 | Suite | Result |
 | --- | --- |
-| `apps/web` Vitest | 944 passed |
+| `apps/web` Vitest | 954 passed (944 before the review follow-up) |
 | Root unit tests run by CI (`tests/unit`, `tests/rrule.test.ts`) | 132 passed |
-| `pnpm test:rls` (local stack, clean reset) | 469 passed |
+| `pnpm test:rls` (local stack, clean reset) | 470 passed (469 before) |
+| `tests/tenant` + `tests/billing` | 105 passed |
 | `apps/mobile` Jest | 48 passed |
 
 `tsc --noEmit` is clean for web and mobile. ESLint reports nothing in changed files.
+
+### Review follow-up (2026-09-23)
+
+The [PR #81 review](../../reviews/2026-09-23-pr81-bug010-review.md) reproduced three edge cases. All three
+are fixed, and all four of the review's probes pass unchanged.
+
+1. **The opened occurrence's zone became the series editor's zone.** When the series editor was opened
+   from an occurrence moved to another zone, the regular occurrences looked like exceptions and were
+   skipped. The series' zone now belongs to the pattern:
+   - New rules name it (`DTSTART;TZID=…`), so it survives any single occurrence, the head included,
+     moving to another zone.
+   - `seriesTimeZone` reads the rule's TZID first, then the head's zone, then the team's or viewer's
+     zone. It never reads the opened occurrence's zone.
+   - `pinnedStartRule` gives an older rule its TZID from the head's zone *before* the head is edited on
+     its own or deleted.
+   - A new head rule names the new zone, and a truncated rule keeps the old one.
+   - rrule converts a TZID rule's results into the running device's zone. Expansion therefore drops the
+     TZID (`expansionOptions`) and keeps working in wall-clock times.
+2. **Saving an untouched event in the repeated fall-back hour moved it by an hour.** The editor now keeps
+   the stored start and end while the typed time and zone are unchanged. It re-reads a time only after
+   the user changes it.
+3. **Auckland's daylight-saving changes resolved to the wrong instant.** Sampling offsets twelve hours
+   either side did not straddle a change at +12/+13. It now samples 36 hours either side. That covers
+   every reading of a wall-clock time, since offsets run from -12 to +14.
+
+One more issue turned up while fixing #2. The editor records a zone on an event from before event zones
+when it is saved, and the trigger counted that as a time change. A title-only edit would then have sent
+an "updated" notice although nobody's view of the event changed. `20260923000002` counts only a change
+from one zone to another. It is a new migration rather than an edit, because staging has already
+applied `20260923000001` and applies migrations by version.
+
+Regression tests, all failing before the follow-up:
+- `event-timezone.test.ts`:
+  - the Auckland spring gap and fall-back overlap
+  - a TZID rule expanding in its own zone
+  - a Lord Howe half-hour change (a guard; it already passed)
+- `series-edit-plan.test.ts`:
+  - editing opened from a moved occurrence
+  - a head moved on its own
+  - a legacy head pinned with its pre-edit zone
+  - TZID on the new and truncated rules
+- `event-form-timezone.test.tsx`:
+  - an untouched save, and an end-only change, in the repeated hour
+  - a new series' rule naming its zone
+- `tests/rls/event-timezone.test.ts`: recording a first zone enqueues nothing.
 
 **After deploy — required:**
 1. **Staging, when the PR's migration run finishes:** `select count(*) from events e join teams t on t.id = e.team_id

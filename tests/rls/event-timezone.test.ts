@@ -186,6 +186,19 @@ describe("notifications name the zone (D3)", () => {
     expect(jobs.map((j) => j.action)).toEqual(["updated"]);
   });
 
+  it("recording a zone on an event that had none is not news", async () => {
+    // The editor records the zone an event from before event zones was shown in
+    // when it is saved. Nobody's view of it changes, so a title-only edit must
+    // not become a schedule-change notice.
+    const { coach, teamId } = await setup(null);
+    const { id } = await createEvent(teamId, coach);
+
+    const { error } = await coach.client.from("events").update({ timezone: PACIFIC }).eq("id", id);
+    expect(error).toBeNull();
+
+    expect(await jobsFor(teamId)).toHaveLength(0);
+  });
+
   it("a created-event notice carries the zone", async () => {
     const { coach, teamId } = await setup(PACIFIC);
     const { id } = await createEvent(teamId, coach, { timezone: DENVER });

@@ -139,3 +139,50 @@ describe("expandInZone — recurring series keep their local clock time (D5)", (
     expect(starts.map((d) => wallClockIn(d, PACIFIC))).toEqual(["2026-09-07T18:00", "2026-09-14T18:00"]);
   });
 });
+
+describe("zones far from UTC (PR #81 review)", () => {
+  // Sampling offsets twelve hours either side of the naive wall clock did not
+  // straddle the change in UTC+12/+13, so both samples read the new offset.
+  const AUCKLAND = "Pacific/Auckland";
+
+  it("moves Auckland's spring-forward gap forward", () => {
+    // 2:30 AM on Sept 27, 2026 does not exist in Auckland; it becomes 3:30 AM NZDT.
+    const instant = instantFromWallClock("2026-09-27T02:30", AUCKLAND);
+    expect(instant.toISOString()).toBe("2026-09-26T14:30:00.000Z");
+    expect(wallClockIn(instant, AUCKLAND)).toBe("2026-09-27T03:30");
+  });
+
+  it("takes the earlier of Auckland's repeated fall-back hour", () => {
+    expect(wallClockIn("2026-04-04T13:30:00Z", AUCKLAND)).toBe("2026-04-05T02:30");
+    expect(wallClockIn("2026-04-04T14:30:00Z", AUCKLAND)).toBe("2026-04-05T02:30");
+    expect(instantFromWallClock("2026-04-05T02:30", AUCKLAND).toISOString()).toBe("2026-04-04T13:30:00.000Z");
+  });
+
+  it("handles a half-hour daylight-saving change (Lord Howe Island)", () => {
+    // Clocks go from 2:00 to 2:30 AM on Oct 4, 2026: 2:15 does not exist.
+    const instant = instantFromWallClock("2026-10-04T02:15", "Australia/Lord_Howe");
+    expect(instant.toISOString()).toBe("2026-10-03T15:45:00.000Z");
+    expect(wallClockIn(instant, "Australia/Lord_Howe")).toBe("2026-10-04T02:45");
+  });
+});
+
+describe("a rule that names its zone (PR #81 review)", () => {
+  it("expands in the event's zone even though rrule would re-zone a TZID rule", () => {
+    const rule = buildRRule({
+      frequency: "weekly",
+      daysOfWeek: [0],
+      until: untilEndOfDay("2026-11-16"),
+      dtstart: new Date("2026-10-26T18:00:00.000Z"),
+      tzid: PACIFIC,
+    });
+    expect(rule).toContain("TZID=America/Los_Angeles");
+
+    const starts = expandInZone("2026-10-26T18:00", rule, PACIFIC);
+    expect(starts.map((d) => wallClockIn(d, PACIFIC))).toEqual([
+      "2026-10-26T18:00",
+      "2026-11-02T18:00",
+      "2026-11-09T18:00",
+      "2026-11-16T18:00",
+    ]);
+  });
+});

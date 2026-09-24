@@ -107,8 +107,21 @@ export function EventEditForm({
   const [notes, setNotes] = useState(editingEvent.notes ?? "");
   // Changing the zone keeps the times as typed: the same local time, somewhere else.
   const [timeZone, setTimeZone] = useState(eventZone);
-  const [startTime, setStartTime] = useState(wallClockIn(editingEvent.start_time, eventZone));
-  const [endTime, setEndTime] = useState(wallClockIn(editingEvent.end_time, eventZone));
+  const originalStart = wallClockIn(editingEvent.start_time, eventZone);
+  const originalEnd = wallClockIn(editingEvent.end_time, eventZone);
+  const [startTime, setStartTime] = useState(originalStart);
+  const [endTime, setEndTime] = useState(originalEnd);
+
+  /**
+   * The stored instant while the time and zone are as loaded; otherwise the typed time
+   * read in the chosen zone. The inputs hold minutes only, so in an hour that happens
+   * twice (fall back) re-reading an untouched time could land on the other pass of it
+   * and move the event (PR #81 review).
+   */
+  function instantFor(wall: string, original: string, stored: string): string {
+    if (wall === original && timeZone === eventZone) return new Date(stored).toISOString();
+    return instantFromWallClock(wall, timeZone).toISOString();
+  }
   const [opponent, setOpponent] = useState(editingEvent.opponent ?? "");
   const [homeAway, setHomeAway] = useState(editingEvent.home_away ?? "");
   const [uniform, setUniform] = useState(editingEvent.uniform ?? "");
@@ -187,8 +200,8 @@ export function EventEditForm({
       event_type: eventType,
       location_id: resolvedLocationId,
       notes: notes || null,
-      start_time: instantFromWallClock(startTime, timeZone).toISOString(),
-      end_time: instantFromWallClock(endTime, timeZone).toISOString(),
+      start_time: instantFor(startTime, originalStart, editingEvent.start_time),
+      end_time: instantFor(endTime, originalEnd, editingEvent.end_time),
       timezone: timeZone,
       created_by: user.id,
       opponent: eventType === "game" ? opponent || null : null,
@@ -224,7 +237,8 @@ export function EventEditForm({
     const schedulingChanged =
       Date.parse(eventData.start_time) !== Date.parse(editingEvent.start_time) ||
       Date.parse(eventData.end_time) !== Date.parse(editingEvent.end_time) ||
-      eventData.timezone !== editingEvent.timezone ||
+      // Recording a zone on an event that had none changes nobody's view of it.
+      (editingEvent.timezone != null && eventData.timezone !== editingEvent.timezone) ||
       eventData.arrival_time !== editingEvent.arrival_time ||
       eventData.location_id !== editingEvent.location_id;
 
@@ -779,7 +793,7 @@ export function EventDetail({
             openedId={event.id}
             scope={bulkScope}
             teamId={event.team_id!}
-            timeZone={zone}
+            fallbackTimeZone={eventTimeZone({}, teamTimeZone, viewerZone)}
             teamTimeZone={teamTimeZone}
             homeUniform={homeUniform}
             awayUniform={awayUniform}

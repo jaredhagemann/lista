@@ -24,6 +24,7 @@ import { TimeZoneSelect } from "./time-zone-select";
 import {
   planSeriesEdit,
   resolveSeriesEdit,
+  seriesTimeZone,
   SeriesEditError,
   toWallClock,
   type BulkFields,
@@ -65,7 +66,7 @@ export function SeriesEditForm({
   openedId,
   scope,
   teamId,
-  timeZone: seriesZone,
+  fallbackTimeZone,
   teamTimeZone,
   homeUniform,
   awayUniform,
@@ -77,8 +78,8 @@ export function SeriesEditForm({
   openedId: string;
   scope: SeriesEditScope;
   teamId: string;
-  /** The zone the series is in now: its own, or the team's for a series from before event zones. */
-  timeZone: string;
+  /** The team's zone, else the viewer's: used only when neither the rule nor the head names one. */
+  fallbackTimeZone: string;
   teamTimeZone?: string | null;
   homeUniform?: string | null;
   awayUniform?: string | null;
@@ -92,6 +93,8 @@ export function SeriesEditForm({
     () => resolveSeriesEdit(series, openedId, scope, new Date()),
     [series, openedId, scope]
   );
+  // The pattern's zone, never the opened occurrence's: that may be an exception (PR #81 review).
+  const seriesZone = useMemo(() => seriesTimeZone(head, fallbackTimeZone), [head, fallbackTimeZone]);
   const original = useMemo(() => parseRRule(head.recurrence_rule!), [head]);
   const originalUntil = original.until ? original.until.toISOString().slice(0, 10) : "";
   const anchorDay = rruleDayIn(anchor.start_time, seriesZone);
@@ -213,7 +216,7 @@ export function SeriesEditForm({
         scope,
         now: new Date(),
         fields,
-        timeZone: seriesZone,
+        timeZone: fallbackTimeZone,
         newTimeZone: zoneChanged ? timeZone : undefined,
         time: timeChanged ? { start: startClock, end: endClock } : undefined,
         pattern: changedPattern ? pattern : undefined,
