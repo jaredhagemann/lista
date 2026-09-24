@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { ClubSettingsClient } from "@/components/club/club-settings-client";
+import { ClubOwnershipSection } from "@/components/club/club-ownership-section";
+import { CloseClubSection } from "@/components/club/close-club-section";
 import type { Database } from "@/types/database";
 
 export const metadata = { title: "Club Settings" };
@@ -60,16 +62,51 @@ export default async function ClubSettingsPage() {
     profiles: { first_name: string | null; last_name: string | null; email: string | null } | null;
   };
 
+  const members = (directors ?? []) as Director[];
+  const nameOf = (d: Director) =>
+    [d.profiles?.first_name, d.profiles?.last_name].filter(Boolean).join(" ") || d.profiles?.email || "Director";
+
+  // The owner's pending offer of the club, if any (BUG-013).
+  const { data: pending } =
+    orgRole === "owner"
+      ? await supabase
+          .from("organization_ownership_transfers")
+          .select("id, to_profile_id, expires_at")
+          .eq("organization_id", orgId)
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+          .maybeSingle()
+      : { data: null };
+  const pendingTo = pending && members.find((m) => m.profile_id === pending.to_profile_id);
+
   return (
-    <ClubSettingsClient
-      org={{
-        id: org.id,
-        name: org.name,
-        orgNamePublic: org.org_name_public,
-      }}
-      orgRole={orgRole}
-      directors={(directors ?? []) as Director[]}
-      currentUserId={user.id}
-    />
+    <div className="space-y-8">
+      <ClubSettingsClient
+        org={{
+          id: org.id,
+          name: org.name,
+          orgNamePublic: org.org_name_public,
+        }}
+        orgRole={orgRole}
+        directors={members}
+        currentUserId={user.id}
+      />
+      {orgRole === "owner" && (
+        <>
+          <ClubOwnershipSection
+            orgId={org.id}
+            directors={members
+              .filter((m) => m.role === "director")
+              .map((m) => ({ profileId: m.profile_id, name: nameOf(m) }))}
+            pending={
+              pending
+                ? { id: pending.id, toName: pendingTo ? nameOf(pendingTo) : "a director", expiresAt: pending.expires_at }
+                : null
+            }
+          />
+          <CloseClubSection orgId={org.id} clubName={org.name} />
+        </>
+      )}
+    </div>
   );
 }

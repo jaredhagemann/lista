@@ -17,8 +17,12 @@ Spec: `docs/specs/app-store-feedback-mitigations.md` — Issue 1 (Guideline 5.1.
 | 1.7 | Valid token, sole guardian of a player with no login | User is the only guardian with a login of a managed profile (`auth_user_id = NULL`) | `409 { "error": "sole_guardian", "players": ["<first> <last>"] }` |
 | 1.8 | Valid token, guardian with a co-guardian who can sign in | Managed profile has a second guardian whose profile has an `auth_user_id` | `200 { "eligible": true }` |
 | 1.9 | Valid token, guardian of a player with their own login | Guarded profile has an `auth_user_id` | `200 { "eligible": true }` |
+| 1.10 | Valid token, owner of an open club | User is `owner` in `organization_members` of an org with club access (club plan, trialing/active/past due) and no `closed_at` | `409 { "error": "owns_club", "clubs": ["<name>"] }` |
+| 1.11 | Valid token, owner of a closed club | As 1.10, but the club is closed; the user still owns its teams | `200 { "eligible": true }`: teams in a closed club do not block |
+| 1.12 | Valid token, owner of a free team's organization, or of a lapsed club | Org without club access; the user has handed over their team | `200 { "eligible": true }`: only clubs with club access must keep an owner |
 
-Owned teams are reported before sole guardianship. Every player profile must keep a login path (decisions D1/D7 in `docs/reviews/2026-09-15-bug-backlog-review.md`, implemented in BUG-002).
+Owned open clubs are reported first, then owned teams, then sole guardianship. An open club must keep an owner
+(BUG-013, decision D7). Every player profile must keep a login path (decisions D1/D7 in `docs/reviews/2026-09-15-bug-backlog-review.md`, implemented in BUG-002).
 
 ---
 
@@ -35,6 +39,8 @@ Owned teams are reported before sole guardianship. Every player profile must kee
 | 2.7 | Valid token, sole guardian (race guard) | User became a player's only guardian between GET and DELETE | `409 { "error": "sole_guardian", "players": [...] }`; user still exists |
 | 2.8 | Sole-guardian check fails | Mock the `guardian_dependents` RPC to return an error | `500 { "error": "deletion_failed" }`; user still exists |
 | 2.9 | Database backstop | Delete a sole guardian's auth user directly with the service role, bypassing the route | Deletion fails; the guardian's profile and guardian link still exist |
+| 2.10 | Database backstop, club owner | Delete an open club owner's auth user directly with the service role, bypassing the route | Deletion fails at commit (`OWNER_REQUIRED`); the owner row still exists. Covered by `tests/rls/club-ownership.test.ts` |
+| 2.11 | Club check fails | Mock the `owned_open_clubs` RPC to return an error | `500 { "error": "deletion_failed" }`; user still exists |
 
 ### 2.5 — Deletion cascade verification (sub-cases for scenario 2.5)
 
@@ -89,6 +95,7 @@ After a successful `200`, assert that each of the following is gone from the dat
 | 3.5.10 | `409` from DELETE (state changed after the GET) | Confirm deletion while mocking a `409` from DELETE with `owns_teams` or `sole_guardian` | Dialog closes; the same blocker message as 3.5.1 / 3.5.13 is shown for that error; user remains signed in; no redirect. (Changed 2026-09-16, BUG-002: previously a generic error.) |
 | 3.5.11 | GET returns `401` — generic error, no sign-out, no redirect | Click "Delete Account" while mocking GET to return `401` | Generic inline error shown; no confirmation dialog opened; `supabase.auth.signOut()` is not called; user remains on the Account tab |
 | 3.5.12 | DELETE returns `401` — generic error, no sign-out, no redirect | Reach the confirmation dialog normally; mock DELETE to return `401`; confirm deletion | Generic inline error shown; `supabase.auth.signOut()` is not called; no redirect to `/login`; user remains on the Account tab |
+| 3.5.14 | Owner of an open club | Click "Delete Account" as the owner of a club with club access | Inline error naming the club and asking the user to hand it to a director or close it, with a "Go to Club Settings" button (navigates to `/dashboard/club/settings`); no confirmation dialog shown |
 | 3.5.13 | Sole guardian of a player with no login | Click "Delete Account" as a user who is the only guardian with a login of a managed player | Inline error naming the player(s) and asking the user to invite another guardian first, with a "Go to Managed Players" button (navigates to `/dashboard/settings/managed-players`); no confirmation dialog shown |
 
 ---
@@ -123,6 +130,7 @@ After a successful `200`, assert that each of the following is gone from the dat
 | 5.12 | signOut failure after successful DELETE still navigates | Mock `supabase.auth.signOut()` to throw; tap through both confirmation steps | DELETE returns `200`; signOut error is silently ignored; user is still navigated to `/(auth)/login` |
 | 5.13 | Backend deletion failure (`500`) | Tap through both confirmation steps while mocking a `500` from DELETE | Alert: "Something went wrong. Please try again or contact support@lista.team."; user remains signed in |
 | 5.14 | Unexpected `409` from DELETE | Tap through both confirmation steps while mocking a `409` from DELETE | Same error alert as 5.13; user remains signed in |
+| 5.16 | Owner of an open club | Tap "Delete Account" as the owner of a club with club access | **Known gap (BUG-013):** the app has no `owns_club` case yet and shows its generic error alert. Deletion is still refused. Web shows the full explanation (3.5.14) |
 | 5.15 | `GET` auth failure (e.g. expired token) | Tap "Delete Account" while session is expired | Error alert shown; no confirmation step; `supabase.auth.signOut()` is not called; user is not deleted |
 
 ---

@@ -102,7 +102,7 @@ Organization settings now go only through `PATCH /api/club/settings`, which alre
 
 Reads are unchanged: owners and directors still see billing state (`Orgs visible to members`).
 
-**Found and left for [BUG-013](../013-club-staffing-and-ownership-handover.md):** the DELETE policy
+**Found and left for [BUG-013](./013-club-staffing-and-ownership-handover.md):** the DELETE policy
 `Orgs deletable by org owner` lets an owner delete the organization through the data API, cascading to its teams
 and their records. No app code uses it, and it contradicts D7, which says club closure archives rather than
 erases. Noted on BUG-013's club-closure work.

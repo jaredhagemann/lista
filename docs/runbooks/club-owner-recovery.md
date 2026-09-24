@@ -1,6 +1,6 @@
 # Runbook: recovering a club whose owner has lost access
 
-Decided under [BUG-013](../bugs/013-club-staffing-and-ownership-handover.md) (D7, 2026-09-24). Use this only
+Decided under [BUG-013](../bugs/fixed/013-club-staffing-and-ownership-handover.md) (D7, 2026-09-24). Use this only
 when a club's owner cannot sign in and so cannot transfer ownership themselves. An owner who **can** sign
 in transfers ownership from club settings; the director they choose accepts it.
 

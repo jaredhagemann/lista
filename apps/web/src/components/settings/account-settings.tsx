@@ -139,6 +139,9 @@ function DeleteAccountSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [ownedTeams, setOwnedTeams] = useState<string[] | null>(null);
+  // Open clubs this account owns: ownership must be handed over, or the club
+  // closed, first (BUG-013).
+  const [ownedClubs, setOwnedClubs] = useState<string[] | null>(null);
   // Players with no login of their own for whom this account is the only
   // guardian who can sign in. Deletion is refused until they have another.
   const [dependentPlayers, setDependentPlayers] = useState<string[] | null>(null);
@@ -154,6 +157,8 @@ function DeleteAccountSection() {
     const data = await res.json();
     if (data.error === "sole_guardian") {
       setDependentPlayers(data.players ?? []);
+    } else if (data.error === "owns_club") {
+      setOwnedClubs(data.clubs ?? []);
     } else {
       setOwnedTeams(data.teams ?? []);
     }
@@ -162,6 +167,7 @@ function DeleteAccountSection() {
   async function handleDeleteClick() {
     setInlineError(null);
     setOwnedTeams(null);
+    setOwnedClubs(null);
     setDependentPlayers(null);
     setChecking(true);
 
@@ -245,6 +251,18 @@ function DeleteAccountSection() {
             retained as roster entries on their teams, and each must keep at
             least one guardian who can sign in.
           </p>
+
+          {ownedClubs && (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">
+                You are the owner of <strong>{ownedClubs.join(", ")}</strong>. Hand the club over to one of its
+                directors, or close it, before deleting your account.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/club/settings")}>
+                Go to Club Settings
+              </Button>
+            </div>
+          )}
 
           {ownedTeams && (
             <div className="space-y-2">

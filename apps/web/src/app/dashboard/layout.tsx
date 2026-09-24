@@ -112,6 +112,7 @@ export default async function DashboardLayout({
   let orgRole: "owner" | "director" | null = null;
   let activeOrgSubdomain: string | null = null;
   let hasTrainingAccess = false;
+  let clubClosed = false;
   if (activeOrgId) {
     const [{ data: orgMembership }, { data: orgData }] = await Promise.all([
       supabase
@@ -122,7 +123,7 @@ export default async function DashboardLayout({
         .maybeSingle(),
       supabase
         .from("organizations")
-        .select("subdomain, subdomain_status, plan, subscription_status")
+        .select("subdomain, subdomain_status, plan, subscription_status, closed_at")
         .eq("id", activeOrgId)
         .maybeSingle(),
     ]);
@@ -133,6 +134,7 @@ export default async function DashboardLayout({
     // Training is a club-tier feature — gate the nav item on the same compound
     // access check the route guard and DB policies use.
     hasTrainingAccess = hasClubAccess(orgData?.plan, orgData?.subscription_status);
+    clubClosed = !!orgData?.closed_at;
   }
 
   // Enforce that club-team users always land on their org's subdomain and
@@ -196,6 +198,13 @@ export default async function DashboardLayout({
         hasTrainingAccess={hasTrainingAccess}
       />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {clubClosed && (
+          // A closed club (BUG-013, D7) is read-only; the database refuses every change.
+          <div role="status" className="mb-6 rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
+            This club has closed. Its teams, schedules and chat are still here to look back on, but nothing new
+            can be added.
+          </div>
+        )}
         {children}
       </main>
       <Toaster />
