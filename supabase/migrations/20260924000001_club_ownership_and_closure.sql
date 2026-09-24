@@ -9,7 +9,10 @@
 --     at a time, cancellable by the owner, expiring after 14 days
 --   - the previous owner becomes a director; their teams stay theirs
 --   - support can move it to a director when the owner has lost access
---   - an open club always has an owner (checked at commit)
+--   - an open club always has an owner (checked at commit). A "club" here is an
+--     organization with club access, where transfer and closure can be
+--     reached; every free team has an organization too, and keeps today's rule
+--     (user decision, 2026-09-24)
 --
 --   Closure (D7: archive, never erase)
 --   - the owner closes the club, confirming with its name
@@ -40,6 +43,24 @@ security definer
 set search_path = public
 as $$
   select exists (select 1 from organizations where id = p_org_id and closed_at is not null);
+$$;
+
+-- Club access, as hasClubAccess (apps/web/src/lib/plan.ts): a club plan, with a
+-- subscription that grants the portal. Only these organizations can reach
+-- ownership transfer and closure, so only these must keep an owner.
+create or replace function org_has_club_access(p_org_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from organizations
+    where id = p_org_id
+      and plan in ('club_small', 'club_large')
+      and subscription_status in ('trialing', 'active', 'past_due')
+  );
 $$;
 
 -- ── 2. Read-only once closed ─────────────────────────────────────────────────
@@ -393,7 +414,9 @@ revoke execute on function recover_club_ownership(uuid, uuid, text) from public,
 -- Checked at commit, so a transfer can swap roles within its transaction. Only
 -- a change to the owner's own row is checked: clubs that predate this rule and
 -- have no owner row are not blocked from other changes. A club being deleted
--- (its row already gone by now) or closed needs no owner.
+-- (its row already gone by now) or closed needs no owner, and neither does an
+-- organization without club access: a free team's, or a lapsed club's, whose
+-- owner cannot reach transfer or closure.
 create or replace function enforce_club_owner()
 returns trigger
 language plpgsql
@@ -405,6 +428,7 @@ begin
     return null;
   end if;
   if exists (select 1 from organizations where id = old.organization_id and closed_at is null)
+     and org_has_club_access(old.organization_id)
      and not exists (
        select 1 from organization_members
        where organization_id = old.organization_id and role = 'owner'
@@ -639,8 +663,8 @@ $$;
 
 -- ── 7. Account deletion ──────────────────────────────────────────────────────
 
--- The open clubs a person owns: /api/account/delete explains the refusal the
--- owner check (section 4) would otherwise give at commit.
+-- The open clubs (with club access) a person owns: /api/account/delete
+-- explains the refusal the owner check (section 4) would otherwise give at commit.
 create or replace function owned_open_clubs(p_profile_id uuid)
 returns table (id uuid, name text)
 language sql
@@ -652,6 +676,7 @@ as $$
   from organization_members om
   join organizations o on o.id = om.organization_id
   where om.profile_id = p_profile_id and om.role = 'owner' and o.closed_at is null
+    and org_has_club_access(o.id)
   order by o.name;
 $$;
 

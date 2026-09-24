@@ -9,7 +9,10 @@
  *   - support can move ownership to a director when the owner has lost access
  *     (recover_club_ownership), recorded like any transfer
  *   - an open club always has an owner: the database refuses, at commit, any
- *     change that would leave one without — account deletion included
+ *     change that would leave one without — account deletion included. "Club"
+ *     means an organization with club access (a club plan, trialing, active or
+ *     past due): where transfer and closure can be reached. Every free team has
+ *     an organization too, invisible to its owner, and keeps today's rule.
  *
  * The transfer functions run as the service role only, with the acting user's
  * id passed in by the API route.
@@ -21,6 +24,7 @@ import {
   createTestUser,
   createTestTeam,
   addOrgMember,
+  setOrgPlan,
   cleanupTestData,
 } from "./helpers";
 
@@ -32,6 +36,7 @@ async function setupClub() {
   const { orgId, teamId } = await createTestTeam(owner.user.id);
   await addOrgMember(orgId, owner.user.id, "owner");
   await addOrgMember(orgId, director.user.id, "director");
+  await setOrgPlan(orgId, "club_small", "active");
   return { owner, director, orgId, teamId };
 }
 
@@ -372,3 +377,32 @@ describe("an open club always has an owner", () => {
     expect((await roles(orgId))[director.user.id]).toBe("owner");
   });
 });
+
+describe("organizations without club access keep today's rule", () => {
+  // Every team created since April has an organization with its creator as
+  // owner, whether or not it is a club. Its owner cannot reach transfer or
+  // closure, so the rule must not trap them.
+  it.each([
+    ["a free team's organization", "free", "active"],
+    ["a club whose subscription has lapsed", "club_small", "canceled"],
+  ] as const)("%s: the owner can still delete their account", async (_label, plan, status) => {
+    const { owner, director, orgId } = await setupClub();
+    await setOrgPlan(orgId, plan, status);
+    await adminClient.from("teams").update({ owner_id: director.user.id }).eq("owner_id", owner.user.id);
+
+    const { error } = await adminClient.auth.admin.deleteUser(owner.user.id);
+
+    expect(error).toBeNull();
+  });
+
+  it("owned_open_clubs lists only clubs with club access", async () => {
+    const club = await setupClub();
+    const free = await createTestTeam(club.owner.user.id);
+    await addOrgMember(free.orgId, club.owner.user.id, "owner");
+
+    const { data } = await adminClient.rpc("owned_open_clubs", { p_profile_id: club.owner.user.id });
+
+    expect((data as { id: string }[]).map((c) => c.id)).toEqual([club.orgId]);
+  });
+});
+

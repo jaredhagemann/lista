@@ -27,6 +27,7 @@ import {
   addTeamMember,
   addOrgMember,
   createManagedProfile,
+  setOrgPlan,
   cleanupTestData,
 } from "./helpers";
 
@@ -43,6 +44,8 @@ async function setupClub() {
   const { orgId, teamId } = await createTestTeam(owner.user.id);
   await addOrgMember(orgId, owner.user.id, "owner");
   await addOrgMember(orgId, director.user.id, "director");
+  // A paying club, so its owner is bound by the "must keep an owner" rule until it closes.
+  await setOrgPlan(orgId, "club_small", "active");
   await adminClient.from("team_members").insert({ team_id: teamId, profile_id: director.user.id, role: "director" });
   await addTeamMember(teamId, coach.user.id, "coach");
   await addTeamMember(teamId, player.user.id, "player");
