@@ -3,7 +3,7 @@
 **Severity:** P1
 **Status:** Fixed (pending deploy verification — see Verification)
 **Reported:** 2026-09-17 by the user, from the first production reminder run; split out of
-[BUG-010](../010-event-time-and-recurrence-boundaries.md)
+[BUG-010](./010-event-time-and-recurrence-boundaries.md)
 **Area:** notifications / events
 **Evidence class:** Reproduced in production (reminder email, 2026-09-17); the rest confirmed in code
 **Last verified:** production reminder email, 2026-09-17
@@ -118,7 +118,7 @@ The stored instants and the team timezone are correct; only notification formatt
 - **Series-update emails** list changed times as formatted in the **coach's browser**
   (`apps/web/src/components/calendar/event-detail.tsx:272`), in the device's zone with no label. That is correct
   for a coach in the team's zone, and wrong when traveling. It is the device-timezone problem that
-  [BUG-010](../010-event-time-and-recurrence-boundaries.md) covers under D5 (timezone-aware event forms).
+  [BUG-010](./010-event-time-and-recurrence-boundaries.md) covers under D5 (timezone-aware event forms).
 - **Trial-ending billing email** formats `trialEndsAt` without a timezone (`apps/web/src/lib/notifications/email.ts`,
   trial reminder builder), so the date can be off by one for evening instants. Billing, not events; not
   user-reported. Worth a follow-up if trial dates are shown to clubs.

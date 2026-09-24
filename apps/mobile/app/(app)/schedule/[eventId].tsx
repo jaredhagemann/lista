@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
+import { arrivalInstant, eventZone, formatEventClock, formatEventDateTime } from "../../../lib/event-time";
 import { useAppContext } from "../../../contexts/AppContext";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
@@ -23,7 +24,10 @@ type EventDetail = {
   end_time: string;
   is_cancelled: boolean;
   notes: string | null;
-  arrival_time: string | null;
+  /** Minutes before the start. */
+  arrival_time: number | null;
+  timezone: string | null;
+  teams: { timezone: string | null } | null;
   locations: { name: string; address: string | null } | null;
 };
 
@@ -38,23 +42,6 @@ type TeamMemberRow = {
   profiles: { first_name: string; last_name: string } | null;
 };
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 function RsvpButton({
   label,
@@ -122,7 +109,7 @@ export default function EventDetailScreen() {
       supabase
         .from("events")
         .select(
-          "id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, locations(name, address)"
+          "id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, teams(timezone), locations(name, address)"
         )
         .eq("id", eventId)
         .single(),
@@ -279,20 +266,20 @@ export default function EventDetailScreen() {
             <View className="flex-row items-center gap-2">
               <Ionicons name="time-outline" size={16} color="#9ca3af" />
               <Text className="text-sm text-gray-700">
-                {formatDateTime(event.start_time)}
+                {formatEventDateTime(event.start_time, eventZone(event))}
               </Text>
             </View>
             <View className="flex-row items-center gap-2">
               <Ionicons name="arrow-forward-outline" size={16} color="#9ca3af" />
               <Text className="text-sm text-gray-700">
-                Ends {formatTime(event.end_time)}
+                Ends {formatEventClock(event.end_time, eventZone(event))}
               </Text>
             </View>
-            {event.arrival_time ? (
+            {event.arrival_time != null ? (
               <View className="flex-row items-center gap-2">
                 <Ionicons name="walk-outline" size={16} color="#9ca3af" />
                 <Text className="text-sm text-gray-700">
-                  Arrive by {formatTime(event.arrival_time)}
+                  Arrive by {formatEventClock(arrivalInstant(event.start_time, event.arrival_time), eventZone(event))}
                 </Text>
               </View>
             ) : null}

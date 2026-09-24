@@ -50,7 +50,13 @@ export function ScheduleView({
         <TabsTrigger value="calendar">Calendar</TabsTrigger>
       </TabsList>
       <TabsContent value="list">
-        <ScheduleList teamId={teamId} isAdmin={isAdmin} homeUniform={homeUniform} awayUniform={awayUniform} />
+        <ScheduleList
+          teamId={teamId}
+          isAdmin={isAdmin}
+          timeZone={timeZone}
+          homeUniform={homeUniform}
+          awayUniform={awayUniform}
+        />
       </TabsContent>
       <TabsContent value="calendar">
         {calendarOpened && (

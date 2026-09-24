@@ -39,6 +39,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EventFormDialog } from "./event-form-dialog";
+import { eventTimeZone } from "@/lib/events/event-timezone";
+import { browserTimeZone } from "@/lib/events/team-timezone";
+import { formatEventTime, formatEventTimeRange, formatShortEventDate } from "@/lib/notifications/event-time";
 import { toast } from "sonner";
 import { pinnedStartRule } from "@/lib/events/series-edit";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
@@ -96,15 +99,19 @@ function startOfToday(): string {
 export function ScheduleList({
   teamId,
   isAdmin,
+  timeZone,
   homeUniform,
   awayUniform,
 }: {
   teamId: string;
   isAdmin: boolean;
+  /** The team's zone, for events from before event zones and new events' default. */
+  timeZone?: string | null;
   homeUniform?: string | null;
   awayUniform?: string | null;
 }) {
   const router = useRouter();
+  const [viewerZone] = useState(() => browserTimeZone() ?? "UTC");
   // Held in state so its identity is stable: this client is a dependency of the
   // data effect, and a fresh object each render would re-run it forever.
   const [supabase] = useState(() => createClient());
@@ -258,6 +265,7 @@ export function ScheduleList({
       opponent: event.opponent,
       home_away: event.home_away,
       uniform: event.uniform,
+      timezone: event.timezone,
       created_by: user.id,
       // Intentionally excluded: game_result, score_for, score_against,
       // recurrence_rule, parent_event_id
@@ -308,7 +316,9 @@ export function ScheduleList({
   async function handleDelete(event: EventWithLocation) {
     const { error } = await supabase.rpc("delete_event_occurrence", {
       p_event_id: event.id,
-      p_promoted_head_rule: event.recurrence_rule ? pinnedStartRule(event) : undefined,
+      p_promoted_head_rule: event.recurrence_rule
+        ? pinnedStartRule(event, eventTimeZone(event, timeZone, viewerZone))
+        : undefined,
     });
 
     if (error) {
@@ -452,17 +462,14 @@ export function ScheduleList({
             ) : (
               events.map((event) => {
                 const start = new Date(event.start_time);
-                const end = new Date(event.end_time);
                 const badge = TYPE_BADGE[event.event_type] ?? TYPE_BADGE.other;
+                // Shown in the event's own zone, labeled, wherever the viewer is (BUG-010).
+                const zone = eventTimeZone(event, timeZone, viewerZone);
+                const date = formatShortEventDate(event.start_time, zone);
 
                 const arrivalTime =
                   event.arrival_time != null
-                    ? new Date(
-                        start.getTime() - event.arrival_time * 60 * 1000
-                      ).toLocaleTimeString("en-US", {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })
+                    ? formatEventTime(new Date(start.getTime() - event.arrival_time * 60 * 1000), zone)
                     : null;
 
                 return (
@@ -497,42 +504,19 @@ export function ScheduleList({
                         </Badge>
                         {/* Date + time shown inline on mobile */}
                         <span className="sm:hidden text-xs text-muted-foreground">
-                          {start.toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}{" "}
-                          ·{" "}
-                          {start.toLocaleTimeString("en-US", {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
+                          {date} · {formatEventTime(event.start_time, zone)}
                         </span>
                       </div>
                     </TableCell>
 
                     {/* Date */}
                     <TableCell className="hidden sm:table-cell whitespace-nowrap text-sm">
-                      {start.toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {date}
                     </TableCell>
 
                     {/* Time */}
                     <TableCell className="hidden sm:table-cell whitespace-nowrap text-sm">
-                      <div>
-                        {start.toLocaleTimeString("en-US", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}{" "}
-                        –{" "}
-                        {end.toLocaleTimeString("en-US", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </div>
+                      <div>{formatEventTimeRange(event.start_time, event.end_time, zone)}</div>
                       {arrivalTime && (
                         <div className="text-xs text-muted-foreground">
                           Arrive by {arrivalTime}
@@ -663,6 +647,7 @@ export function ScheduleList({
             fetchEvents();
           }}
           teamId={teamId}
+          teamTimeZone={timeZone}
           homeUniform={homeUniform}
           awayUniform={awayUniform}
         />

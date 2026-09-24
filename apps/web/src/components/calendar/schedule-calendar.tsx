@@ -90,7 +90,7 @@ export function ScheduleCalendar({
   // day and then moved to another a moment later.
   const zoneResolved = !teamZoneMissing || viewerZone !== null;
   const [showForm, setShowForm] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<{ start: Date; end: Date } | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   // Bumped to ask for the visible month again: a retry, or a write that emptied
   // the cache.
   const [reloadToken, setReloadToken] = useState(0);
@@ -220,12 +220,8 @@ export function ScheduleCalendar({
 
   function handleDayClick(day: number) {
     if (!isAdmin) return;
-    // The dialog takes a local Date; the grid's day is what the user clicked.
-    const [year, monthNumber] = month.split("-").map(Number);
-    const date = new Date(year, monthNumber - 1, day);
-    const nextDay = new Date(date);
-    nextDay.setDate(nextDay.getDate() + 1);
-    setSelectedDate({ start: date, end: nextDay });
+    // The grid's day is what the user clicked, whatever zone the browser is in.
+    setSelectedDate(dayKeyFor(day));
     setShowForm(true);
   }
 
@@ -454,7 +450,8 @@ export function ScheduleCalendar({
           open={showForm}
           onClose={handleFormClose}
           teamId={teamId}
-          defaultStart={selectedDate?.start}
+          teamTimeZone={timeZone}
+          defaultDate={selectedDate ?? undefined}
           homeUniform={homeUniform}
           awayUniform={awayUniform}
         />

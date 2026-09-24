@@ -120,7 +120,7 @@ Editing and deleting now change occurrences in place. Rows are never destroyed a
 | `delete_event_series(id)` | Deletes every occurrence and returns the count. It is only reachable from the event page's delete dialog through **Entire series…**, which then confirms the number of events and availability responses to be erased. The confirmation suggests ending the series with an earlier "Repeat until" as a way to keep its history. |
 
 **Also fixed:** "Repeat until" now includes that day (`untilEndOfDay`), both in the series editor and when creating a series. This was
-[BUG-010](../010-event-time-and-recurrence-boundaries.md) symptom 1.
+[BUG-010](./010-event-time-and-recurrence-boundaries.md) symptom 1.
 
 **Out of scope:** D3 notification batching (BUG-006). A bulk edit sends one `series_updated` notification, as before.
 

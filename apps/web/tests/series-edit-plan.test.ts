@@ -18,7 +18,8 @@ vi.hoisted(() => {
 });
 
 import { RRule } from "rrule";
-import { planSeriesEdit, pinnedStartRule, SeriesEditError } from "@/lib/events/series-edit";
+import { planSeriesEdit, pinnedStartRule, seriesTimeZone, SeriesEditError } from "@/lib/events/series-edit";
+import { instantFromWallClock, wallClockIn } from "@/lib/events/event-timezone";
 import type { Database } from "@/types/database";
 
 type EventRow = Database["public"]["Tables"]["events"]["Row"];
@@ -26,6 +27,8 @@ type EventRow = Database["public"]["Tables"]["events"]["Row"];
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const THURSDAY = 3; // rrule weekday convention: 0 = Monday
+const PACIFIC = "America/Los_Angeles";
+const DENVER = "America/Denver";
 const NOW = new Date("2026-09-17T12:00"); // Thursday noon, before the 4 PM practice
 
 /** "2026-09-17" + "16:00" → the local instant as ISO. */
@@ -55,8 +58,12 @@ function weeklyThursdays(from: string, until: string): string[] {
  * A weekly Thursday 4:00–5:30 PM practice series. Ids are "occ-YYYY-MM-DD".
  * `legacy` rules have no DTSTART, like rules created before this fix.
  */
-function practiceSeries(opts: { from?: string; until?: string; legacy?: boolean } = {}): EventRow[] {
+function practiceSeries(
+  opts: { from?: string; until?: string; legacy?: boolean; zone?: string } = {}
+): EventRow[] {
   const from = opts.from ?? "2026-09-03";
+  const zone = opts.zone ?? PACIFIC;
+  const start = (date: string, time = "16:00") => instantFromWallClock(`${date}T${time}`, zone).toISOString();
   const until = opts.until ?? "2026-10-29";
   const rule = new RRule({
     freq: RRule.WEEKLY,
@@ -72,8 +79,9 @@ function practiceSeries(opts: { from?: string; until?: string; legacy?: boolean 
     title: "Practice",
     notes: null,
     event_type: "practice",
-    start_time: at(date),
-    end_time: at(date, "17:30"),
+    start_time: start(date),
+    end_time: start(date, "17:30"),
+    timezone: zone,
     recurrence_rule: i === 0 ? rule : null,
     parent_event_id: i === 0 ? null : `occ-${from}`,
     is_cancelled: false,
@@ -104,6 +112,7 @@ function plan(args: Partial<Parameters<typeof planSeriesEdit>[0]> & { occurrence
     scope: "series",
     now: NOW,
     fields: {},
+    timeZone: PACIFIC,
     newId,
     ...args,
   });
@@ -372,16 +381,149 @@ describe("deleting the series head (BUG-009)", () => {
   it("gives the promoted head a rule that keeps the original pattern start", () => {
     const [head] = practiceSeries({ legacy: true });
 
-    const rule = RRule.fromString(pinnedStartRule(head));
+    const rule = RRule.fromString(pinnedStartRule(head, PACIFIC));
     expect(rule.origOptions.dtstart!.toISOString()).toBe("2026-09-03T16:00:00.000Z");
     expect(rule.origOptions.byweekday).toBeDefined();
   });
 
-  it("keeps an existing DTSTART unchanged", () => {
+  it("keeps an existing DTSTART unchanged, and records the series' zone", () => {
     const [head] = practiceSeries({ from: "2026-09-10" });
+    const pinned = RRule.fromString(pinnedStartRule(head, PACIFIC)).origOptions;
 
-    expect(RRule.fromString(pinnedStartRule(head)).origOptions.dtstart!.toISOString()).toBe(
-      "2026-09-10T16:00:00.000Z"
+    expect(pinned.dtstart!.toISOString()).toBe("2026-09-10T16:00:00.000Z");
+    expect(pinned.tzid).toBe(PACIFIC);
+  });
+});
+
+describe("the series' own timezone (BUG-010, D5)", () => {
+  // The editing device is in Pacific time (pinned above); this series is in Denver.
+  const denver = () => practiceSeries({ zone: DENVER });
+
+  it("recognises a Denver series edited from a Pacific device", () => {
+    const p = plan({ occurrences: denver(), timeZone: DENVER, fields: { notes: "Bring cones" } });
+
+    // Read in the device's zone, every 4 PM Denver occurrence looked like a 3 PM
+    // reschedule, so nothing was updated.
+    expect(ids(p.updates)).toEqual(weeklyThursdays("2026-09-17", "2026-10-29").map((d) => `occ-${d}`));
+    expect(p.preview.unchanged).toHaveLength(0);
+  });
+
+  it("moves the time of day in the series' zone, across the daylight-saving change", () => {
+    const p = plan({ occurrences: denver(), timeZone: DENVER, time: { start: "18:00", end: "19:30" } });
+
+    const moved = p.updates.map((u) => wallClockIn(u.start_time!, DENVER));
+    expect(moved).toEqual(weeklyThursdays("2026-09-17", "2026-10-29").map((d) => `${d}T18:00`));
+    expect(p.updates.map((u) => wallClockIn(u.end_time!, DENVER).slice(11))).toEqual(moved.map(() => "19:30"));
+  });
+
+  it("adds new occurrences at the local time in the series' zone", () => {
+    const p = plan({
+      occurrences: denver(),
+      timeZone: DENVER,
+      pattern: { frequency: "weekly", daysOfWeek: [THURSDAY], untilDate: "2026-11-12" },
+    });
+
+    // Nov 5 and 12 are after the daylight-saving change: still 4 PM in Denver.
+    expect(p.inserts.map((i) => wallClockIn(i.start_time, DENVER))).toEqual(["2026-11-05T16:00", "2026-11-12T16:00"]);
+    expect(p.inserts.every((i) => i.fields.timezone === DENVER)).toBe(true);
+  });
+
+  it("changing the zone keeps the local clock time and records the new zone", () => {
+    const p = plan({ occurrences: practiceSeries(), timeZone: PACIFIC, newTimeZone: DENVER });
+
+    // 4 PM Pacific becomes 4 PM Denver: one hour earlier as an instant.
+    expect(p.updates.map((u) => wallClockIn(u.start_time!, DENVER))).toEqual(
+      weeklyThursdays("2026-09-17", "2026-10-29").map((d) => `${d}T16:00`)
     );
+    expect(p.updates.every((u) => u.fields.timezone === DENVER)).toBe(true);
+    // Past occurrences stay where, and in the zone, they happened.
+    expect(ids(p.updates)).not.toContain("occ-2026-09-10");
+  });
+
+  it("an explicit time and a new zone together put the new time in the new zone", () => {
+    const p = plan({
+      occurrences: practiceSeries(),
+      timeZone: PACIFIC,
+      newTimeZone: DENVER,
+      time: { start: "09:00", end: "10:00" },
+    });
+
+    expect(wallClockIn(p.updates[0].start_time!, DENVER)).toBe("2026-09-17T09:00");
+  });
+
+  it("an occurrence rescheduled on its own keeps its instant when the zone changes", () => {
+    const rows = with_(practiceSeries(), "occ-2026-10-08", {
+      start_time: at("2026-10-08", "17:00"),
+      end_time: at("2026-10-08", "18:30"),
+    });
+
+    const p = plan({ occurrences: rows, timeZone: PACIFIC, newTimeZone: DENVER });
+
+    expect(ids(p.updates)).not.toContain("occ-2026-10-08");
+    expect(p.preview.unchanged).toEqual([at("2026-10-08", "17:00")]);
+  });
+
+  it("pins a legacy rule's start in the series' zone, not the device's", () => {
+    const [head] = practiceSeries({ legacy: true, zone: DENVER });
+
+    expect(RRule.fromString(pinnedStartRule(head, DENVER)).origOptions.dtstart!.toISOString()).toBe(
+      "2026-09-03T16:00:00.000Z"
+    );
+  });
+});
+
+describe("the pattern's zone is the series', not the opened occurrence's (PR #81 review)", () => {
+  /** A Denver series whose rule names its zone, as rules created after BUG-010 do. */
+  function denverWithTzid() {
+    return practiceSeries({ zone: DENVER }).map((r) =>
+      r.recurrence_rule
+        ? { ...r, recurrence_rule: new RRule({ ...RRule.fromString(r.recurrence_rule).origOptions, tzid: DENVER }).toString() }
+        : r
+    );
+  }
+
+  /** Move one occurrence to 4 PM Pacific on its own. */
+  function toPacific(rows: EventRow[], id: string) {
+    const date = id.slice(4);
+    return with_(rows, id, {
+      timezone: PACIFIC,
+      start_time: instantFromWallClock(`${date}T16:00`, PACIFIC).toISOString(),
+      end_time: instantFromWallClock(`${date}T17:30`, PACIFIC).toISOString(),
+    });
+  }
+
+  it("opened from an occurrence moved to another zone, the regular ones are still edited", () => {
+    // The caller's zone is only a fallback: the head says Denver.
+    const rows = toPacific(practiceSeries({ zone: DENVER }), "occ-2026-09-24");
+
+    const p = plan({ occurrences: rows, openedId: "occ-2026-09-24", timeZone: PACIFIC, fields: { title: "Updated" } });
+
+    expect(ids(p.updates)).toContain("occ-2026-09-17");
+    expect(ids(p.updates)).toContain("occ-2026-10-01");
+    // The moved one is an exception, and is left as it is.
+    expect(ids(p.updates)).not.toContain("occ-2026-09-24");
+  });
+
+  it("a head moved to another zone on its own does not move the pattern", () => {
+    const rows = toPacific(denverWithTzid(), "occ-2026-09-03");
+
+    expect(seriesTimeZone(rows[0], PACIFIC)).toBe(DENVER);
+    const p = plan({ occurrences: rows, timeZone: PACIFIC, fields: { title: "Updated" } });
+    expect(ids(p.updates)).toEqual(weeklyThursdays("2026-09-17", "2026-10-29").map((d) => `occ-${d}`));
+  });
+
+  it("pinning a legacy head records the zone it had before its own edit", () => {
+    const [head] = practiceSeries({ legacy: true, zone: DENVER });
+
+    const pinned = RRule.fromString(pinnedStartRule(head, PACIFIC)).origOptions;
+    expect(pinned.tzid).toBe(DENVER);
+    expect(pinned.dtstart!.toISOString()).toBe("2026-09-03T16:00:00.000Z");
+  });
+
+  it("the new head's rule names the new zone; the truncated rule keeps the old", () => {
+    const p = plan({ occurrences: practiceSeries(), timeZone: PACIFIC, newTimeZone: DENVER });
+
+    expect(RRule.fromString(p.newHeadRule).origOptions.tzid).toBe(DENVER);
+    expect(RRule.fromString(p.truncateRule!).origOptions.tzid).toBe(PACIFIC);
   });
 });

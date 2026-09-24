@@ -6,6 +6,8 @@ import Link from "next/link";
 import { CreateTeamForm } from "@/components/team/create-team-form";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import { LocalTime } from "@/components/ui/local-time";
+import { isUsableTimeZone } from "@/lib/events/event-timezone";
+import { formatEventTime, formatShortEventDate } from "@/lib/notifications/event-time";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -20,7 +22,7 @@ export default async function DashboardPage() {
 
   const membership = await getActiveMembership(supabase, user!.id);
   const team = membership?.teams as
-    | { id: string; name: string; season: string | null }
+    | { id: string; name: string; season: string | null; timezone: string | null }
     | undefined;
   const isAdmin =
     membership?.role === "coach" ||
@@ -89,16 +91,25 @@ export default async function DashboardPage() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      <LocalTime
-                        isoString={event.start_time}
-                        options={{
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        }}
-                      />
+                      {(() => {
+                        // The event's own zone, else the team's, labeled (BUG-010). With
+                        // neither, only the viewer's browser knows a sensible zone.
+                        const zone = [event.timezone, team.timezone].find(isUsableTimeZone);
+                        return zone ? (
+                          `${formatShortEventDate(event.start_time, zone)}, ${formatEventTime(event.start_time, zone)}`
+                        ) : (
+                          <LocalTime
+                            isoString={event.start_time}
+                            options={{
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            }}
+                          />
+                        );
+                      })()}
                     </p>
                     {event.locations?.name && (
                       <p className="text-sm text-muted-foreground">

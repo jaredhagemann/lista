@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
+import { eventZone, formatEventClock, formatEventDay } from "../../../lib/event-time";
 import { useAppContext } from "../../../contexts/AppContext";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ type Event = {
   start_time: string;
   end_time: string;
   is_cancelled: boolean;
+  timezone: string | null;
+  teams: { timezone: string | null } | null;
   locations: { name: string } | null;
 };
 
@@ -35,20 +38,6 @@ type ListItem =
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 function eventTypeBadge(type: string) {
   switch (type) {
@@ -164,7 +153,7 @@ export default function ScheduleScreen() {
     const [eventsResult, availResult] = await Promise.all([
       supabase
         .from("events")
-        .select("id, title, event_type, start_time, end_time, is_cancelled, locations(name)")
+        .select("id, title, event_type, start_time, end_time, is_cancelled, timezone, teams(timezone), locations(name)")
         .eq("team_id", membership.teamId)
         .order("start_time", { ascending: true }),
       supabase
@@ -286,7 +275,7 @@ export default function ScheduleScreen() {
               style={styles.card}
             >
               {/* Date header inside card */}
-              <Text style={styles.cardDate}>{formatDate(event.start_time)}</Text>
+              <Text style={styles.cardDate}>{formatEventDay(event.start_time, eventZone(event))}</Text>
 
               <View style={styles.cardBody}>
                 <View style={{ flex: 1, marginRight: 8 }}>
@@ -300,7 +289,7 @@ export default function ScheduleScreen() {
                     {event.title}
                   </Text>
                   <Text style={styles.cardTime}>
-                    {formatTime(event.start_time)} – {formatTime(event.end_time)}
+                    {formatEventClock(event.start_time, eventZone(event))} – {formatEventClock(event.end_time, eventZone(event))}
                   </Text>
                   {event.locations?.name ? (
                     <View style={styles.locationRow}>
