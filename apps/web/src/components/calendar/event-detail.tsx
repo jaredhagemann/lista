@@ -57,6 +57,10 @@ import { RsvpButtons } from "@/components/availability/rsvp-buttons";
 import { ResponseList } from "@/components/availability/response-list";
 import { getRecurrenceDescription } from "@/lib/utils/rrule";
 import { pinnedStartRule } from "@/lib/events/series-edit";
+import { eventTimeZone, instantFromWallClock, wallClockIn } from "@/lib/events/event-timezone";
+import { browserTimeZone } from "@/lib/events/team-timezone";
+import { formatEventDate, formatEventTime, formatEventTimeRange } from "@/lib/notifications/event-time";
+import { TimeZoneSelect } from "./time-zone-select";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 
@@ -67,17 +71,17 @@ type EventWithLocation = Event & {
 };
 type EditState = null | "prompt" | RecurringEditScope;
 
-function toLocalDatetime(date: Date): string {
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 16);
-}
+// Start and end are wall-clock times in the event's zone, never the browser's (BUG-010).
+const wallMs = (wall: string) => Date.parse(`${wall}:00.000Z`);
+const shiftWall = (wall: string, ms: number) => new Date(wallMs(wall) + ms).toISOString().slice(0, 16);
 
 // ── Inline edit form ──────────────────────────────────────────────────────────
 
-function EventEditForm({
+export function EventEditForm({
   editingEvent,
   teamId,
+  timeZone: eventZone,
+  teamTimeZone,
   homeUniform,
   awayUniform,
   onSave,
@@ -85,6 +89,9 @@ function EventEditForm({
 }: {
   editingEvent: Event;
   teamId: string;
+  /** The zone the event is in now: its own, or the team's for an event from before event zones. */
+  timeZone: string;
+  teamTimeZone?: string | null;
   homeUniform?: string | null;
   awayUniform?: string | null;
   onSave: () => void;
@@ -98,12 +105,23 @@ function EventEditForm({
   );
   const [locationId, setLocationId] = useState(editingEvent.location_id ?? "");
   const [notes, setNotes] = useState(editingEvent.notes ?? "");
-  const [startTime, setStartTime] = useState(
-    toLocalDatetime(new Date(editingEvent.start_time))
-  );
-  const [endTime, setEndTime] = useState(
-    toLocalDatetime(new Date(editingEvent.end_time))
-  );
+  // Changing the zone keeps the times as typed: the same local time, somewhere else.
+  const [timeZone, setTimeZone] = useState(eventZone);
+  const originalStart = wallClockIn(editingEvent.start_time, eventZone);
+  const originalEnd = wallClockIn(editingEvent.end_time, eventZone);
+  const [startTime, setStartTime] = useState(originalStart);
+  const [endTime, setEndTime] = useState(originalEnd);
+
+  /**
+   * The stored instant while the time and zone are as loaded; otherwise the typed time
+   * read in the chosen zone. The inputs hold minutes only, so in an hour that happens
+   * twice (fall back) re-reading an untouched time could land on the other pass of it
+   * and move the event (PR #81 review).
+   */
+  function instantFor(wall: string, original: string, stored: string): string {
+    if (wall === original && timeZone === eventZone) return new Date(stored).toISOString();
+    return instantFromWallClock(wall, timeZone).toISOString();
+  }
   const [opponent, setOpponent] = useState(editingEvent.opponent ?? "");
   const [homeAway, setHomeAway] = useState(editingEvent.home_away ?? "");
   const [uniform, setUniform] = useState(editingEvent.uniform ?? "");
@@ -141,11 +159,7 @@ function EventEditForm({
 
   function handleStartTimeChange(newStart: string) {
     if (newStart && startTime && endTime) {
-      const durationMs =
-        new Date(endTime).getTime() - new Date(startTime).getTime();
-      setEndTime(
-        toLocalDatetime(new Date(new Date(newStart).getTime() + durationMs))
-      );
+      setEndTime(shiftWall(newStart, wallMs(endTime) - wallMs(startTime)));
     }
     setStartTime(newStart);
   }
@@ -186,8 +200,9 @@ function EventEditForm({
       event_type: eventType,
       location_id: resolvedLocationId,
       notes: notes || null,
-      start_time: new Date(startTime).toISOString(),
-      end_time: new Date(endTime).toISOString(),
+      start_time: instantFor(startTime, originalStart, editingEvent.start_time),
+      end_time: instantFor(endTime, originalEnd, editingEvent.end_time),
+      timezone: timeZone,
       created_by: user.id,
       opponent: eventType === "game" ? opponent || null : null,
       home_away: eventType === "game" ? homeAway || null : null,
@@ -210,7 +225,7 @@ function EventEditForm({
       .from("events")
       .update(
         editingEvent.recurrence_rule
-          ? { ...eventData, recurrence_rule: pinnedStartRule(editingEvent) }
+          ? { ...eventData, recurrence_rule: pinnedStartRule(editingEvent, eventZone) }
           : eventData
       )
       .eq("id", editingEvent.id);
@@ -220,8 +235,10 @@ function EventEditForm({
       return;
     }
     const schedulingChanged =
-      eventData.start_time !== editingEvent.start_time ||
-      eventData.end_time !== editingEvent.end_time ||
+      Date.parse(eventData.start_time) !== Date.parse(editingEvent.start_time) ||
+      Date.parse(eventData.end_time) !== Date.parse(editingEvent.end_time) ||
+      // Recording a zone on an event that had none changes nobody's view of it.
+      (editingEvent.timezone != null && eventData.timezone !== editingEvent.timezone) ||
       eventData.arrival_time !== editingEvent.arrival_time ||
       eventData.location_id !== editingEvent.location_id;
 
@@ -379,6 +396,8 @@ function EventEditForm({
               />
             </div>
           </div>
+
+          <TimeZoneSelect value={timeZone} onChange={setTimeZone} teamTimeZone={teamTimeZone} />
 
           {/* Notes */}
           <div className="space-y-2">
@@ -575,6 +594,7 @@ export function EventDetail({
   initialEdit = false,
   homeUniform,
   awayUniform,
+  teamTimeZone,
   currentUserId,
   availabilityRows,
   members,
@@ -583,6 +603,8 @@ export function EventDetail({
   isAdmin: boolean;
   creatorName: string;
   initialEdit?: boolean;
+  /** The team's zone, for an event from before event zones. */
+  teamTimeZone?: string | null;
   homeUniform?: string | null;
   awayUniform?: string | null;
   currentUserId: string;
@@ -609,7 +631,9 @@ export function EventDetail({
   const [confirmSeriesDelete, setConfirmSeriesDelete] = useState(false);
 
   const startDate = new Date(event.start_time);
-  const endDate = new Date(event.end_time);
+  // Shown and edited in the event's own zone, wherever the viewer is (BUG-010).
+  const [viewerZone] = useState(() => browserTimeZone() ?? "UTC");
+  const zone = eventTimeZone(event, teamTimeZone, viewerZone);
 
   async function loadSeries(): Promise<Event[] | null> {
     const headId = event.parent_event_id ?? event.id;
@@ -631,7 +655,7 @@ export function EventDetail({
     setDeleting(true);
     const { error } = await supabase.rpc("delete_event_occurrence", {
       p_event_id: event.id,
-      p_promoted_head_rule: event.recurrence_rule ? pinnedStartRule(event) : undefined,
+      p_promoted_head_rule: event.recurrence_rule ? pinnedStartRule(event, zone) : undefined,
     });
 
     if (error) {
@@ -769,6 +793,8 @@ export function EventDetail({
             openedId={event.id}
             scope={bulkScope}
             teamId={event.team_id!}
+            fallbackTimeZone={eventTimeZone({}, teamTimeZone, viewerZone)}
+            teamTimeZone={teamTimeZone}
             homeUniform={homeUniform}
             awayUniform={awayUniform}
             onSave={handleEditSave}
@@ -778,6 +804,8 @@ export function EventDetail({
           <EventEditForm
             editingEvent={event}
             teamId={event.team_id!}
+            timeZone={zone}
+            teamTimeZone={teamTimeZone}
             homeUniform={homeUniform}
             awayUniform={awayUniform}
             onSave={handleEditSave}
@@ -840,26 +868,13 @@ export function EventDetail({
           <div className="flex items-center gap-3 text-sm">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <span>
-              {startDate.toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
+              {formatEventDate(event.start_time, zone)}
             </span>
           </div>
           <div className="flex items-center gap-3 text-sm">
             <Clock className="h-4 w-4 text-muted-foreground" />
             <span>
-              {startDate.toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "2-digit",
-              })}{" "}
-              —{" "}
-              {endDate.toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "2-digit",
-              })}
+              {formatEventTimeRange(event.start_time, event.end_time, zone)}
             </span>
           </div>
           {event.arrival_time != null && (
@@ -867,12 +882,7 @@ export function EventDetail({
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span>
                 Arrive by{" "}
-                {new Date(
-                  startDate.getTime() - event.arrival_time * 60 * 1000
-                ).toLocaleTimeString("en-US", {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}{" "}
+                {formatEventTime(new Date(startDate.getTime() - event.arrival_time * 60 * 1000), zone)}{" "}
                 <span className="text-muted-foreground">
                   ({event.arrival_time} min early)
                 </span>

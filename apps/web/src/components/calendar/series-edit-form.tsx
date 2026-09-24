@@ -19,9 +19,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { getRecurrenceDescription, parseRRule } from "@/lib/utils/rrule";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
+import { formatEventTime, formatShortEventDate, formatZoneName } from "@/lib/notifications/event-time";
+import { TimeZoneSelect } from "./time-zone-select";
 import {
   planSeriesEdit,
   resolveSeriesEdit,
+  seriesTimeZone,
   SeriesEditError,
   toWallClock,
   type BulkFields,
@@ -36,17 +39,20 @@ type Location = Database["public"]["Tables"]["locations"]["Row"];
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
-function jsToRRuleDay(jsDay: number): number {
+/** rrule weekday (0 = Monday) of an instant's date in the zone. */
+function rruleDayIn(iso: string, timeZone: string): number {
+  const jsDay = new Date(`${toWallClock(iso, timeZone).slice(0, 10)}T00:00:00.000Z`).getUTCDay();
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
-function clock(iso: string) {
-  return toWallClock(iso).slice(11, 16);
+/** "HH:mm" in the series' zone, never the browser's (BUG-010). */
+function clock(iso: string, timeZone: string) {
+  return toWallClock(iso, timeZone).slice(11, 16);
 }
 
-function formatOccurrence(iso: string) {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+/** "Thu, Sep 17, 4:00 PM MDT" */
+function formatOccurrence(iso: string, timeZone: string) {
+  return `${formatShortEventDate(iso, timeZone)}, ${formatEventTime(iso, timeZone)}`;
 }
 
 /**
@@ -60,6 +66,8 @@ export function SeriesEditForm({
   openedId,
   scope,
   teamId,
+  fallbackTimeZone,
+  teamTimeZone,
   homeUniform,
   awayUniform,
   onSave,
@@ -70,6 +78,9 @@ export function SeriesEditForm({
   openedId: string;
   scope: SeriesEditScope;
   teamId: string;
+  /** The team's zone, else the viewer's: used only when neither the rule nor the head names one. */
+  fallbackTimeZone: string;
+  teamTimeZone?: string | null;
   homeUniform?: string | null;
   awayUniform?: string | null;
   onSave: () => void;
@@ -82,9 +93,11 @@ export function SeriesEditForm({
     () => resolveSeriesEdit(series, openedId, scope, new Date()),
     [series, openedId, scope]
   );
+  // The pattern's zone, never the opened occurrence's: that may be an exception (PR #81 review).
+  const seriesZone = useMemo(() => seriesTimeZone(head, fallbackTimeZone), [head, fallbackTimeZone]);
   const original = useMemo(() => parseRRule(head.recurrence_rule!), [head]);
   const originalUntil = original.until ? original.until.toISOString().slice(0, 10) : "";
-  const anchorDay = jsToRRuleDay(new Date(anchor.start_time).getDay());
+  const anchorDay = rruleDayIn(anchor.start_time, seriesZone);
 
   const [title, setTitle] = useState(anchor.title);
   const [eventType, setEventType] = useState<"practice" | "game" | "other">(
@@ -96,8 +109,10 @@ export function SeriesEditForm({
   const [opponent, setOpponent] = useState(anchor.opponent ?? "");
   const [homeAway, setHomeAway] = useState(anchor.home_away ?? "");
   const [uniform, setUniform] = useState(anchor.uniform ?? "");
-  const [startClock, setStartClock] = useState(clock(anchor.start_time));
-  const [endClock, setEndClock] = useState(clock(anchor.end_time));
+  const [startClock, setStartClock] = useState(clock(anchor.start_time, seriesZone));
+  const [endClock, setEndClock] = useState(clock(anchor.end_time, seriesZone));
+  // A new zone keeps the times as shown: the same local time, somewhere else.
+  const [timeZone, setTimeZone] = useState(seriesZone);
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [showNewLocation, setShowNewLocation] = useState(false);
@@ -167,7 +182,8 @@ export function SeriesEditForm({
       resolvedLocationId = newLocId;
     }
 
-    const desired: Required<BulkFields> = {
+    // The zone is not a field to copy: it changes every time, so the planner handles it.
+    const desired: Required<Omit<BulkFields, "timezone">> = {
       title,
       event_type: eventType,
       location_id: resolvedLocationId,
@@ -180,11 +196,13 @@ export function SeriesEditForm({
     const fields = Object.fromEntries(
       Object.entries(desired).filter(([key, value]) => anchor[key as keyof BulkFields] !== value)
     ) as BulkFields;
-    const timeChanged = startClock !== clock(anchor.start_time) || endClock !== clock(anchor.end_time);
+    const timeChanged =
+      startClock !== clock(anchor.start_time, seriesZone) || endClock !== clock(anchor.end_time, seriesZone);
+    const zoneChanged = timeZone !== seriesZone;
     const pattern = currentPattern();
     const changedPattern = patternChanged(pattern);
 
-    if (Object.keys(fields).length === 0 && !timeChanged && !changedPattern) {
+    if (Object.keys(fields).length === 0 && !timeChanged && !zoneChanged && !changedPattern) {
       toast.info("No changes to save.");
       setSaving(false);
       return;
@@ -198,6 +216,8 @@ export function SeriesEditForm({
         scope,
         now: new Date(),
         fields,
+        timeZone: fallbackTimeZone,
+        newTimeZone: zoneChanged ? timeZone : undefined,
         time: timeChanged ? { start: startClock, end: endClock } : undefined,
         pattern: changedPattern ? pattern : undefined,
       });
@@ -207,7 +227,7 @@ export function SeriesEditForm({
       return;
     }
 
-    const changes = describeChanges(fields, timeChanged, changedPattern ? plan.newHeadRule : null);
+    const changes = describeChanges(fields, timeChanged, zoneChanged, changedPattern ? plan.newHeadRule : null);
 
     // Show what will happen before cancelling or adding occurrences (D4).
     if (plan.cancels.length > 0 || plan.inserts.length > 0) {
@@ -219,7 +239,12 @@ export function SeriesEditForm({
     await apply(plan);
   }
 
-  function describeChanges(fields: BulkFields, timeChanged: boolean, newRule: string | null): FieldChange[] {
+  function describeChanges(
+    fields: BulkFields,
+    timeChanged: boolean,
+    zoneChanged: boolean,
+    newRule: string | null
+  ): FieldChange[] {
     const labels: Record<string, string> = {
       title: "Title",
       event_type: "Type",
@@ -244,9 +269,12 @@ export function SeriesEditForm({
     if (timeChanged) {
       changes.push({
         field: "Time",
-        before: `${clock(anchor.start_time)}–${clock(anchor.end_time)}`,
+        before: `${clock(anchor.start_time, seriesZone)}–${clock(anchor.end_time, seriesZone)}`,
         after: `${startClock}–${endClock}`,
       });
+    }
+    if (zoneChanged) {
+      changes.push({ field: "Time zone", before: formatZoneName(seriesZone), after: formatZoneName(timeZone) });
     }
     if (newRule) {
       changes.push({
@@ -286,7 +314,7 @@ export function SeriesEditForm({
           <p className="text-sm text-muted-foreground">
             {scope === "series"
               ? "Changes apply to every remaining event in this series."
-              : `Changes apply to events from ${formatOccurrence(anchor.start_time)} onward.`}{" "}
+              : `Changes apply to events from ${formatOccurrence(anchor.start_time, seriesZone)} onward.`}{" "}
             Past events aren&apos;t changed, and availability responses and results are kept.
           </p>
         </CardHeader>
@@ -406,6 +434,8 @@ export function SeriesEditForm({
                 />
               </div>
             </div>
+
+            <TimeZoneSelect value={timeZone} onChange={setTimeZone} teamTimeZone={teamTimeZone} />
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
@@ -563,10 +593,10 @@ export function SeriesEditForm({
                   </ul>
                 </div>
               )}
-              <PreviewGroup title="Updated" items={pending.plan.preview.updated} />
-              <PreviewGroup title="Cancelled" items={pending.plan.preview.cancelled} />
-              <PreviewGroup title="Added" items={pending.plan.preview.added} />
-              <PreviewGroup title="Left as is (individually changed or cancelled)" items={pending.plan.preview.unchanged} />
+              <PreviewGroup timeZone={timeZone} title="Updated" items={pending.plan.preview.updated} />
+              <PreviewGroup timeZone={timeZone} title="Cancelled" items={pending.plan.preview.cancelled} />
+              <PreviewGroup timeZone={timeZone} title="Added" items={pending.plan.preview.added} />
+              <PreviewGroup timeZone={timeZone} title="Left as is (individually changed or cancelled)" items={pending.plan.preview.unchanged} />
             </div>
           )}
           <DialogFooter>
@@ -583,7 +613,7 @@ export function SeriesEditForm({
   );
 }
 
-function PreviewGroup({ title, items }: { title: string; items: string[] }) {
+function PreviewGroup({ title, items, timeZone }: { title: string; items: string[]; timeZone: string }) {
   if (items.length === 0) return null;
   return (
     <div>
@@ -592,7 +622,7 @@ function PreviewGroup({ title, items }: { title: string; items: string[] }) {
       </p>
       <ul className="mt-1 list-disc pl-5 text-muted-foreground">
         {items.map((iso) => (
-          <li key={iso}>{formatOccurrence(iso)}</li>
+          <li key={iso}>{formatOccurrence(iso, timeZone)}</li>
         ))}
       </ul>
     </div>

@@ -9,8 +9,8 @@
  *     availability and past events survive, dropped dates are cancelled rather
  *     than deleted, and a bad plan changes nothing
  *
- * Plans are produced by the real planner. Its wall-clock times follow the
- * process timezone, pinned to Pacific here.
+ * Plans are produced by the real planner, in the series' zone: Pacific, the same
+ * zone the process is pinned to, so the fixtures' device-local times match it.
  */
 
 import { vi, describe, it, expect, afterAll } from "vitest";
@@ -37,6 +37,7 @@ type TestUser = Awaited<ReturnType<typeof createTestUser>>;
 type EventRow = Awaited<ReturnType<typeof seriesRows>>[number];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PACIFIC = "America/Los_Angeles";
 const pad = (n: number) => String(n).padStart(2, "0");
 const wall = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -132,7 +133,7 @@ describe("deleting occurrences of a series (BUG-009)", () => {
     const { coach, player, ids } = await setup();
     await respond(ids[4], player);
     const head = (await eventById(ids[0]))!;
-    const rule = pinnedStartRule(head);
+    const rule = pinnedStartRule(head, PACIFIC);
 
     const { error } = await coach.client.rpc("delete_event_occurrence", {
       p_event_id: ids[0],
@@ -204,6 +205,7 @@ describe("apply_series_edit (BUG-009, D4)", () => {
       scope: "series",
       now: new Date(),
       fields: {},
+      timeZone: PACIFIC,
       ...args,
     });
   }

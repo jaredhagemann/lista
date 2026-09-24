@@ -28,6 +28,12 @@ export interface RecurrenceConfig {
    * start time, which single-event edits and head promotion can change (BUG-009).
    */
   dtstart?: Date;
+  /**
+   * The zone the pattern's wall-clock times are in, stored as DTSTART;TZID (BUG-010).
+   * It belongs to the pattern, so it survives any single occurrence — the head
+   * included — moving to another zone.
+   */
+  tzid?: string;
 }
 
 export function buildRRule(config: RecurrenceConfig): string {
@@ -37,8 +43,27 @@ export function buildRRule(config: RecurrenceConfig): string {
     byweekday: config.daysOfWeek,
     until: config.until,
     ...(config.dtstart ? { dtstart: config.dtstart } : {}),
+    ...(config.tzid ? { tzid: config.tzid } : {}),
   });
   return rule.toString();
+}
+
+/** The zone a rule names in DTSTART;TZID, if any. Rules from before BUG-010 name none. */
+export function ruleTimeZone(rruleString: string): string | undefined {
+  return RRule.fromString(rruleString).origOptions.tzid ?? undefined;
+}
+
+/**
+ * A rule's options for expansion, without its TZID.
+ *
+ * Given a TZID, rrule converts every result into the zone the code runs in —
+ * the device's — which is exactly the dependence BUG-010 removed. Expansion
+ * works in wall-clock times labeled UTC; the caller reads them in the zone.
+ */
+export function expansionOptions(rruleString: string) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { tzid, ...options } = RRule.fromString(rruleString).origOptions;
+  return options;
 }
 
 /** The inclusive end of a "repeat until" date, in rrule's wall-clock convention (BUG-010). */
@@ -53,11 +78,10 @@ export function expandRecurrence(
   rangeEnd?: Date
 ): Date[] {
   const ruleSet = new RRuleSet();
-  const rule = RRule.fromString(rruleString);
 
   // Adjust rule to use the event's start time
   const adjustedRule = new RRule({
-    ...rule.origOptions,
+    ...expansionOptions(rruleString),
     dtstart: startTime,
   });
 
@@ -108,9 +132,8 @@ export function expandRecurrenceFromLocalString(
   const startUTCWallClock = new Date(startTimeLocal + ":00.000Z");
 
   const ruleSet = new RRuleSet();
-  const rule = RRule.fromString(rruleString);
   const adjustedRule = new RRule({
-    ...rule.origOptions,
+    ...expansionOptions(rruleString),
     dtstart: startUTCWallClock,
   });
   ruleSet.rrule(adjustedRule);

@@ -1,5 +1,7 @@
 import { RRule, RRuleSet, type Weekday } from "rrule";
 import type { Database } from "@/types/database";
+import { instantFromWallClock, isUsableTimeZone, wallClockIn } from "@/lib/events/event-timezone";
+import { expansionOptions, ruleTimeZone } from "@/lib/utils/rrule";
 
 /**
  * Planning edits to a recurring series (BUG-009, decision D4).
@@ -21,9 +23,10 @@ import type { Database } from "@/types/database";
  *     new head
  * The database applies the plan in one transaction (`apply_series_edit`).
  *
- * Times are wall-clock times on the editing device, like the rest of the event
- * forms until event-level timezones land (BUG-010). recurrence rules follow the
- * rrule library's convention: a wall-clock time labeled as UTC.
+ * Times are wall-clock times in the series' own zone (BUG-010, D5), never the
+ * editing device's, so a series keeps its local clock time across daylight
+ * saving wherever the coach is. Recurrence rules follow the rrule library's
+ * convention: a wall-clock time labeled as UTC.
  */
 
 type EventRow = Database["public"]["Tables"]["events"]["Row"];
@@ -38,6 +41,7 @@ export const BULK_EDITABLE_FIELDS = [
   "home_away",
   "uniform",
   "arrival_time",
+  "timezone",
 ] as const;
 export type BulkEditableField = (typeof BULK_EDITABLE_FIELDS)[number];
 export type BulkFields = Partial<Pick<EventRow, BulkEditableField>>;
@@ -61,6 +65,13 @@ export interface SeriesEditInput {
   now: Date;
   /** Only the fields that changed. */
   fields: BulkFields;
+  /**
+   * The zone to fall back on when neither the rule nor the head names one: the
+   * team's, else the viewer's. Never the opened occurrence's — see seriesTimeZone.
+   */
+  timeZone: string;
+  /** A new zone for the series, when it changed. Occurrences keep their local clock time in it. */
+  newTimeZone?: string;
   /** New time of day ("HH:mm"), when it changed. */
   time?: { start: string; end: string };
   /** New repeat pattern, when it changed. */
@@ -89,18 +100,11 @@ export class SeriesEditError extends Error {}
 
 // ── Wall-clock helpers ────────────────────────────────────────────────────────
 
-const pad = (n: number) => String(n).padStart(2, "0");
+/** "YYYY-MM-DDTHH:mm" in the series' zone. */
+export const toWallClock = wallClockIn;
 
-/** "YYYY-MM-DDTHH:mm" in the device's timezone. */
-export function toWallClock(instant: string | Date): string {
-  const d = new Date(instant);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** Parses "YYYY-MM-DDTHH:mm" as a device-local time. */
-export function fromWallClock(wall: string): Date {
-  return new Date(wall);
-}
+/** Parses "YYYY-MM-DDTHH:mm" as a time in the series' zone. */
+export const fromWallClock = instantFromWallClock;
 
 const asRRuleDate = (wall: string) => new Date(`${wall}:00.000Z`);
 const fromRRuleDate = (d: Date) => d.toISOString().slice(0, 16);
@@ -114,39 +118,66 @@ function normalizeDays(byweekday: unknown): number[] {
   return list.map((d) => (typeof d === "number" ? d : (d as Weekday).weekday));
 }
 
+/**
+ * The zone a series' pattern is in (PR #81 review).
+ *
+ * The rule's own TZID first: it belongs to the pattern, so it holds when any one
+ * occurrence — the head included — has been moved to another zone. A rule from
+ * before BUG-010 names none; its head's zone stands in, and the rule gets a
+ * TZID (pinnedStartRule) before the head is ever edited on its own or deleted.
+ * The opened occurrence never decides: it may be the exception.
+ */
+export function seriesTimeZone(head: EventRow, fallback: string): string {
+  const fromRule = ruleTimeZone(head.recurrence_rule!);
+  if (isUsableTimeZone(fromRule)) return fromRule;
+  if (isUsableTimeZone(head.timezone)) return head.timezone;
+  return fallback;
+}
+
 /** Where a series' pattern starts: its rule's DTSTART, or (for older rules) the head's start. */
-function patternStartWall(head: EventRow): string {
+function patternStartWall(head: EventRow, timeZone: string): string {
   const dtstart = RRule.fromString(head.recurrence_rule!).origOptions.dtstart;
-  return dtstart ? fromRRuleDate(dtstart) : toWallClock(head.start_time);
+  return dtstart ? fromRRuleDate(dtstart) : toWallClock(head.start_time, timeZone);
 }
 
 /** Every slot of a rule starting at a wall-clock time, as wall-clock strings. */
 function expandSlots(startWall: string, ruleString: string): string[] {
   const set = new RRuleSet();
-  set.rrule(new RRule({ ...RRule.fromString(ruleString).origOptions, dtstart: asRRuleDate(startWall) }));
+  set.rrule(new RRule({ ...expansionOptions(ruleString), dtstart: asRRuleDate(startWall) }));
   // Series always have an end date; the cap only guards against a malformed rule.
   return set.all((_, i) => i < 1000).map(fromRRuleDate);
 }
 
-function buildRule(options: { interval: number; days: number[]; until: Date | null | undefined }, startWall: string) {
+function buildRule(
+  options: { interval: number; days: number[]; until: Date | null | undefined },
+  startWall: string,
+  timeZone: string
+) {
   return new RRule({
     freq: RRule.WEEKLY,
     interval: options.interval,
     byweekday: options.days,
     until: options.until ?? null,
     dtstart: asRRuleDate(startWall),
+    tzid: timeZone,
   }).toString();
 }
 
 /**
- * The head's rule with DTSTART pinned to the original pattern start. Used when the head is
- * deleted (the next occurrence is promoted) or its own time is edited, so the pattern does not
- * shift with it. Rules created before BUG-009 have no DTSTART.
+ * The head's rule with the pattern's start and zone pinned. Used when the head is deleted
+ * (the next occurrence is promoted) or its own time or zone is edited, so the pattern does not
+ * shift with it. Rules created before BUG-009 have no DTSTART, and before BUG-010 no TZID: both
+ * are taken from the head as it is before the edit. `fallback` is as for planSeriesEdit.
  */
-export function pinnedStartRule(head: EventRow): string {
+export function pinnedStartRule(head: EventRow, fallback: string): string {
   const options = RRule.fromString(head.recurrence_rule!).origOptions;
-  if (options.dtstart) return head.recurrence_rule!;
-  return new RRule({ ...options, dtstart: asRRuleDate(toWallClock(head.start_time)) }).toString();
+  if (options.dtstart && options.tzid) return head.recurrence_rule!;
+  const zone = seriesTimeZone(head, fallback);
+  return new RRule({
+    ...options,
+    dtstart: options.dtstart ?? asRRuleDate(toWallClock(head.start_time, zone)),
+    tzid: zone,
+  }).toString();
 }
 
 function pickFields(row: EventRow): BulkFields {
@@ -202,10 +233,17 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
   const affectedIds = new Set(affected.map((o) => o.id));
   const earlier = sorted.filter((o) => !affectedIds.has(o.id));
 
+  // A new zone keeps each occurrence's local clock time, so it moves every instant.
+  const oldZone = seriesTimeZone(head, input.timeZone);
+  const newZone = input.newTimeZone ?? oldZone;
+  const zoneChanged = newZone !== oldZone;
+  const retime = !!input.time || zoneChanged;
+  const fields: BulkFields = zoneChanged ? { ...input.fields, timezone: newZone } : input.fields;
+
   // Occurrences off the existing pattern were rescheduled individually.
-  const oldStartWall = patternStartWall(head);
+  const oldStartWall = patternStartWall(head, oldZone);
   const oldSlots = new Set(expandSlots(oldStartWall, head.recurrence_rule!));
-  const isException = (o: EventRow) => !!o.is_cancelled || !oldSlots.has(toWallClock(o.start_time));
+  const isException = (o: EventRow) => !!o.is_cancelled || !oldSlots.has(toWallClock(o.start_time, oldZone));
 
   // The pattern after the edit, starting on the anchor's date.
   const oldOptions = RRule.fromString(head.recurrence_rule!).origOptions;
@@ -216,8 +254,8 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
         until: new Date(`${input.pattern.untilDate}T23:59:59.000Z`),
       }
     : { interval: oldOptions.interval ?? 1, days: normalizeDays(oldOptions.byweekday), until: oldOptions.until };
-  const newStartWall = `${datePart(toWallClock(anchor.start_time))}T${input.time?.start ?? timePart(oldStartWall)}`;
-  const newHeadRuleString = buildRule(newOptions, newStartWall);
+  const newStartWall = `${datePart(toWallClock(anchor.start_time, oldZone))}T${input.time?.start ?? timePart(oldStartWall)}`;
+  const newHeadRuleString = buildRule(newOptions, newStartWall, newZone);
   const newSlotsByDate = new Map(expandSlots(newStartWall, newHeadRuleString).map((w) => [datePart(w), w]));
 
   const template = affected.find((o) => !isException(o)) ?? anchor;
@@ -235,7 +273,7 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
   const filledDates = new Set<string>();
 
   for (const o of affected) {
-    const date = datePart(toWallClock(o.start_time));
+    const date = datePart(toWallClock(o.start_time, oldZone));
     if (isException(o)) {
       filledDates.add(date);
       unchanged.push(o.start_time);
@@ -248,19 +286,22 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
     }
     filledDates.add(date);
 
-    const start = input.time ? fromWallClock(slot).toISOString() : new Date(o.start_time).toISOString();
-    const end = input.time ? new Date(ms(start) + durationMs).toISOString() : new Date(o.end_time).toISOString();
+    const start = retime ? fromWallClock(slot, newZone).toISOString() : new Date(o.start_time).toISOString();
+    const end = retime
+      ? new Date(ms(start) + (input.time ? durationMs : ms(o.end_time) - ms(o.start_time))).toISOString()
+      : new Date(o.end_time).toISOString();
     const timeChanged = start !== new Date(o.start_time).toISOString() || end !== new Date(o.end_time).toISOString();
     kept.push({ id: o.id, start });
-    if (timeChanged || Object.keys(input.fields).length > 0) {
-      updates.push({ id: o.id, ...(timeChanged ? { start_time: start, end_time: end } : {}), fields: input.fields });
+    if (timeChanged || Object.keys(fields).length > 0) {
+      updates.push({ id: o.id, ...(timeChanged ? { start_time: start, end_time: end } : {}), fields });
     }
   }
 
-  const insertFields = { ...pickFields(template), ...input.fields };
+  // New occurrences are always in the series' zone, even when it came from the team.
+  const insertFields = { ...pickFields(template), ...fields, timezone: newZone };
   const inserts: SeriesEditPlan["inserts"] = [];
   for (const [date, slot] of [...newSlotsByDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const start = fromWallClock(slot);
+    const start = fromWallClock(slot, newZone);
     if (filledDates.has(date) || start.getTime() <= nowMs) continue;
     inserts.push({
       id: newId(),
@@ -291,7 +332,8 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
           days: normalizeDays(oldOptions.byweekday),
           until: new Date(asRRuleDate(`${datePart(newStartWall)}T00:00`).getTime() - 60 * 1000),
         },
-        oldStartWall
+        oldStartWall,
+        oldZone
       );
 
   const byId = new Map(sorted.map((o) => [o.id, o]));

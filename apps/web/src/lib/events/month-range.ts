@@ -14,6 +14,7 @@
  */
 
 import { resolveTimeZone } from "@/lib/notifications/event-time";
+import { offsetAt } from "@/lib/events/event-timezone";
 
 /** "2026-12". */
 export type MonthKey = string;
@@ -22,39 +23,6 @@ export type MonthRange = {
   fromInclusive: string;
   toExclusive: string;
 };
-
-/**
- * The zone's offset from UTC at a given instant, in milliseconds.
- *
- * Read from the formatted parts rather than assumed: the offset depends on the
- * instant, which is the whole point.
- */
-function offsetAt(utcMs: number, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(new Date(utcMs));
-
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
-  // `hour` can be 24 under hour12: false at midnight in some engines.
-  const hour = get("hour") % 24;
-
-  const asIfUtc = Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    hour,
-    get("minute"),
-    get("second")
-  );
-  return asIfUtc - utcMs;
-}
 
 /** The UTC instant of a local wall-clock time in a zone. */
 function zonedToUtc(

@@ -69,6 +69,20 @@ registration and unregistration report a refused write instead of swallowing it.
 
 Files: `lib/notifications.ts`, `app/(app)/settings/index.tsx`.
 
+### Event times in the event's own zone — [BUG-010](../bugs/fixed/010-event-time-and-recurrence-boundaries.md)
+
+**Installed build:** home, schedule and event screens format every time in the **phone's** zone, with no
+label. A parent in another zone from the team, or travelling, sees the wrong clock time for practice. The
+event screen's "Arrive by" line passes the arrival offset (a number of minutes) to a date formatter, so it
+never shows a real time.
+
+**New build:** times are shown in the event's own zone (else the team's), labeled — "4:00 PM MDT". "Arrive
+by" is the start less the offset. The screens now select `events.timezone` and `teams(timezone)`; the
+installed build never asks for either, so the new column cannot break it.
+
+Files: `lib/event-time.ts`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx`,
+`app/(app)/schedule/[eventId].tsx`, `__tests__/event-time.test.ts`.
+
 ---
 
 ## Before shipping
@@ -87,6 +101,9 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   as the guardian. The app asks who you are, offers the child by name, and the existing child gains a team.
 - **BUG-007 gap 1:** send a chat message from the app; another member's phone receives it.
 - **BUG-007 gap 4:** register a second device, send again, and confirm **both** receive it.
+- **BUG-010:** on a phone set to a different zone from the team, open an event: the time matches the web,
+  carries a zone label (e.g. "PDT"), and "Arrive by" shows a time. Confirms Hermes formats named zones on
+  device — the Jest run uses Node's `Intl`, not Hermes.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
