@@ -18,7 +18,7 @@ export async function GET(
 
   const { data: invitation, error } = await admin
     .from("invitations")
-    .select("id, email, role, first_name, last_name, managed_profile_id, accepted_at, teams(name)")
+    .select("id, email, role, first_name, last_name, managed_profile_id, accepted_at, teams(name), organizations(name)")
     .eq("id", id)
     .single();
 
@@ -30,7 +30,11 @@ export async function GET(
     return NextResponse.json({ error: "Invitation already accepted" }, { status: 410 });
   }
 
-  const teamName = (invitation.teams as { name: string } | null)?.name ?? "Unknown Team";
+  // A director invitation names a club instead of a team (BUG-013).
+  const teamName =
+    (invitation.teams as { name: string } | null)?.name ??
+    (invitation.organizations as { name: string } | null)?.name ??
+    "Unknown Team";
 
   return NextResponse.json({
     id: invitation.id,

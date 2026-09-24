@@ -347,6 +347,7 @@ export type Database = {
           invited_by: string | null
           last_name: string | null
           managed_profile_id: string | null
+          organization_id: string | null
           relationship: string | null
           role: string
           team_id: string | null
@@ -363,6 +364,7 @@ export type Database = {
           invited_by?: string | null
           last_name?: string | null
           managed_profile_id?: string | null
+          organization_id?: string | null
           relationship?: string | null
           role: string
           team_id?: string | null
@@ -379,11 +381,19 @@ export type Database = {
           invited_by?: string | null
           last_name?: string | null
           managed_profile_id?: string | null
+          organization_id?: string | null
           relationship?: string | null
           role?: string
           team_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invitations_invited_by_fkey"
             columns: ["invited_by"]
@@ -1239,6 +1249,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      create_director_invitation: {
+        Args: { p_actor_id: string; p_email: string; p_org_id: string }
+        Returns: Json
+      }
       create_club_team: {
         Args: { org_id: string; season: string; team_name: string }
         Returns: string
@@ -1310,6 +1324,10 @@ export type Database = {
         Returns: boolean
       }
       safe_team_tz: { Args: { t_id: string }; Returns: string }
+      remove_org_director: {
+        Args: { p_actor_id: string; p_org_id: string; p_profile_id: string }
+        Returns: undefined
+      }
       set_unanswered_availability: {
         Args: {
           p_event_type?: string

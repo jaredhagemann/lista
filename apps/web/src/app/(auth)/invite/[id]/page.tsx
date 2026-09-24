@@ -10,6 +10,7 @@ import type { Database } from "@/types/database";
 
 type Invitation = Database["public"]["Tables"]["invitations"]["Row"] & {
   teams: { name: string };
+  organizations: { name: string } | null;
 };
 
 export default async function InvitePage({
@@ -27,7 +28,7 @@ export default async function InvitePage({
 
   const { data: rawInvitation, error } = await supabaseAdmin
     .from("invitations")
-    .select("*, teams(name)")
+    .select("*, teams(name), organizations(name)")
     .eq("id", id)
     .single();
 
@@ -74,7 +75,18 @@ export default async function InvitePage({
     return <WrongEmailClient inviteId={id} />;
   }
 
-  const teamName = (invitation.teams as { name: string })?.name ?? "Unknown Team";
+  const teamName = (invitation.teams as { name: string } | null)?.name ?? "Unknown Team";
+
+  // A club directorship (BUG-013): nothing to confirm about identity.
+  if (invitation.role === "director") {
+    return (
+      <DirectAcceptClient
+        invitationId={invitation.id}
+        teamName={invitation.organizations?.name ?? "Unknown Club"}
+        role="director"
+      />
+    );
+  }
 
   // Invite for managing an existing player profile (sent from ManagersCard)
   if (invitation.managed_profile_id) {
