@@ -27,8 +27,11 @@ Area 1 should not wait on the D7 policy work in areas 2 and 3.
 | Part | Scope | State |
 | --- | --- | --- |
 | 1 | Director invite and remove | In review: PR #83 |
-| 2 | Ownership transfer with recipient acceptance; block deletion for a sole org owner; written admin-recovery process | Not started |
-| 3 | Club closure by archiving; drop the "Orgs deletable by org owner" policy | Not started |
+| 2 | Ownership transfer with recipient acceptance; block deletion for a sole org owner; written admin-recovery process | In progress: `fix/013-ownership-and-closure` |
+| 3 | Club closure by archiving; drop the "Orgs deletable by org owner" policy | In progress, in the same PR as part 2 |
+
+Parts 2 and 3 ship together (user decision, 2026-09-24). An owner cannot be allowed to delete their account
+until a club can be closed, since a solo owner has no one to transfer to.
 
 ## Symptom
 
@@ -95,6 +98,26 @@ directors; how that works had never been decided.
 | How does a new director reach the club? | Accepting adds them as `director` on every active team in the club. The dashboard and club portal are reached through a team, and creator-directors are already on the teams they made. Teams created later add every director. |
 | What happens to a removed director's teams and rosters? | Teams they own pass to the club owner. Their `director` roster rows are removed, and any other role they hold (e.g. coach) is kept. |
 | Who can remove a director? | Only the owner. A director cannot leave on their own; that can be added later. |
+
+**Settled 2026-09-24 (user), for parts 2 and 3.**
+
+| Question | Decision |
+| --- | --- |
+| Who can receive club ownership? | Only an existing director of the club. |
+| How is a transfer accepted? | The owner starts it. The recipient gets an email and a banner in the club portal, and accepts or declines. There is one pending transfer at a time, which the owner can cancel. It expires after **14 days**. |
+| What happens to the previous owner? | They become a director. They leave only if the new owner removes them; directors cannot leave on their own. |
+| Billing on transfer | The subscription carries on untouched. Billing emails switch to the new owner, and the accept screen says billing is now theirs, with a link to update the card. The old card stays on file until the new owner replaces it. |
+| Teams the old owner owns | They stay the old owner's. |
+| Deleting an owner's account | Blocked while they own any club that has not been closed. |
+| Admin recovery (the owner has lost access) | A written support procedure and a server-side script run by support, with no product UI. Before transferring: the request comes from a current director, and the requester confirms Stripe billing details (e.g. card last 4 or an invoice number). **No waiting period.** A notice goes to the old owner's address when the transfer is made. |
+| Surfaces | Transfer, acceptance and closure are web-only. |
+| Who can close a club? | The owner only, confirming by typing the club's name. |
+| Billing at closure | The subscription is cancelled immediately, with no refund. The confirmation says so. |
+| Reopening | Not self-serve. Support can reopen a club; its history is intact. |
+| Access after closure | Everyone on a roster at closure (players, guardians, coaches, directors) keeps read-only access to its roster, events, availability and chat. Pending invitations are revoked and nobody new can join. Private groups, DMs and removal rules are unchanged (D7). |
+| The owner after closure | May delete their account. The closed club keeps its history with no owner. Teams in a closed club no longer block account deletion. |
+| Subdomain / custom domain | Released at closure. Members reach the history on the main domain. |
+| Telling members | One email to every member at closure: the club is closed and its history remains readable. |
 
 ## Proposed fix
 
