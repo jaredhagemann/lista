@@ -203,6 +203,12 @@ async function handleEvent(admin: AdminClient, event: Stripe.Event): Promise<voi
       // (direct upgrade) or the trial-expiration cron (immediate write after
       // `subscriptions.create`). Writing here would either duplicate that
       // work or race the cron's "skip if stripe_subscription_id != null" guard.
+      //
+      // One exception (BUG-013): a subscription for a closed club is cancelled
+      // at once. This is the backstop for every path into billing, including a
+      // trial conversion already running when the club closed.
+      const sub = event.data.object as Stripe.Subscription;
+      await cancelIfClubClosed(admin, sub.metadata?.org_id, sub.id);
       break;
     }
 
@@ -392,6 +398,26 @@ async function handleEvent(admin: AdminClient, event: Stripe.Event): Promise<voi
 type AdminClient = ReturnType<typeof adminClient>;
 
 /**
+ * Cancels a subscription, immediately and with no refund, when it belongs to a
+ * closed club (BUG-013): a closed club is archived and never bills. Returns
+ * whether it did.
+ */
+async function cancelIfClubClosed(
+  admin: AdminClient,
+  orgId: string | null | undefined,
+  subscriptionId: string,
+): Promise<boolean> {
+  if (!orgId) return false;
+  const { data: org } = await mustWrite(
+    admin.from("organizations").select("closed_at").eq("id", orgId).maybeSingle(),
+    "closed club check",
+  );
+  if (!org?.closed_at) return false;
+  await getStripe().subscriptions.cancel(subscriptionId, { prorate: false, invoice_now: false });
+  return true;
+}
+
+/**
  * `checkout.session.completed` with `mode: 'subscription'` — paid upgrade or
  * re-upgrade after cancellation. Reads the subscription's first price ID,
  * maps it to a club tier via `planFromPriceId`, and writes the full activation
@@ -406,6 +432,9 @@ async function handleSubscriptionSession(
 ): Promise<void> {
   const subscriptionId = session.subscription as string | null;
   if (!subscriptionId) return;
+
+  // A closed club never starts billing again (BUG-013).
+  if (await cancelIfClubClosed(admin, orgId, subscriptionId)) return;
 
   const { data: currentOrg } = await mustWrite(
     admin

@@ -69,12 +69,17 @@ export async function POST(request: Request) {
 
   const { data: org } = await admin
     .from("organizations")
-    .select("plan, trial_ends_at, stripe_subscription_id")
+    .select("plan, trial_ends_at, stripe_subscription_id, closed_at")
     .eq("id", orgId)
     .single();
 
   if (!org) {
     return NextResponse.json({ error: "org_not_found" }, { status: 404 });
+  }
+
+  // A closed club is archived (BUG-013): it never starts or resumes billing.
+  if (org.closed_at) {
+    return NextResponse.json({ error: "club_closed" }, { status: 409 });
   }
 
   // Preconditions per spec "Route Authorization & State Requirements":

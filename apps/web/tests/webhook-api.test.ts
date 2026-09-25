@@ -100,6 +100,7 @@ const mocks = vi.hoisted(() => {
 
   const constructEvent = vi.fn();
   const subscriptionsRetrieve = vi.fn();
+  const subscriptionsCancel = vi.fn().mockResolvedValue({});
   const setupIntentsRetrieve = vi.fn();
   const customersUpdate = vi.fn();
 
@@ -115,6 +116,7 @@ const mocks = vi.hoisted(() => {
     mockFrom,
     constructEvent,
     subscriptionsRetrieve,
+    subscriptionsCancel,
     setupIntentsRetrieve,
     customersUpdate,
     invalidateTenantCache,
@@ -131,7 +133,7 @@ vi.mock("@/lib/api-auth", () => ({
 vi.mock("@/lib/stripe", () => ({
   getStripe: () => ({
     webhooks: { constructEvent: mocks.constructEvent },
-    subscriptions: { retrieve: mocks.subscriptionsRetrieve },
+    subscriptions: { retrieve: mocks.subscriptionsRetrieve, cancel: mocks.subscriptionsCancel },
     setupIntents: { retrieve: mocks.setupIntentsRetrieve },
     customers: { update: mocks.customersUpdate },
   }),
@@ -1063,5 +1065,61 @@ describe("POST /api/billing/webhook — email fan-out", () => {
     expect(mocks.sendPaymentSucceededEmail).not.toHaveBeenCalled();
     expect(mocks.sendPaymentFailedEmail).not.toHaveBeenCalled();
     expect(mocks.sendSubscriptionCancelledEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ── Closed clubs (BUG-013, PR #84 review) ─────────────────────────────────────
+
+describe("POST /api/billing/webhook — a subscription for a closed club", () => {
+  // The backstop for every path into billing: whatever starts a subscription for
+  // a closed club — a trial conversion already under way when it closed, a
+  // checkout — it is cancelled at once, with no refund, and never activates it.
+  const CLOSED_AT = "2026-09-24T00:00:00.000Z";
+
+  it("customer.subscription.created for a closed club cancels it", async () => {
+    mocks.tableData.organizations = { closed_at: CLOSED_AT };
+    stubEvent({
+      type: "customer.subscription.created",
+      data: { object: { id: "sub_late", metadata: { org_id: "org-1" }, items: { data: [{ price: { id: SMALL_PRICE } }] } } },
+    });
+
+    const res = await POST(makeWebhookRequest());
+
+    expect(res.status).toBe(200);
+    expect(mocks.subscriptionsCancel).toHaveBeenCalledWith("sub_late", { prorate: false, invoice_now: false });
+    expect(mocks.updateCalls).toHaveLength(0);
+  });
+
+  it("customer.subscription.created for an open club is still a no-op", async () => {
+    mocks.tableData.organizations = { closed_at: null };
+    stubEvent({
+      type: "customer.subscription.created",
+      data: { object: { id: "sub_ok", metadata: { org_id: "org-1" }, items: { data: [{ price: { id: SMALL_PRICE } }] } } },
+    });
+
+    await POST(makeWebhookRequest());
+
+    expect(mocks.subscriptionsCancel).not.toHaveBeenCalled();
+    expect(mocks.updateCalls).toHaveLength(0);
+  });
+
+  it("a completed checkout for a closed club is cancelled, not activated", async () => {
+    mocks.tableData.organizations = {
+      subdomain: null,
+      subdomain_status: null,
+      stripe_customer_id: "cus_match",
+      subscription_status: null,
+      closed_at: CLOSED_AT,
+    };
+    stubEvent({
+      type: "checkout.session.completed",
+      data: { object: { mode: "subscription", customer: "cus_match", subscription: "sub_new", metadata: { org_id: "org-1" } } },
+    });
+
+    const res = await POST(makeWebhookRequest());
+
+    expect(res.status).toBe(200);
+    expect(mocks.subscriptionsCancel).toHaveBeenCalledWith("sub_new", { prorate: false, invoice_now: false });
+    expect(findUpdate("organizations", { column: "id", value: "org-1" })).toBeUndefined();
   });
 });

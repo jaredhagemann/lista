@@ -115,7 +115,9 @@ async function runReminders(
       .eq("subscription_status", "trialing")
       .gte("trial_ends_at", lower.toISOString())
       .lte("trial_ends_at", upper.toISOString())
-      .is(reminder.sentAtColumn, null);
+      .is(reminder.sentAtColumn, null)
+      // A closed club is archived (BUG-013): no reminders, no conversion.
+      .is("closed_at", null);
 
     if (error || !orgs) continue;
 
@@ -179,7 +181,11 @@ async function runExpirations(
     )
     .eq("subscription_status", "trialing")
     .lt("trial_ends_at", now.toISOString())
-    .is("stripe_subscription_id", null);
+    .is("stripe_subscription_id", null)
+    // A closed club is never converted to paid billing (BUG-013). Closing also
+    // ends the trial, and the webhook cancels any subscription a run already
+    // under way manages to create.
+    .is("closed_at", null);
 
   if (error || !expiringOrgs) return stats;
 

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ClubOrgProvider } from "@/context/club-org-context";
 import { ClubSidebar } from "@/components/club/club-sidebar";
+import { OwnershipOfferBanner } from "@/components/club/ownership-offer-banner";
 import { hasClubAccess } from "@/lib/plan";
 import type { Database } from "@/types/database";
 
@@ -59,6 +60,17 @@ export default async function ClubLayout({
     redirect("/dashboard/settings?tab=plan");
   }
 
+  // An offer of ownership addressed to this director (BUG-013).
+  const { data: offer } = await supabase
+    .from("organization_ownership_transfers")
+    .select("id, expires_at, profiles!organization_ownership_transfers_from_profile_id_fkey(first_name, last_name)")
+    .eq("organization_id", org.id)
+    .eq("to_profile_id", user.id)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  const offeredBy = offer?.profiles as { first_name: string | null; last_name: string | null } | null;
+
   const clubOrg = {
     orgId: org.id,
     orgName: org.org_name_public ?? org.name,
@@ -71,7 +83,17 @@ export default async function ClubLayout({
     <ClubOrgProvider value={clubOrg}>
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
         <ClubSidebar />
-        <div className="flex-1 min-w-0">{children}</div>
+        <div className="flex-1 min-w-0 space-y-4">
+          {offer && (
+            <OwnershipOfferBanner
+              transferId={offer.id}
+              clubName={org.name}
+              fromName={[offeredBy?.first_name, offeredBy?.last_name].filter(Boolean).join(" ") || "The owner"}
+              expiresAt={offer.expires_at}
+            />
+          )}
+          {children}
+        </div>
       </div>
     </ClubOrgProvider>
   );

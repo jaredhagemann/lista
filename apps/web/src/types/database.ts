@@ -692,10 +692,70 @@ export type Database = {
           },
         ]
       }
+      organization_ownership_transfers: {
+        Row: {
+          created_at: string
+          expires_at: string
+          from_profile_id: string | null
+          id: string
+          organization_id: string
+          reason: string | null
+          responded_at: string | null
+          status: string
+          to_profile_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          from_profile_id?: string | null
+          id?: string
+          organization_id: string
+          reason?: string | null
+          responded_at?: string | null
+          status?: string
+          to_profile_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          from_profile_id?: string | null
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          responded_at?: string | null
+          status?: string
+          to_profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_ownership_transfers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_ownership_transfers_from_profile_id_fkey"
+            columns: ["from_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_ownership_transfers_to_profile_id_fkey"
+            columns: ["to_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           brand_color: string | null
           brand_color_secondary: string | null
+          closed_at: string | null
+          closed_by: string | null
           created_at: string | null
           created_by: string | null
           custom_domain: string | null
@@ -725,6 +785,8 @@ export type Database = {
         Insert: {
           brand_color?: string | null
           brand_color_secondary?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
           created_at?: string | null
           created_by?: string | null
           custom_domain?: string | null
@@ -754,6 +816,8 @@ export type Database = {
         Update: {
           brand_color?: string | null
           brand_color_secondary?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
           created_at?: string | null
           created_by?: string | null
           custom_domain?: string | null
@@ -1253,6 +1317,19 @@ export type Database = {
         Args: { p_actor_id: string; p_email: string; p_org_id: string }
         Returns: Json
       }
+      cancel_ownership_transfer: {
+        Args: { p_actor_id: string; p_transfer_id: string }
+        Returns: undefined
+      }
+      close_club: {
+        Args: { p_actor_id: string; p_confirm_name: string; p_org_id: string }
+        Returns: undefined
+      }
+      club_is_closed: { Args: { p_org_id: string }; Returns: boolean }
+      club_member_emails: {
+        Args: { p_org_id: string }
+        Returns: { email: string; first_name: string | null }[]
+      }
       create_club_team: {
         Args: { org_id: string; season: string; team_name: string }
         Returns: string
@@ -1324,9 +1401,22 @@ export type Database = {
         Returns: boolean
       }
       safe_team_tz: { Args: { t_id: string }; Returns: string }
+      owned_open_clubs: {
+        Args: { p_profile_id: string }
+        Returns: { id: string; name: string }[]
+      }
+      recover_club_ownership: {
+        Args: { p_org_id: string; p_reason: string; p_to_profile_id: string }
+        Returns: Json
+      }
       remove_org_director: {
         Args: { p_actor_id: string; p_org_id: string; p_profile_id: string }
         Returns: undefined
+      }
+      reopen_club: { Args: { p_org_id: string }; Returns: undefined }
+      respond_ownership_transfer: {
+        Args: { p_accept: boolean; p_actor_id: string; p_transfer_id: string }
+        Returns: Json
       }
       set_unanswered_availability: {
         Args: {
@@ -1338,6 +1428,10 @@ export type Database = {
           p_to: string
         }
         Returns: number
+      }
+      start_ownership_transfer: {
+        Args: { p_actor_id: string; p_org_id: string; p_to_profile_id: string }
+        Returns: string
       }
       team_org_id: { Args: { t_id: string }; Returns: string }
       training_leaderboard: {

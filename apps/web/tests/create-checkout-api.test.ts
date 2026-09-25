@@ -587,3 +587,20 @@ describe("POST /api/billing/create-checkout — session shape", () => {
     });
   });
 });
+
+// ── Closed clubs (BUG-013, PR #84 review) ─────────────────────────────────────
+
+describe("POST /api/billing/create-checkout — closed club", () => {
+  // A closed club is archived: it must not start or resume billing, whatever
+  // state its billing columns are in.
+  const CLOSED_AT = "2026-09-24T00:00:00.000Z";
+
+  it("refuses with 409 club_closed", async () => {
+    seedOwner({ id: "org-1", name: "Test Org", stripe_customer_id: null, plan: "free", subscription_status: null, closed_at: CLOSED_AT });
+
+    const res = await POST(makeRequest({ orgId: "org-1", plan: "club_small" }));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "club_closed" });
+  });
+});

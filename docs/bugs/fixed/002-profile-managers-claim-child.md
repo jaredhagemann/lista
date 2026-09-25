@@ -110,7 +110,7 @@ existing guardian. Protect identity/auth linkage fields separately from editable
 
 Enforce the last-login invariant **atomically**, including concurrent removal attempts by two different
 guardians. Account deletion must not silently bypass it — see
-[BUG-013](../013-club-staffing-and-ownership-handover.md) and D7.
+[BUG-013](./013-club-staffing-and-ownership-handover.md) and D7.
 
 Player-initiated operations must be authenticated as that player; a staff member viewing a child's profile
 does not thereby acquire the player's removal permission.
@@ -150,7 +150,7 @@ up eight problems. The filed bug was one of them.
 | --- | --- | --- |
 | 5 | `removeProfileManager` let **any coach sharing a team** remove a guardian, and refused the other guardian and the player | Now: the guardian themselves, another guardian of the same player, or the player. Staff alone: refused. A player's own Self link can only be removed by that player. The managers card shows **Remove** only to the player or a guardian. |
 | 6 | Nothing stopped the **last guardian** of a player with no login from unlinking | Trigger `profile_managers_keep_login_path` refuses it on every delete path, service role included. It locks the player row, so concurrent removals serialize. A pending invitation does not count as a replacement. Deleting the player's own profile still cascades. |
-| 7 | **Account deletion** by a sole guardian orphaned the child | The trigger refuses the cascade. `/api/account/delete` checks first via `guardian_dependents` (service role only) and returns `409 sole_guardian` with the affected players' names. Web and mobile explain it and link to Managed Players. Included here per user decision 2026-09-16; this covers the sole-guardian area of [BUG-013](../013-club-staffing-and-ownership-handover.md). |
+| 7 | **Account deletion** by a sole guardian orphaned the child | The trigger refuses the cascade. `/api/account/delete` checks first via `guardian_dependents` (service role only) and returns `409 sole_guardian` with the affected players' names. Web and mobile explain it and link to Managed Players. Included here per user decision 2026-09-16; this covers the sole-guardian area of [BUG-013](./013-club-staffing-and-ownership-handover.md). |
 
 Both refusal paths (5 and 6) show one clear message rather than the raw database error.
 
