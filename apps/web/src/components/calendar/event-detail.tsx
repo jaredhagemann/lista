@@ -613,7 +613,7 @@ export function EventDetail({
   team: TeamDisplay;
   currentUserId: string;
   availabilityRows: { profileId: string; status: "available" | "maybe" | "unavailable" }[];
-  members: { profileId: string; name: string }[];
+  members: { profileId: string; name: string; role?: string | null }[];
 }) {
   const router = useRouter();
   const supabase = createClient();

@@ -7,8 +7,13 @@
  * dropdown on the far right. Now every row leads with its icon — or, for a
  * coach, the same ✓ ? ✗ picker as "Your availability" — then the name.
  * Decisions (2026-09-25): a changed row moves to its new group at once; tapping
- * the selected answer again clears it; the coach's own row stays a read-only
- * icon, since they answer in "Your availability".
+ * the selected answer again clears it.
+ *
+ * Responses are for players: what a coach glances at to see whether there are
+ * enough for the game. Everyone else on the roster (coaches, managers,
+ * directors, parents) is listed in a compact "Coaches & staff" section below,
+ * read-only for everyone: staff answer for themselves in "Your availability".
+ * The summary counts players only.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -50,15 +55,18 @@ import { ResponseList } from "@/components/availability/response-list";
 import { RsvpButtons } from "@/components/availability/rsvp-buttons";
 
 const MEMBERS = [
-  { profileId: "coach-1", name: "Coach Casey" },
-  { profileId: "p-ava", name: "Ava Smith" },
-  { profileId: "p-bartholomew", name: "Bartholomew Longname-Jones" },
-  { profileId: "p-cy", name: "Cy" },
+  { profileId: "coach-1", name: "Coach Casey", role: "coach" },
+  { profileId: "p-ava", name: "Ava Smith", role: "player" },
+  { profileId: "p-bartholomew", name: "Bartholomew Longname-Jones", role: "player" },
+  { profileId: "p-cy", name: "Cy", role: "player" },
+  { profileId: "m-morgan", name: "Morgan Manager", role: "manager" },
+  { profileId: "g-pat", name: "Pat Parent", role: "parent" },
 ];
 const ROWS = [
   { profileId: "coach-1", status: "available" as const },
   { profileId: "p-ava", status: "available" as const },
   { profileId: "p-bartholomew", status: "unavailable" as const },
+  { profileId: "m-morgan", status: "maybe" as const },
 ];
 
 function renderList(isAdmin: boolean) {
@@ -132,12 +140,20 @@ describe("a coach viewing responses", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 
-  it("the coach's own row stays a read-only icon", () => {
+  it("the coach is not among the players; their row is read-only under Coaches & staff", () => {
     renderList(true);
 
+    expect(groupOf("Coach Casey")).toBe("staff");
     const own = rowOf("Coach Casey");
     expect(within(own).queryByRole("button")).toBeNull();
     expect(within(own).getByLabelText("Available")).toBeTruthy();
+  });
+
+  it("other staff are read-only too: coaches manage only players' answers", () => {
+    renderList(true);
+
+    expect(within(rowOf("Morgan Manager")).queryByRole("button")).toBeNull();
+    expect(within(rowOf("Morgan Manager")).getByLabelText("Maybe")).toBeTruthy();
   });
 
   it("choosing an answer saves it and moves the row to its new group", async () => {
@@ -183,3 +199,57 @@ describe("Your availability", () => {
     expect(within(picker).getByRole("button", { name: "Maybe" }).getAttribute("aria-pressed")).toBe("false");
   });
 });
+
+describe("players first, staff below", () => {
+  it("the player groups hold only players", () => {
+    renderList(false);
+
+    expect(groupOf("Ava Smith")).toBe("available");
+    expect(groupOf("Bartholomew Longname-Jones")).toBe("unavailable");
+    expect(groupOf("Cy")).toBe("none");
+    for (const staff of ["Coach Casey", "Morgan Manager", "Pat Parent"]) expect(groupOf(staff)).toBe("staff");
+  });
+
+  it("the summary and group counts are players only", () => {
+    renderList(false);
+
+    // Coach Casey (available) and Morgan Manager (maybe) are not counted.
+    expect(screen.getByText("1 available · 1 unavailable")).toBeTruthy();
+    expect(screen.getByText("Available (1)")).toBeTruthy();
+    expect(screen.queryByText(/maybe/i, { selector: "p" })).toBeNull();
+  });
+
+  it("every non-player is under Coaches & staff, each leading with their answer, with their role", () => {
+    renderList(false);
+
+    const section = screen.getByRole("region", { name: "Coaches & staff" });
+    const rows = within(section).getAllByText(/Coach Casey|Morgan Manager|Pat Parent/);
+    expect(rows).toHaveLength(3);
+    const morgan = rowOf("Morgan Manager");
+    expect(before(within(morgan).getByLabelText("Maybe"), within(morgan).getByText("Morgan Manager"))).toBe(true);
+    expect(within(morgan).getByText("Manager")).toBeTruthy();
+    expect(within(rowOf("Pat Parent")).getByLabelText("No response")).toBeTruthy();
+  });
+
+  it("the staff section comes after the players", () => {
+    renderList(false);
+
+    const staff = screen.getByRole("region", { name: "Coaches & staff" });
+    expect(before(rowOf("Cy"), staff)).toBe(true);
+  });
+
+  it("with no staff, there is no staff section", () => {
+    render(
+      <ResponseList
+        eventId="evt-1"
+        members={MEMBERS.filter((m) => m.role === "player")}
+        initialRows={ROWS}
+        isAdmin={false}
+        currentUserId="p-ava"
+      />
+    );
+
+    expect(screen.queryByRole("region", { name: "Coaches & staff" })).toBeNull();
+  });
+});
+

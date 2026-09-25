@@ -131,3 +131,24 @@ describe("the dashboard", () => {
     expect(screen.getByLabelText("Uniform: Navy").style.backgroundColor).toBe("rgb(30, 58, 138)");
   });
 });
+
+describe("the event page's members", () => {
+  it("carry their roster role, so responses can separate players from staff", async () => {
+    mocks.tables.events = GAME;
+    mocks.tables.availability = [];
+    mocks.tables.team_members = [
+      { profile_id: "p-1", role: "player", profiles: { first_name: "Ava", last_name: "Smith" } },
+      { profile_id: "coach-1", role: "coach", profiles: { first_name: "Coach", last_name: "Casey" } },
+    ];
+
+    render(
+      await EventDetailPage({ params: Promise.resolve({ eventId: "evt-1" }), searchParams: Promise.resolve({}) })
+    );
+
+    expect(mocks.eventDetailProps?.members).toEqual([
+      { profileId: "p-1", name: "Ava Smith", role: "player" },
+      { profileId: "coach-1", name: "Coach Casey", role: "coach" },
+    ]);
+  });
+});
+

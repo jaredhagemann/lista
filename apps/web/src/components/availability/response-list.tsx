@@ -14,7 +14,13 @@ import {
 interface Member {
   profileId: string;
   name: string;
+  /** Roster role. Only players count toward the responses; everyone else is staff. */
+  role?: string | null;
 }
+
+const isPlayer = (m: Member) => (m.role ?? "player") === "player";
+const roleLabel = (role: string | null | undefined) =>
+  role ? role.charAt(0).toUpperCase() + role.slice(1) : "Staff";
 
 interface AvailabilityRow {
   profileId: string;
@@ -46,11 +52,15 @@ function StatusIcon({ status }: { status: AvailabilityStatus | null }) {
 }
 
 /**
- * Everyone's answers, grouped by answer. Each row leads with its answer, then
- * the name. A coach answers for a teammate with the same ✓ ? ✗ picker as "Your
+ * Players' answers, grouped by answer: what a coach glances at to see whether
+ * there are enough for the game. Each row leads with its answer, then the name.
+ * A coach answers for a player with the same ✓ ? ✗ picker as "Your
  * availability"; a changed row moves to its new group at once, and tapping the
- * chosen answer again clears it. The coach's own row stays read-only: they
- * answer in "Your availability".
+ * chosen answer again clears it.
+ *
+ * Everyone else on the roster (coaches, managers, directors, parents) is listed
+ * below in a compact "Coaches & staff" section, read-only for everyone: staff
+ * answer for themselves in "Your availability". The counts are players only.
  */
 export function ResponseList({
   eventId,
@@ -104,7 +114,10 @@ export function ResponseList({
     none: [],
   };
 
-  for (const m of members) {
+  const players = members.filter(isPlayer);
+  const staff = members.filter((m) => !isPlayer(m));
+
+  for (const m of players) {
     const s = statusMap.get(m.profileId) ?? null;
     if (s === "available") groups.available.push(m);
     else if (s === "maybe") groups.maybe.push(m);
@@ -138,6 +151,7 @@ export function ResponseList({
             const status = statusMap.get(m.profileId) ?? null;
             return (
               <div key={m.profileId} data-member-row className="flex items-center gap-3 py-0.5">
+                {/* Your own answer is set only in "Your availability". */}
                 {isAdmin && m.profileId !== currentUserId ? (
                   <AvailabilityPicker
                     compact
@@ -174,8 +188,23 @@ export function ResponseList({
         {renderGroup("none", "No response", groups.none)}
       </div>
 
-      {members.length === 0 && (
-        <p className="text-sm text-muted-foreground">No team members found.</p>
+      {players.length === 0 && (
+        <p className="text-sm text-muted-foreground">No players on this team yet.</p>
+      )}
+
+      {staff.length > 0 && (
+        <section aria-label="Coaches & staff" data-group="staff" className="space-y-1 border-t pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Coaches &amp; staff ({staff.length})
+          </p>
+          {staff.map((m) => (
+            <div key={m.profileId} data-member-row className="flex items-center gap-3 text-xs">
+              <StatusIcon status={statusMap.get(m.profileId) ?? null} />
+              <span className="min-w-0 truncate">{m.name}</span>
+              <span className="text-muted-foreground">{roleLabel(m.role)}</span>
+            </div>
+          ))}
+        </section>
       )}
     </div>
   );

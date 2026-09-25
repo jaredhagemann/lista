@@ -77,7 +77,7 @@ export default async function EventDetailPage({
       .eq("event_id", eventId),
     supabase
       .from("team_members")
-      .select("profile_id, profiles(first_name, last_name)")
+      .select("profile_id, role, profiles(first_name, last_name)")
       .eq("team_id", event.team_id!),
   ]);
 
@@ -97,6 +97,8 @@ export default async function EventDetailPage({
         name: profile
           ? [profile.first_name, profile.last_name].filter(Boolean).join(" ")
           : "Unknown",
+        // Responses list players; everyone else is staff.
+        role: m.role,
       };
     });
 
