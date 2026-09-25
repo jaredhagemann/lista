@@ -39,6 +39,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EventFormDialog } from "./event-form-dialog";
+import { gameTitle, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
+import { UniformLabel } from "@/components/events/uniform-label";
 import { eventTimeZone } from "@/lib/events/event-timezone";
 import { browserTimeZone } from "@/lib/events/team-timezone";
 import { formatEventTime, formatEventTimeRange, formatShortEventDate } from "@/lib/notifications/event-time";
@@ -57,21 +59,6 @@ type PageSize = 30 | 50 | 100;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getEventTitle(event: EventWithLocation): string {
-  if (event.event_type !== "game") return event.title;
-  const opponent = event.opponent;
-  if (!opponent) return event.title;
-  const prefix =
-    event.home_away === "home"
-      ? `Home vs ${opponent}`
-      : event.home_away === "away"
-        ? `Away @ ${opponent}`
-        : opponent;
-  if (event.score_for != null && event.score_against != null) {
-    return `${prefix} · ${event.score_for}–${event.score_against}`;
-  }
-  return prefix;
-}
 
 const TYPE_BADGE: Record<string, { label: string; className: string }> = {
   practice: {
@@ -100,17 +87,17 @@ export function ScheduleList({
   teamId,
   isAdmin,
   timeZone,
-  homeUniform,
-  awayUniform,
+  team,
 }: {
   teamId: string;
   isAdmin: boolean;
   /** The team's zone, for events from before event zones and new events' default. */
   timeZone?: string | null;
-  homeUniform?: string | null;
-  awayUniform?: string | null;
+  /** Names games and shows their uniforms (spec: game-display-and-uniform-colors). */
+  team: TeamDisplay;
 }) {
   const router = useRouter();
+  const titleOf = (event: EventWithLocation) => gameTitle(event, team.name);
   const [viewerZone] = useState(() => browserTimeZone() ?? "UTC");
   // Held in state so its identity is stable: this client is a dependency of the
   // data effect, and a fresh object each render would re-run it forever.
@@ -491,7 +478,7 @@ export function ScheduleList({
                                 : "font-medium"
                             }
                           >
-                            {getEventTitle(event)}
+                            {titleOf(event)}
                           </span>
                           {event.is_cancelled && (
                             <Badge variant="outline" className="text-xs text-muted-foreground">
@@ -499,9 +486,12 @@ export function ScheduleList({
                             </Badge>
                           )}
                         </div>
-                        <Badge className={`w-fit text-xs ${badge.className}`}>
-                          {badge.label}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge className={`w-fit text-xs ${badge.className}`}>
+                            {badge.label}
+                          </Badge>
+                          {event.event_type === "game" && <UniformLabel uniform={uniformOf(event.uniform, team)} />}
+                        </div>
                         {/* Date + time shown inline on mobile */}
                         <span className="sm:hidden text-xs text-muted-foreground">
                           {date} · {formatEventTime(event.start_time, zone)}
@@ -541,6 +531,7 @@ export function ScheduleList({
                               variant="ghost"
                               size="icon"
                               className="size-8"
+                              aria-label="Event actions"
                             >
                               <MoreHorizontal className="size-4" />
                             </Button>
@@ -648,8 +639,7 @@ export function ScheduleList({
           }}
           teamId={teamId}
           teamTimeZone={timeZone}
-          homeUniform={homeUniform}
-          awayUniform={awayUniform}
+          team={team}
         />
       )}
 
@@ -662,7 +652,7 @@ export function ScheduleList({
           <AlertDialogHeader>
             <AlertDialogTitle>Restore event?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{restoringEvent ? getEventTitle(restoringEvent) : ""}&rdquo; will be restored and no longer marked as cancelled.
+              &ldquo;{restoringEvent ? titleOf(restoringEvent) : ""}&rdquo; will be restored and no longer marked as cancelled.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -685,7 +675,7 @@ export function ScheduleList({
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel event?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{cancellingEvent ? getEventTitle(cancellingEvent) : ""}&rdquo; will be marked as cancelled. Team members will still be able to see it on the schedule.
+              &ldquo;{cancellingEvent ? titleOf(cancellingEvent) : ""}&rdquo; will be marked as cancelled. Team members will still be able to see it on the schedule.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -708,7 +698,7 @@ export function ScheduleList({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete event?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{deletingEvent ? getEventTitle(deletingEvent) : ""}&rdquo; will be permanently deleted. This cannot be undone.{deletingEvent && (deletingEvent.parent_event_id || deletingEvent.recurrence_rule) ? " Other events in the series are not affected." : ""}
+              &ldquo;{deletingEvent ? titleOf(deletingEvent) : ""}&rdquo; will be permanently deleted. This cannot be undone.{deletingEvent && (deletingEvent.parent_event_id || deletingEvent.recurrence_rule) ? " Other events in the series are not affected." : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

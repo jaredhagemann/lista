@@ -80,7 +80,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 function renderList() {
-  return render(<ScheduleList teamId={TEAM} isAdmin />);
+  return render(<ScheduleList teamId={TEAM} isAdmin team={{ name: "Test team" }} />);
 }
 
 describe("paging through the list", () => {
@@ -191,7 +191,7 @@ describe("results that arrive too late (PR #75 review)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(screen.getByText("Page 2")).toBeTruthy());
 
-    rerender(<ScheduleList teamId="22222222-2222-2222-2222-222222222222" isAdmin />);
+    rerender(<ScheduleList teamId="22222222-2222-2222-2222-222222222222" isAdmin team={{ name: "Test team" }} />);
 
     await waitFor(() => expect(screen.getByText("Team B event")).toBeTruthy());
     // A cursor from another team's result would skip that team's earliest events.

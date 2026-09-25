@@ -21,6 +21,9 @@ import {
 import { toast } from "sonner";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { COMMON_TIME_ZONES } from "@/lib/events/event-timezone";
+import { uniformOf } from "@/lib/events/game-display";
+import { UniformLabel } from "@/components/events/uniform-label";
+import { UniformColorPicker } from "@/components/events/uniform-color-picker";
 import type { Database } from "@/types/database";
 
 type Team = Database["public"]["Tables"]["teams"]["Row"];
@@ -176,6 +179,8 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
   const [gender, setGender] = useState(team.gender ?? "");
   const [homeUniform, setHomeUniform] = useState(team.home_uniform ?? "");
   const [awayUniform, setAwayUniform] = useState(team.away_uniform ?? "");
+  const [homeUniformColor, setHomeUniformColor] = useState<string | null>(team.home_uniform_color ?? null);
+  const [awayUniformColor, setAwayUniformColor] = useState<string | null>(team.away_uniform_color ?? null);
   const [timezone, setTimezone] = useState(team.timezone ?? "");
   const [country, setCountry] = useState(team.country ?? "");
   const [zip, setZip] = useState(team.zip ?? "");
@@ -200,6 +205,8 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
     setGender(team.gender ?? "");
     setHomeUniform(team.home_uniform ?? "");
     setAwayUniform(team.away_uniform ?? "");
+    setHomeUniformColor(team.home_uniform_color ?? null);
+    setAwayUniformColor(team.away_uniform_color ?? null);
     setTimezone(team.timezone ?? "");
     setCountry(team.country ?? "");
     setZip(team.zip ?? "");
@@ -221,6 +228,8 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
         gender: gender || null,
         home_uniform: homeUniform || null,
         away_uniform: awayUniform || null,
+        home_uniform_color: homeUniformColor,
+        away_uniform_color: awayUniformColor,
         timezone: timezone || null,
         country: country || null,
         zip: zip || null,
@@ -238,7 +247,15 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
     setLoading(false);
   }
 
-  function renderField(label: string, readValue: string, editElement: React.ReactNode) {
+  /** A uniform as games will show it (spec: game-display-and-uniform-colors), or a dash if it has neither name nor color. */
+  function uniformReadValue(which: "home" | "away") {
+    const named = which === "home" ? team.home_uniform : team.away_uniform;
+    const color = which === "home" ? team.home_uniform_color : team.away_uniform_color;
+    if (!named && !color) return "—";
+    return <UniformLabel uniform={uniformOf(which, team)} />;
+  }
+
+  function renderField(label: string, readValue: React.ReactNode, editElement: React.ReactNode) {
     return (
       <>
         <span className="text-sm font-medium text-muted-foreground">
@@ -452,21 +469,27 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4 items-center">
             {renderField(
               "Home Uniform",
-              team.home_uniform ?? "—",
-              <Input
-                value={homeUniform}
-                onChange={(e) => setHomeUniform(e.target.value)}
-                placeholder="e.g. White jersey, blue shorts"
-              />
+              uniformReadValue("home"),
+              <div className="space-y-2">
+                <Input
+                  value={homeUniform}
+                  onChange={(e) => setHomeUniform(e.target.value)}
+                  placeholder="e.g. White jersey, blue shorts"
+                />
+                <UniformColorPicker label="Home uniform color" value={homeUniformColor} onChange={setHomeUniformColor} />
+              </div>
             )}
             {renderField(
               "Away Uniform",
-              team.away_uniform ?? "—",
-              <Input
-                value={awayUniform}
-                onChange={(e) => setAwayUniform(e.target.value)}
-                placeholder="e.g. Blue jersey, white shorts"
-              />
+              uniformReadValue("away"),
+              <div className="space-y-2">
+                <Input
+                  value={awayUniform}
+                  onChange={(e) => setAwayUniform(e.target.value)}
+                  placeholder="e.g. Blue jersey, white shorts"
+                />
+                <UniformColorPicker label="Away uniform color" value={awayUniformColor} onChange={setAwayUniformColor} />
+              </div>
             )}
           </div>
         </div>

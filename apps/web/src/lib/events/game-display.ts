@@ -46,6 +46,9 @@ export function homeAwayLabel(value: string | null | undefined): string {
 
 export type Uniform = { name: string; color: string | null };
 
+/** What the web views need of a team to name its games and show its uniforms. */
+export type TeamDisplay = TeamUniforms & { name: string };
+
 export type TeamUniforms = {
   home_uniform?: string | null;
   away_uniform?: string | null;

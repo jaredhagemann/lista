@@ -39,10 +39,13 @@ export function UniformLabel({ uniform, className = "" }: { uniform: Uniform | n
   );
 }
 
-/** The calendar chip's uniform dot. Renders nothing without a color. */
-export function UniformDot({ uniform }: { uniform: Uniform | null }) {
+/**
+ * A uniform's color as a dot: on the calendar's game chips (the default) or,
+ * with `on="page"`, on the page itself. Renders nothing without a color.
+ */
+export function UniformDot({ uniform, on = "gameChip" }: { uniform: Uniform | null; on?: "gameChip" | "page" }) {
   if (!uniform?.color) return null;
-  const border = borderFor(uniform.color, BACKGROUNDS.gameChip);
+  const border = borderFor(uniform.color, BACKGROUNDS[on]);
   return (
     <span
       aria-label={`Uniform: ${uniform.name}`}

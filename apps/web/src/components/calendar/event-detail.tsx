@@ -61,6 +61,10 @@ import { eventTimeZone, instantFromWallClock, wallClockIn } from "@/lib/events/e
 import { browserTimeZone } from "@/lib/events/team-timezone";
 import { formatEventDate, formatEventTime, formatEventTimeRange } from "@/lib/notifications/event-time";
 import { TimeZoneSelect } from "./time-zone-select";
+import { GameTitleHint } from "@/components/events/game-title-hint";
+import { UniformOptions } from "@/components/events/uniform-options";
+import { UniformLabel } from "@/components/events/uniform-label";
+import { gameTitle, homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 
@@ -82,8 +86,7 @@ export function EventEditForm({
   teamId,
   timeZone: eventZone,
   teamTimeZone,
-  homeUniform,
-  awayUniform,
+  team,
   onSave,
   onCancel,
 }: {
@@ -92,8 +95,8 @@ export function EventEditForm({
   /** The zone the event is in now: its own, or the team's for an event from before event zones. */
   timeZone: string;
   teamTimeZone?: string | null;
-  homeUniform?: string | null;
-  awayUniform?: string | null;
+  /** Names games and their uniforms (spec: game-display-and-uniform-colors). */
+  team: TeamDisplay;
   onSave: () => void;
   onCancel: () => void;
 }) {
@@ -275,18 +278,25 @@ export function EventEditForm({
               onChange={(e) => setTitle(e.target.value)}
               required
             />
+            <GameTitleHint
+              eventType={eventType}
+              title={title}
+              opponent={opponent}
+              homeAway={homeAway}
+              teamName={team.name}
+            />
           </div>
 
           {/* Event type */}
           <div className="space-y-2">
-            <Label>Type</Label>
+            <Label htmlFor="eventType">Type</Label>
             <Select
               value={eventType}
               onValueChange={(v) =>
                 setEventType(v as "practice" | "game" | "other")
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id="eventType">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -442,12 +452,7 @@ export function EventEditForm({
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="home">
-                        {homeUniform || "Home"}
-                      </SelectItem>
-                      <SelectItem value="away">
-                        {awayUniform || "Away"}
-                      </SelectItem>
+                      <UniformOptions team={team} />
                     </SelectContent>
                   </Select>
                 </div>
@@ -592,8 +597,7 @@ export function EventDetail({
   isAdmin,
   creatorName,
   initialEdit = false,
-  homeUniform,
-  awayUniform,
+  team,
   teamTimeZone,
   currentUserId,
   availabilityRows,
@@ -605,8 +609,8 @@ export function EventDetail({
   initialEdit?: boolean;
   /** The team's zone, for an event from before event zones. */
   teamTimeZone?: string | null;
-  homeUniform?: string | null;
-  awayUniform?: string | null;
+  /** Names games and their uniforms (spec: game-display-and-uniform-colors). */
+  team: TeamDisplay;
   currentUserId: string;
   availabilityRows: { profileId: string; status: "available" | "maybe" | "unavailable" }[];
   members: { profileId: string; name: string }[];
@@ -631,6 +635,11 @@ export function EventDetail({
   const [confirmSeriesDelete, setConfirmSeriesDelete] = useState(false);
 
   const startDate = new Date(event.start_time);
+  // A game is named by its team and opponent everywhere, dialogs included; a
+  // whole series without a score, which belongs to one game (spec:
+  // game-display-and-uniform-colors).
+  const title = gameTitle(event, team.name);
+  const seriesTitle = gameTitle(event, team.name, { includeScore: false });
   // Shown and edited in the event's own zone, wherever the viewer is (BUG-010).
   const [viewerZone] = useState(() => browserTimeZone() ?? "UTC");
   const zone = eventTimeZone(event, teamTimeZone, viewerZone);
@@ -795,8 +804,7 @@ export function EventDetail({
             teamId={event.team_id!}
             fallbackTimeZone={eventTimeZone({}, teamTimeZone, viewerZone)}
             teamTimeZone={teamTimeZone}
-            homeUniform={homeUniform}
-            awayUniform={awayUniform}
+            team={team}
             onSave={handleEditSave}
             onCancel={handleEditCancel}
           />
@@ -806,8 +814,7 @@ export function EventDetail({
             teamId={event.team_id!}
             timeZone={zone}
             teamTimeZone={teamTimeZone}
-            homeUniform={homeUniform}
-            awayUniform={awayUniform}
+            team={team}
             onSave={handleEditSave}
             onCancel={handleEditCancel}
           />
@@ -832,7 +839,9 @@ export function EventDetail({
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-2xl">{event.title}</CardTitle>
+                <CardTitle className="text-2xl">
+                  <h1>{title}</h1>
+                </CardTitle>
                 {event.is_cancelled && (
                   <Badge variant="destructive">Cancelled</Badge>
                 )}
@@ -849,6 +858,7 @@ export function EventDetail({
                 <Button
                   variant="outline"
                   size="icon"
+                  aria-label="Edit event"
                   onClick={handleEditClick}
                 >
                   <Pencil className="h-4 w-4" />
@@ -856,6 +866,7 @@ export function EventDetail({
                 <Button
                   variant="outline"
                   size="icon"
+                  aria-label="Delete event"
                   onClick={() => setShowDelete(true)}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -931,15 +942,13 @@ export function EventDetail({
                   )}
                   {event.home_away && (
                     <div>
-                      <Badge variant="outline" className="capitalize">
-                        {event.home_away}
-                      </Badge>
+                      <Badge variant="outline">{homeAwayLabel(event.home_away)}</Badge>
                     </div>
                   )}
-                  {event.uniform && (
+                  {uniformOf(event.uniform, team) && (
                     <div>
                       <span className="text-muted-foreground">Uniform:</span>{" "}
-                      <span className="capitalize">{event.uniform}</span>
+                      <UniformLabel uniform={uniformOf(event.uniform, team)} />
                     </div>
                   )}
                   {event.game_result && (
@@ -1033,7 +1042,7 @@ export function EventDetail({
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel event?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{event.title}&rdquo; will be marked as cancelled. Team members will still be able to see it on the schedule.
+              &ldquo;{title}&rdquo; will be marked as cancelled. Team members will still be able to see it on the schedule.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1051,7 +1060,7 @@ export function EventDetail({
           <AlertDialogHeader>
             <AlertDialogTitle>Restore event?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{event.title}&rdquo; will be restored and no longer marked as cancelled.
+              &ldquo;{title}&rdquo; will be restored and no longer marked as cancelled.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1083,7 +1092,7 @@ export function EventDetail({
                 </>
               ) : (
                 <>
-                  Are you sure you want to delete &ldquo;{event.title}&rdquo;? This
+                  Are you sure you want to delete &ldquo;{title}&rdquo;? This
                   action cannot be undone.
                 </>
               )}
@@ -1129,7 +1138,7 @@ export function EventDetail({
               {deleteSummary && (
                 <>
                   This permanently deletes all {deleteSummary.occurrences} events in the
-                  &ldquo;{event.title}&rdquo; series, past events included, and{" "}
+                  &ldquo;{seriesTitle}&rdquo; series, past events included, and{" "}
                   {deleteSummary.responses} availability{" "}
                   {deleteSummary.responses === 1 ? "response" : "responses"}. To stop the series
                   without losing its history, edit the entire series and set an earlier

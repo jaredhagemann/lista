@@ -68,8 +68,8 @@ One shared component, used everywhere a game's uniform appears:
 - **With a color:** a small rounded pill filled with the color.
   - The text is black or white, whichever has the higher WCAG contrast ratio against the fill.
   - The pill gets a thin border when the fill's contrast against the background it sits on is below
-    1.5:1, in the **current theme**: white or pale colors on the light theme, and black or navy on the
-    dark theme.
+    1.5:1, in the **current theme**: white or pale colors on the light theme, and black or very dark
+    colors on the dark theme. (Navy, at 1.6:1 against the dark card, needs none.)
 - **Without a color:** the name as plain text, as today.
 - **Accessibility:** the name is always shown, so the color never carries meaning on its own. The element
   has an accessible name, "Uniform: Navy".
@@ -79,10 +79,10 @@ One shared component, used everywhere a game's uniform appears:
 | Place | Change |
 | --- | --- |
 | Event page | "Uniform: home" becomes "Uniform:" followed by `UniformLabel`. |
-| Schedule list | `UniformLabel` is added to each game row, under the title next to the type badge. On mobile it sits in the inline date/time line. |
+| Schedule list | `UniformLabel` is added to each game row, under the title next to the type badge, on every screen size. |
 | Schedule calendar | A **color dot** at the start of a game's chip, in the uniform's color. The dot gets a thin border when its contrast against the **chip's own background** (the green game chip) is below 1.5:1, in either theme. The chip's tooltip reads "[title] · [uniform name]". No dot when the game has no uniform or the uniform has no color. The mobile dot view is unchanged. |
 | Dashboard → Upcoming events | `UniformLabel` is added under a game's time. |
-| Event forms (create, edit, series edit) | Each Uniform select option shows a color swatch beside its name. |
+| Event forms (create, edit, series edit) | Each Uniform select option shows a color swatch beside its name, with the same border rule measured against the page. |
 
 Games with no uniform selected show nothing, as today.
 

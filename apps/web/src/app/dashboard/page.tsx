@@ -6,6 +6,8 @@ import Link from "next/link";
 import { CreateTeamForm } from "@/components/team/create-team-form";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import { LocalTime } from "@/components/ui/local-time";
+import { UniformLabel } from "@/components/events/uniform-label";
+import { gameTitle, uniformOf, type TeamUniforms } from "@/lib/events/game-display";
 import { isUsableTimeZone } from "@/lib/events/event-timezone";
 import { formatEventTime, formatShortEventDate } from "@/lib/notifications/event-time";
 import type { Database } from "@/types/database";
@@ -22,7 +24,7 @@ export default async function DashboardPage() {
 
   const membership = await getActiveMembership(supabase, user!.id);
   const team = membership?.teams as
-    | { id: string; name: string; season: string | null; timezone: string | null }
+    | ({ id: string; name: string; season: string | null; timezone: string | null } & TeamUniforms)
     | undefined;
   const isAdmin =
     membership?.role === "coach" ||
@@ -85,7 +87,7 @@ export default async function DashboardPage() {
                     className="block rounded-md p-2 transition-colors hover:bg-accent"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{event.title}</span>
+                      <span className="font-medium">{gameTitle(event, team.name)}</span>
                       <Badge variant="outline" className="capitalize">
                         {event.event_type}
                       </Badge>
@@ -111,6 +113,11 @@ export default async function DashboardPage() {
                         );
                       })()}
                     </p>
+                    {event.event_type === "game" && uniformOf(event.uniform, team) && (
+                      <div className="mt-1">
+                        <UniformLabel uniform={uniformOf(event.uniform, team)} />
+                      </div>
+                    )}
                     {event.locations?.name && (
                       <p className="text-sm text-muted-foreground">
                         {event.locations.name}

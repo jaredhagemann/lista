@@ -30,7 +30,18 @@ export type EventRow = Database["public"]["Tables"]["events"]["Row"];
  */
 export type CalendarEventRow = Pick<
   EventRow,
-  "id" | "team_id" | "title" | "event_type" | "start_time" | "end_time" | "is_cancelled"
+  | "id"
+  | "team_id"
+  | "title"
+  | "event_type"
+  | "start_time"
+  | "end_time"
+  | "is_cancelled"
+  | "opponent"
+  | "home_away"
+  | "uniform"
+  | "score_for"
+  | "score_against"
 >;
 
 /** The list projection: the whole row, plus the joined location summary. */
@@ -94,8 +105,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})?$/;
 
 const PROJECTIONS: Record<EventProjection, string> = {
-  // The grid needs placement and labelling, nothing else.
-  calendar: "id, team_id, title, event_type, start_time, end_time, is_cancelled",
+  // The grid needs placement and labelling, nothing else. A game is labelled by
+  // its team and opponent, with its uniform (spec: game-display-and-uniform-colors).
+  calendar:
+    "id, team_id, title, event_type, start_time, end_time, is_cancelled, opponent, home_away, uniform, score_for, score_against",
   // The list needs what its rows and row actions read.
   list: "*, locations(name, address)",
 };

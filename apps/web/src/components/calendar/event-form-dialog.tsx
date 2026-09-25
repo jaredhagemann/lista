@@ -27,6 +27,9 @@ import { buildRRule, untilEndOfDay } from "@/lib/utils/rrule";
 import { expandInZone, instantFromWallClock, isUsableTimeZone, wallClockIn } from "@/lib/events/event-timezone";
 import { browserTimeZone } from "@/lib/events/team-timezone";
 import { TimeZoneSelect } from "./time-zone-select";
+import { GameTitleHint } from "@/components/events/game-title-hint";
+import { UniformOptions } from "@/components/events/uniform-options";
+import type { TeamDisplay } from "@/lib/events/game-display";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 
@@ -54,8 +57,7 @@ export function EventFormDialog({
   teamId,
   teamTimeZone,
   defaultDate,
-  homeUniform,
-  awayUniform,
+  team,
 }: {
   open: boolean;
   onClose: () => void;
@@ -64,8 +66,8 @@ export function EventFormDialog({
   teamTimeZone?: string | null;
   /** The day to start on ("YYYY-MM-DD"), in the event's zone. */
   defaultDate?: string;
-  homeUniform?: string | null;
-  awayUniform?: string | null;
+  /** Names games and their uniforms (spec: game-display-and-uniform-colors). */
+  team: TeamDisplay;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -301,6 +303,13 @@ export function EventFormDialog({
                 onChange={(e) => setTitle(e.target.value)}
                 required
               />
+              <GameTitleHint
+                eventType={eventType}
+                title={title}
+                opponent={opponent}
+                homeAway={homeAway}
+                teamName={team.name}
+              />
             </div>
 
             <div className="space-y-2">
@@ -311,7 +320,7 @@ export function EventFormDialog({
                   setEventType(v as "practice" | "game" | "other")
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="eventType">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -464,12 +473,7 @@ export function EventFormDialog({
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="home">
-                          {homeUniform || "Home"}
-                        </SelectItem>
-                        <SelectItem value="away">
-                          {awayUniform || "Away"}
-                        </SelectItem>
+                        <UniformOptions team={team} />
                       </SelectContent>
                     </Select>
                   </div>

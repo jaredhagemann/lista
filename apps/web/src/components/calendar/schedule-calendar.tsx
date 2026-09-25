@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { gameTitle, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
+import { UniformDot } from "@/components/events/uniform-label";
 import { EventFormDialog } from "./event-form-dialog";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -54,16 +56,15 @@ export function ScheduleCalendar({
   timeZone,
   month,
   onMonthChange,
-  homeUniform,
-  awayUniform,
+  team,
 }: {
   teamId: string;
   isAdmin: boolean;
   timeZone?: string | null;
   month: MonthKey;
   onMonthChange: (month: MonthKey) => void;
-  homeUniform?: string | null;
-  awayUniform?: string | null;
+  /** Names games and shows their uniforms (spec: game-display-and-uniform-colors). */
+  team: TeamDisplay;
 }) {
   const router = useRouter();
   // Held in state so its identity is stable: this client is a dependency of the
@@ -408,13 +409,18 @@ export function ScheduleCalendar({
                   <div className="hidden sm:flex flex-col gap-0.5">
                     {visibleEvents.map((event) => {
                       const colors = eventTypeColors[event.event_type] ?? eventTypeColors.other;
+                      // Chips are one line: no score; the uniform is a dot, named in the tooltip.
+                      const title = gameTitle(event, team.name, { includeScore: false });
+                      const uniform = event.event_type === "game" ? uniformOf(event.uniform, team) : null;
                       return (
                         <button
                           key={event.id}
                           onClick={(e) => handleEventClick(e, event.id)}
-                          className={`w-full text-left text-[11px] leading-tight px-1.5 py-0.5 rounded truncate ${colors.bg} ${colors.text} hover:opacity-80 transition-opacity`}
+                          title={uniform ? `${title} · ${uniform.name}` : title}
+                          className={`flex w-full items-center gap-1 text-left text-[11px] leading-tight px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} hover:opacity-80 transition-opacity`}
                         >
-                          {event.title}
+                          <UniformDot uniform={uniform} />
+                          <span className="truncate">{title}</span>
                         </button>
                       );
                     })}
@@ -452,8 +458,7 @@ export function ScheduleCalendar({
           teamId={teamId}
           teamTimeZone={timeZone}
           defaultDate={selectedDate ?? undefined}
-          homeUniform={homeUniform}
-          awayUniform={awayUniform}
+          team={team}
         />
       )}
     </div>
