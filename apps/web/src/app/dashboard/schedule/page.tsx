@@ -35,8 +35,13 @@ export default async function SchedulePage() {
         teamId={team.id}
         isAdmin={isAdmin}
         timeZone={team.timezone}
-        homeUniform={team.home_uniform}
-        awayUniform={team.away_uniform}
+        team={{
+          name: team.name,
+          home_uniform: team.home_uniform,
+          away_uniform: team.away_uniform,
+          home_uniform_color: team.home_uniform_color,
+          away_uniform_color: team.away_uniform_color,
+        }}
       />
     </div>
   );

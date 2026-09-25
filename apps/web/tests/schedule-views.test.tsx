@@ -60,7 +60,7 @@ function deferred<T>() {
 }
 
 function renderSchedule() {
-  return render(<ScheduleView teamId={TEAM} isAdmin timeZone={PACIFIC} />);
+  return render(<ScheduleView teamId={TEAM} isAdmin timeZone={PACIFIC} team={{ name: "Test team" }} />);
 }
 
 beforeEach(() => {

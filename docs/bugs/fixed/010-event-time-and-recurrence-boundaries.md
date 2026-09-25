@@ -292,3 +292,15 @@ Regression tests, all failing before the follow-up:
    "new event" email.
 3. **Mobile:** the BUG-010 check in [mobile-next.md](../../releases/mobile-next.md), after the held build ships.
    Jest uses Node's `Intl`, not Hermes, so on-device zone formatting is not yet verified.
+
+### Later correction (2026-09-25)
+
+The event page passed `teamTimeZone` through a mistaken cast. It read `activeMembership.teams`, which is
+the team row, as if it were a membership, then read `.teams` again, so the value was always null. Stored
+times and displayed times were unaffected, because events carry their own zone and an unset team zone
+falls back to the viewer's. The only visible effect was that the event editor's zone picker lacked its
+"(team default)" label and hint. The same cast had kept uniform names from the event page since before
+BUG-010. Both are fixed by the game display work
+([spec](../../specs/game-display-and-uniform-colors.md)), with a page-level test
+(`apps/web/tests/game-display-pages.test.tsx`).
+

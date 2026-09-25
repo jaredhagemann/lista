@@ -21,6 +21,10 @@ import { getRecurrenceDescription, parseRRule } from "@/lib/utils/rrule";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import { formatEventTime, formatShortEventDate, formatZoneName } from "@/lib/notifications/event-time";
 import { TimeZoneSelect } from "./time-zone-select";
+import { GameTitleHint } from "@/components/events/game-title-hint";
+import { UniformOptions } from "@/components/events/uniform-options";
+import { UniformLabel } from "@/components/events/uniform-label";
+import { homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import {
   planSeriesEdit,
   resolveSeriesEdit,
@@ -43,6 +47,27 @@ const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 function rruleDayIn(iso: string, timeZone: string): number {
   const jsDay = new Date(`${toWallClock(iso, timeZone).slice(0, 10)}T00:00:00.000Z`).getUTCDay();
   return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+/**
+ * A changed field's value in the series-edit review, as people see it: uniforms
+ * by the team's names for them, home/away as words, a location by its name.
+ */
+export function describeSeriesValue(
+  key: string,
+  value: unknown,
+  {
+    team,
+    locations,
+    newLocationName = "",
+  }: { team: TeamDisplay; locations: Array<{ id: string; name: string }>; newLocationName?: string }
+): string {
+  if (value == null || value === "") return "—";
+  if (key === "uniform") return uniformOf(String(value), team)?.name ?? String(value);
+  if (key === "home_away") return homeAwayLabel(String(value));
+  if (key === "location_id") return locations.find((l) => l.id === value)?.name ?? (newLocationName.trim() || String(value));
+  if (key === "arrival_time") return `${value} min early`;
+  return String(value);
 }
 
 /** "HH:mm" in the series' zone, never the browser's (BUG-010). */
@@ -68,8 +93,7 @@ export function SeriesEditForm({
   teamId,
   fallbackTimeZone,
   teamTimeZone,
-  homeUniform,
-  awayUniform,
+  team,
   onSave,
   onCancel,
 }: {
@@ -81,8 +105,8 @@ export function SeriesEditForm({
   /** The team's zone, else the viewer's: used only when neither the rule nor the head names one. */
   fallbackTimeZone: string;
   teamTimeZone?: string | null;
-  homeUniform?: string | null;
-  awayUniform?: string | null;
+  /** Names games and their uniforms (spec: game-display-and-uniform-colors). */
+  team: TeamDisplay;
   onSave: () => void;
   onCancel: () => void;
 }) {
@@ -143,7 +167,7 @@ export function SeriesEditForm({
       });
   }, [teamId, supabase]);
 
-  type FieldChange = { field: string; before: string; after: string };
+  type FieldChange = { field: string; before: React.ReactNode; after: React.ReactNode };
 
   function currentPattern(): SeriesPattern {
     const frequency = frequencyMode === "custom" ? customInterval : frequencyMode;
@@ -255,11 +279,13 @@ export function SeriesEditForm({
       home_away: "Home / away",
       uniform: "Uniform",
     };
-    const show = (key: string, value: unknown) => {
-      if (value == null || value === "") return "—";
-      if (key === "location_id") return locations.find((l) => l.id === value)?.name ?? (newLocationName.trim() || String(value));
-      if (key === "arrival_time") return `${value} min early`;
-      return String(value);
+    // A uniform shows as it does on the schedule; anything else by name (spec:
+    // game-display-and-uniform-colors), never the stored "home" / "away".
+    const show = (key: string, value: unknown): React.ReactNode => {
+      if (key === "uniform" && uniformOf(value as string | null, team)) {
+        return <UniformLabel uniform={uniformOf(value as string, team)} />;
+      }
+      return describeSeriesValue(key, value, { team, locations, newLocationName });
     };
     const changes: FieldChange[] = Object.entries(fields).map(([key, value]) => ({
       field: labels[key] ?? key,
@@ -323,12 +349,19 @@ export function SeriesEditForm({
             <div className="space-y-2">
               <Label htmlFor="title">Title</Label>
               <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+              <GameTitleHint
+                eventType={eventType}
+                title={title}
+                opponent={opponent}
+                homeAway={homeAway}
+                teamName={team.name}
+              />
             </div>
 
             <div className="space-y-2">
-              <Label>Type</Label>
+              <Label htmlFor="eventType">Type</Label>
               <Select value={eventType} onValueChange={(v) => setEventType(v as "practice" | "game" | "other")}>
-                <SelectTrigger>
+                <SelectTrigger id="eventType">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -469,8 +502,7 @@ export function SeriesEditForm({
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="home">{homeUniform || "Home"}</SelectItem>
-                        <SelectItem value="away">{awayUniform || "Away"}</SelectItem>
+                        <UniformOptions team={team} />
                       </SelectContent>
                     </Select>
                   </div>

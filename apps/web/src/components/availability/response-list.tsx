@@ -2,131 +2,119 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
-
-type AvailabilityStatus = "available" | "maybe" | "unavailable";
+import {
+  AVAILABILITY,
+  AvailabilityPicker,
+  nextAvailability,
+  saveAvailability,
+  type AvailabilityStatus,
+} from "./availability-picker";
 
 interface Member {
   profileId: string;
   name: string;
+  /** Roster role. Only players count toward the responses; everyone else is staff. */
+  role?: string | null;
 }
+
+const isPlayer = (m: Member) => (m.role ?? "player") === "player";
+const roleLabel = (role: string | null | undefined) =>
+  role ? role.charAt(0).toUpperCase() + role.slice(1) : "Staff";
 
 interface AvailabilityRow {
   profileId: string;
   status: AvailabilityStatus;
 }
 
-const statusConfig = {
-  available: { label: "Available", symbol: "✓", color: "text-green-700 dark:text-green-400" },
-  maybe: { label: "Maybe", symbol: "?", color: "text-amber-600 dark:text-amber-400" },
-  unavailable: { label: "Unavailable", symbol: "✗", color: "text-red-600 dark:text-red-400" },
-};
-
-function StatusBadge({ status }: { status: AvailabilityStatus | null }) {
+/**
+ * A read-only answer, in a fixed-width slot so every name starts in the same
+ * place: ✓ ? ✗, or a dash for no response.
+ */
+function StatusIcon({ status }: { status: AvailabilityStatus | null }) {
   if (!status) {
-    return <span className="text-sm text-muted-foreground">—</span>;
+    return (
+      <span aria-label="No response" className="w-5 shrink-0 text-center text-sm text-muted-foreground">
+        —
+      </span>
+    );
   }
-  const cfg = statusConfig[status];
+  const cfg = AVAILABILITY[status];
   return (
-    <span className={`text-sm font-semibold ${cfg.color}`} title={cfg.label}>
+    <span
+      aria-label={cfg.label}
+      title={cfg.label}
+      className={`w-5 shrink-0 text-center text-sm font-semibold ${cfg.icon}`}
+    >
       {cfg.symbol}
     </span>
   );
 }
 
-function AdminStatusSelect({
-  eventId,
-  profileId,
-  currentStatus,
-  onStatusChange,
-}: {
-  eventId: string;
-  profileId: string;
-  currentStatus: AvailabilityStatus | null;
-  onStatusChange: (profileId: string, newStatus: AvailabilityStatus | null) => void;
-}) {
-  const supabase = createClient();
-  const [loading, setLoading] = useState(false);
-
-  async function handleChange(value: string) {
-    setLoading(true);
-    const prev = currentStatus;
-
-    if (value === "clear") {
-      onStatusChange(profileId, null);
-      const { error } = await supabase
-        .from("availability")
-        .delete()
-        .eq("event_id", eventId)
-        .eq("profile_id", profileId);
-      if (error) {
-        toast.error(error.message);
-        onStatusChange(profileId, prev);
-      }
-    } else {
-      const newStatus = value as AvailabilityStatus;
-      onStatusChange(profileId, newStatus);
-      const { error } = await supabase.from("availability").upsert(
-        { event_id: eventId, profile_id: profileId, status: newStatus },
-        { onConflict: "event_id,profile_id" }
-      );
-      if (error) {
-        toast.error(error.message);
-        onStatusChange(profileId, prev);
-      }
-    }
-
-    setLoading(false);
-  }
-
-  return (
-    <Select
-      value={currentStatus ?? "clear"}
-      onValueChange={handleChange}
-      disabled={loading}
-    >
-      <SelectTrigger className="h-7 w-36 text-xs">
-        <SelectValue placeholder="Set status" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="available">Available</SelectItem>
-        <SelectItem value="maybe">Maybe</SelectItem>
-        <SelectItem value="unavailable">Unavailable</SelectItem>
-        <SelectItem value="clear">Clear response</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-}
-
+/**
+ * Players' answers, grouped by answer: what a coach glances at to see whether
+ * there are enough for the game. Each row leads with its answer, then the name.
+ * A coach answers for a player with the same ✓ ? ✗ picker as "Your
+ * availability"; a changed row moves to its new group at once, and tapping the
+ * chosen answer again clears it.
+ *
+ * Everyone else on the roster (coaches, managers, directors, parents) is listed
+ * below in a compact "Coaches & staff" section, read-only for everyone: staff
+ * answer for themselves in "Your availability". The counts are players only.
+ */
 export function ResponseList({
   eventId,
   members,
   initialRows,
   isAdmin,
   currentUserId,
+  currentUserStatus,
 }: {
   eventId: string;
   members: Member[];
   initialRows: AvailabilityRow[];
   isAdmin: boolean;
   currentUserId: string;
+  /**
+   * The viewer's own answer as "Your availability" holds it. When given, their
+   * row shows it, so answering there is reflected here at once.
+   */
+  currentUserStatus?: AvailabilityStatus | null;
 }) {
+  const supabase = createClient();
   const [statusMap, setStatusMap] = useState<Map<string, AvailabilityStatus | null>>(() => {
     const map = new Map<string, AvailabilityStatus | null>();
     for (const m of members) map.set(m.profileId, null);
     for (const r of initialRows) map.set(r.profileId, r.status);
     return map;
   });
+  const [saving, setSaving] = useState<Set<string>>(new Set());
 
-  function handleStatusChange(profileId: string, newStatus: AvailabilityStatus | null) {
-    setStatusMap((prev) => new Map(prev).set(profileId, newStatus));
+  const statusOf = (profileId: string): AvailabilityStatus | null =>
+    profileId === currentUserId && currentUserStatus !== undefined
+      ? currentUserStatus
+      : (statusMap.get(profileId) ?? null);
+
+  function setStatus(profileId: string, status: AvailabilityStatus | null) {
+    setStatusMap((prev) => new Map(prev).set(profileId, status));
+  }
+
+  async function answerFor(profileId: string, clicked: AvailabilityStatus) {
+    const previous = statusMap.get(profileId) ?? null;
+    const next = nextAvailability(previous, clicked);
+
+    setSaving((prev) => new Set(prev).add(profileId));
+    setStatus(profileId, next);
+    const { error } = await saveAvailability(supabase, eventId, profileId, next);
+    if (error) {
+      toast.error(error.message);
+      setStatus(profileId, previous);
+    }
+    setSaving((prev) => {
+      const rest = new Set(prev);
+      rest.delete(profileId);
+      return rest;
+    });
   }
 
   // Group members by status
@@ -137,8 +125,11 @@ export function ResponseList({
     none: [],
   };
 
-  for (const m of members) {
-    const s = statusMap.get(m.profileId) ?? null;
+  const players = members.filter(isPlayer);
+  const staff = members.filter((m) => !isPlayer(m));
+
+  for (const m of players) {
+    const s = statusOf(m.profileId);
     if (s === "available") groups.available.push(m);
     else if (s === "maybe") groups.maybe.push(m);
     else if (s === "unavailable") groups.unavailable.push(m);
@@ -159,40 +150,34 @@ export function ResponseList({
     .filter(Boolean)
     .join(" · ");
 
-  function renderGroup(
-    label: string,
-    groupMembers: Member[],
-    status: AvailabilityStatus | null
-  ) {
+  function renderGroup(key: keyof typeof groups, label: string, groupMembers: Member[]) {
     if (groupMembers.length === 0) return null;
     return (
-      <div className="space-y-1">
+      <div className="space-y-1" data-group={key}>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label} ({groupMembers.length})
         </p>
         <div className="space-y-1">
-          {groupMembers.map((m) => (
-            <div
-              key={m.profileId}
-              className="flex items-center justify-between py-0.5"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm">{m.name}</span>
-                {!isAdmin && <StatusBadge status={status} />}
+          {groupMembers.map((m) => {
+            const status = statusOf(m.profileId);
+            return (
+              <div key={m.profileId} data-member-row className="flex items-center gap-3 py-0.5">
+                {/* Your own answer is set only in "Your availability". */}
+                {isAdmin && m.profileId !== currentUserId ? (
+                  <AvailabilityPicker
+                    compact
+                    label={`Availability for ${m.name}`}
+                    status={status}
+                    disabled={saving.has(m.profileId)}
+                    onChoose={(clicked) => answerFor(m.profileId, clicked)}
+                  />
+                ) : (
+                  <StatusIcon status={status} />
+                )}
+                <span className="min-w-0 truncate text-sm">{m.name}</span>
               </div>
-              {isAdmin && m.profileId !== currentUserId && (
-                <AdminStatusSelect
-                  eventId={eventId}
-                  profileId={m.profileId}
-                  currentStatus={statusMap.get(m.profileId) ?? null}
-                  onStatusChange={handleStatusChange}
-                />
-              )}
-              {isAdmin && m.profileId === currentUserId && (
-                <StatusBadge status={status} />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -208,14 +193,29 @@ export function ResponseList({
       </div>
 
       <div className="space-y-4">
-        {renderGroup("Available", groups.available, "available")}
-        {renderGroup("Maybe", groups.maybe, "maybe")}
-        {renderGroup("Unavailable", groups.unavailable, "unavailable")}
-        {renderGroup("No response", groups.none, null)}
+        {renderGroup("available", "Available", groups.available)}
+        {renderGroup("maybe", "Maybe", groups.maybe)}
+        {renderGroup("unavailable", "Unavailable", groups.unavailable)}
+        {renderGroup("none", "No response", groups.none)}
       </div>
 
-      {members.length === 0 && (
-        <p className="text-sm text-muted-foreground">No team members found.</p>
+      {players.length === 0 && (
+        <p className="text-sm text-muted-foreground">No players on this team yet.</p>
+      )}
+
+      {staff.length > 0 && (
+        <section aria-label="Coaches & staff" data-group="staff" className="space-y-1 border-t pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Coaches &amp; staff ({staff.length})
+          </p>
+          {staff.map((m) => (
+            <div key={m.profileId} data-member-row className="flex items-center gap-3 text-xs">
+              <StatusIcon status={statusOf(m.profileId)} />
+              <span className="min-w-0 truncate">{m.name}</span>
+              <span className="text-muted-foreground">{roleLabel(m.role)}</span>
+            </div>
+          ))}
+        </section>
       )}
     </div>
   );

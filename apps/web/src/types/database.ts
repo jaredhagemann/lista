@@ -1061,10 +1061,12 @@ export type Database = {
           age_group: string | null
           archived_at: string | null
           away_uniform: string | null
+          away_uniform_color: string | null
           country: string | null
           created_at: string | null
           gender: string | null
           home_uniform: string | null
+          home_uniform_color: string | null
           id: string
           league: string | null
           league_url: string | null
@@ -1082,10 +1084,12 @@ export type Database = {
           age_group?: string | null
           archived_at?: string | null
           away_uniform?: string | null
+          away_uniform_color?: string | null
           country?: string | null
           created_at?: string | null
           gender?: string | null
           home_uniform?: string | null
+          home_uniform_color?: string | null
           id?: string
           league?: string | null
           league_url?: string | null
@@ -1103,10 +1107,12 @@ export type Database = {
           age_group?: string | null
           archived_at?: string | null
           away_uniform?: string | null
+          away_uniform_color?: string | null
           country?: string | null
           created_at?: string | null
           gender?: string | null
           home_uniform?: string | null
+          home_uniform_color?: string | null
           id?: string
           league?: string | null
           league_url?: string | null

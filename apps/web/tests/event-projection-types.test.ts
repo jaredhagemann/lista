@@ -23,6 +23,12 @@ describe("projection row types", () => {
       start_time: "2026-12-01T17:00:00.000Z",
       end_time: "2026-12-01T18:00:00.000Z",
       is_cancelled: false,
+      // A game is labelled by its team and opponent, with its uniform.
+      opponent: null,
+      home_away: null,
+      uniform: null,
+      score_for: null,
+      score_against: null,
     };
 
     // @ts-expect-error — the calendar projection never selects `notes`.

@@ -71,6 +71,7 @@ function renderCalendar(props: { timeZone?: string | null; isAdmin?: boolean } =
       timeZone={props.timeZone ?? null}
       month="2026-12"
       onMonthChange={vi.fn()}
+      team={{ name: "Test team" }}
     />
   );
 }

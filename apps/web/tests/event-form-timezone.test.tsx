@@ -78,7 +78,7 @@ const DENVER = "America/Denver";
 
 function renderForm(teamTimeZone: string | null = DENVER) {
   return render(
-    <EventFormDialog open onClose={() => {}} teamId="team-1" teamTimeZone={teamTimeZone} />
+    <EventFormDialog open onClose={() => {}} teamId="team-1" teamTimeZone={teamTimeZone} team={{ name: "Test team" }} />
   );
 }
 
@@ -203,6 +203,7 @@ describe("editing an event", () => {
       <EventEditForm
         editingEvent={awayGame}
         teamId="team-1"
+        team={{ name: "Test team" }}
         timeZone={DENVER}
         teamTimeZone="America/Los_Angeles"
         onSave={() => {}}
@@ -248,6 +249,7 @@ describe("editing an event", () => {
         <EventEditForm
           editingEvent={secondPass}
           teamId="team-1"
+          team={{ name: "Test team" }}
           timeZone={DENVER}
           teamTimeZone="America/Los_Angeles"
           onSave={() => {}}

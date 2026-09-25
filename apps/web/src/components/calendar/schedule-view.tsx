@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScheduleCalendar } from "./schedule-calendar";
 import { ScheduleList } from "./schedule-list";
 import { currentMonthKey, type MonthKey } from "@/lib/events/month-range";
+import type { TeamDisplay } from "@/lib/events/game-display";
 
 /**
  * The schedule's two tabs (BUG-014, spec §6.1).
@@ -20,15 +21,14 @@ export function ScheduleView({
   teamId,
   isAdmin,
   timeZone,
-  homeUniform,
-  awayUniform,
+  team,
 }: {
   teamId: string;
   isAdmin: boolean;
   /** The team's timezone: decides month boundaries and day placement. */
   timeZone?: string | null;
-  homeUniform?: string | null;
-  awayUniform?: string | null;
+  /** Names games and shows their uniforms (spec: game-display-and-uniform-colors). */
+  team: TeamDisplay;
 }) {
   const [view, setView] = useState<"list" | "calendar">("list");
   const [month, setMonth] = useState<MonthKey>(() => currentMonthKey(timeZone));
@@ -54,8 +54,7 @@ export function ScheduleView({
           teamId={teamId}
           isAdmin={isAdmin}
           timeZone={timeZone}
-          homeUniform={homeUniform}
-          awayUniform={awayUniform}
+          team={team}
         />
       </TabsContent>
       <TabsContent value="calendar">
@@ -68,8 +67,7 @@ export function ScheduleView({
             timeZone={timeZone}
             month={month}
             onMonthChange={setMonth}
-            homeUniform={homeUniform}
-            awayUniform={awayUniform}
+            team={team}
           />
         )}
       </TabsContent>

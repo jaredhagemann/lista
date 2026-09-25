@@ -9,10 +9,7 @@ type Event = Database["public"]["Tables"]["events"]["Row"] & {
   locations: { name: string; address: string | null } | null;
 };
 
-type MembershipWithTeam = {
-  role: string;
-  teams: { home_uniform: string | null; away_uniform: string | null; timezone: string | null } | null;
-};
+type Team = Database["public"]["Tables"]["teams"]["Row"];
 
 export default async function EventDetailPage({
   params,
@@ -59,7 +56,10 @@ export default async function EventDetailPage({
   // membership keeps it consistent with the access check above.
   const activeProfileId = activeMembership.profile_id ?? user.id;
 
-  const membership = activeMembership.teams as unknown as MembershipWithTeam;
+  // The membership's team row. It used to be cast as a membership and read
+  // through `.teams` again, which made every team field null (spec:
+  // game-display-and-uniform-colors).
+  const team = activeMembership.teams as Team;
   const isAdmin =
     activeMembership.role === "coach" ||
     activeMembership.role === "manager" ||
@@ -77,7 +77,7 @@ export default async function EventDetailPage({
       .eq("event_id", eventId),
     supabase
       .from("team_members")
-      .select("profile_id, profiles(first_name, last_name)")
+      .select("profile_id, role, profiles(first_name, last_name)")
       .eq("team_id", event.team_id!),
   ]);
 
@@ -97,6 +97,8 @@ export default async function EventDetailPage({
         name: profile
           ? [profile.first_name, profile.last_name].filter(Boolean).join(" ")
           : "Unknown",
+        // Responses list players; everyone else is staff.
+        role: m.role,
       };
     });
 
@@ -106,9 +108,14 @@ export default async function EventDetailPage({
       isAdmin={isAdmin}
       creatorName={creatorName}
       initialEdit={edit === "true"}
-      homeUniform={membership.teams?.home_uniform ?? null}
-      awayUniform={membership.teams?.away_uniform ?? null}
-      teamTimeZone={membership.teams?.timezone ?? null}
+      team={{
+        name: team.name,
+        home_uniform: team.home_uniform,
+        away_uniform: team.away_uniform,
+        home_uniform_color: team.home_uniform_color,
+        away_uniform_color: team.away_uniform_color,
+      }}
+      teamTimeZone={team.timezone ?? null}
       currentUserId={activeProfileId}
       availabilityRows={availabilityData}
       members={membersData}
