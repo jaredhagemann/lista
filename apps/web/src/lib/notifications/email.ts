@@ -672,14 +672,22 @@ export function buildInviteEmailHtml({
   inviteUrl,
   brandName,
   logoUrl,
+  kind = "team",
 }: {
+  /** The team, or for a club invitation the club. */
   teamName: string;
   inviterName: string;
   role: string;
   inviteUrl: string;
   brandName?: string;
   logoUrl?: string;
+  /** "club" for a director invitation, which joins a club rather than one team (BUG-013). */
+  kind?: "team" | "club";
 }) {
+  const club = kind === "club";
+  const features = club
+    ? ["🗂️&nbsp; Create and manage the club's teams", "📅&nbsp; See every team's schedule", "👥&nbsp; Invite coaches and players"]
+    : ["📅&nbsp; View the team schedule", "✅&nbsp; Share your availability", "💬&nbsp; Stay in touch with your team"];
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -703,7 +711,7 @@ export function buildInviteEmailHtml({
 
                   <!-- Heading -->
                   <h1 style="margin: 0 0 16px; font-size: 22px; font-weight: 700; color: #111827; line-height: 1.3;">
-                    You've been invited to join a team on ${brandName ?? "Lista"}!
+                    You've been invited to join a ${club ? "club" : "team"} on ${brandName ?? "Lista"}!
                   </h1>
 
                   <!-- Role badge -->
@@ -713,21 +721,19 @@ export function buildInviteEmailHtml({
 
                   <!-- Body copy -->
                   <p style="margin: 0 0 24px; font-size: 15px; color: #374151; line-height: 1.6;">
-                    <strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong>.
+                    <strong>${inviterName}</strong> has invited you to ${club ? "help run" : "join"} <strong>${teamName}</strong>${club ? " as a director" : ""}.
                     Accept your invite and activate your account to do things like:
                   </p>
 
                   <!-- Feature list -->
                   <table cellpadding="0" cellspacing="0" style="margin-bottom: 32px;">
-                    <tr>
-                      <td style="padding: 5px 0; font-size: 15px; color: #374151;">📅&nbsp; View the team schedule</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 5px 0; font-size: 15px; color: #374151;">✅&nbsp; Share your availability</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 5px 0; font-size: 15px; color: #374151;">💬&nbsp; Stay in touch with your team</td>
-                    </tr>
+                    ${features
+                      .map(
+                        (feature) => `<tr>
+                      <td style="padding: 5px 0; font-size: 15px; color: #374151;">${feature}</td>
+                    </tr>`
+                      )
+                      .join("")}
                   </table>
 
                   <!-- CTA button -->
@@ -755,7 +761,7 @@ export function buildInviteEmailHtml({
               <tr>
                 <td align="center" style="padding-top: 24px;">
                   <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-                    You received this email because someone invited you to a team${brandName ? ` on ${brandName}` : " on Lista"}.<br>
+                    You received this email because someone invited you to a ${club ? "club" : "team"}${brandName ? ` on ${brandName}` : " on Lista"}.<br>
                     If you weren't expecting this, you can safely ignore it.
                   </p>
                 </td>

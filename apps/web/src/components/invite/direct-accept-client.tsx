@@ -24,6 +24,8 @@ export function DirectAcceptClient({
   role: string;
 }) {
   const router = useRouter();
+  // A director invitation is to a club: `teamName` is the club's (BUG-013).
+  const club = role === "director";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +36,10 @@ export function DirectAcceptClient({
     if (result.error) {
       setError(result.error);
       setLoading(false);
+      return;
+    }
+    if (club) {
+      router.push("/dashboard/club");
       return;
     }
     router.push(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
@@ -47,7 +53,9 @@ export function DirectAcceptClient({
             You&apos;re invited!
           </CardTitle>
           <CardDescription>
-            You&apos;ve been invited to join a team on lista
+            {club
+              ? "You've been invited to help run a club on lista"
+              : "You've been invited to join a team on lista"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-center">
@@ -69,7 +77,7 @@ export function DirectAcceptClient({
             className="w-full"
             disabled={loading}
           >
-            {loading ? "Joining..." : "Accept & join team"}
+            {loading ? "Joining..." : club ? "Accept & join club" : "Accept & join team"}
           </Button>
         </CardFooter>
       </Card>
