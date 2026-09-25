@@ -14,10 +14,13 @@ export function RsvpButtons({
   eventId,
   profileId,
   initialStatus,
+  onStatusChange,
 }: {
   eventId: string;
   profileId: string;
   initialStatus: AvailabilityStatus | null;
+  /** Told of every change, including a failed save being put back, so the page can show the answer elsewhere. */
+  onStatusChange?: (status: AvailabilityStatus | null) => void;
 }) {
   const supabase = createClient();
   const [status, setStatus] = useState<AvailabilityStatus | null>(initialStatus);
@@ -29,10 +32,12 @@ export function RsvpButtons({
     const next = nextAvailability(status, clicked);
 
     setStatus(next);
+    onStatusChange?.(next);
     const { error } = await saveAvailability(supabase, eventId, profileId, next);
     if (error) {
       toast.error(error.message);
       setStatus(previous);
+      onStatusChange?.(previous);
     }
 
     setLoading(false);

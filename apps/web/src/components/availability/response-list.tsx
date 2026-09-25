@@ -68,12 +68,18 @@ export function ResponseList({
   initialRows,
   isAdmin,
   currentUserId,
+  currentUserStatus,
 }: {
   eventId: string;
   members: Member[];
   initialRows: AvailabilityRow[];
   isAdmin: boolean;
   currentUserId: string;
+  /**
+   * The viewer's own answer as "Your availability" holds it. When given, their
+   * row shows it, so answering there is reflected here at once.
+   */
+  currentUserStatus?: AvailabilityStatus | null;
 }) {
   const supabase = createClient();
   const [statusMap, setStatusMap] = useState<Map<string, AvailabilityStatus | null>>(() => {
@@ -83,6 +89,11 @@ export function ResponseList({
     return map;
   });
   const [saving, setSaving] = useState<Set<string>>(new Set());
+
+  const statusOf = (profileId: string): AvailabilityStatus | null =>
+    profileId === currentUserId && currentUserStatus !== undefined
+      ? currentUserStatus
+      : (statusMap.get(profileId) ?? null);
 
   function setStatus(profileId: string, status: AvailabilityStatus | null) {
     setStatusMap((prev) => new Map(prev).set(profileId, status));
@@ -118,7 +129,7 @@ export function ResponseList({
   const staff = members.filter((m) => !isPlayer(m));
 
   for (const m of players) {
-    const s = statusMap.get(m.profileId) ?? null;
+    const s = statusOf(m.profileId);
     if (s === "available") groups.available.push(m);
     else if (s === "maybe") groups.maybe.push(m);
     else if (s === "unavailable") groups.unavailable.push(m);
@@ -148,7 +159,7 @@ export function ResponseList({
         </p>
         <div className="space-y-1">
           {groupMembers.map((m) => {
-            const status = statusMap.get(m.profileId) ?? null;
+            const status = statusOf(m.profileId);
             return (
               <div key={m.profileId} data-member-row className="flex items-center gap-3 py-0.5">
                 {/* Your own answer is set only in "Your availability". */}
@@ -199,7 +210,7 @@ export function ResponseList({
           </p>
           {staff.map((m) => (
             <div key={m.profileId} data-member-row className="flex items-center gap-3 text-xs">
-              <StatusIcon status={statusMap.get(m.profileId) ?? null} />
+              <StatusIcon status={statusOf(m.profileId)} />
               <span className="min-w-0 truncate">{m.name}</span>
               <span className="text-muted-foreground">{roleLabel(m.role)}</span>
             </div>

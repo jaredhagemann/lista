@@ -53,8 +53,7 @@ import {
 import { toast } from "sonner";
 import { EditRecurringPrompt, type RecurringEditScope } from "./edit-recurring-prompt";
 import { SeriesEditForm } from "./series-edit-form";
-import { RsvpButtons } from "@/components/availability/rsvp-buttons";
-import { ResponseList } from "@/components/availability/response-list";
+import { EventAvailability } from "@/components/availability/event-availability";
 import { getRecurrenceDescription } from "@/lib/utils/rrule";
 import { pinnedStartRule } from "@/lib/events/series-edit";
 import { eventTimeZone, instantFromWallClock, wallClockIn } from "@/lib/events/event-timezone";
@@ -1004,37 +1003,20 @@ export function EventDetail({
       </Card>
 
       {/* Availability */}
-      {!event.is_cancelled && (() => {
-        const isPast = new Date(event.start_time) < new Date();
-        const myRow = availabilityRows.find((r) => r.profileId === currentUserId);
-        return (
-          <Card>
-            <CardContent className="pt-6 space-y-6">
-              {!isPast && (
-                <RsvpButtons
-                  eventId={event.id}
-                  profileId={currentUserId}
-                  initialStatus={myRow?.status ?? null}
-                />
-              )}
-              {isPast && (
-                <p className="text-sm text-muted-foreground">
-                  RSVP is closed — this event has already started.
-                </p>
-              )}
-              <div className="border-t pt-4">
-                <ResponseList
-                  eventId={event.id}
-                  members={members}
-                  initialRows={availabilityRows}
-                  isAdmin={isAdmin}
-                  currentUserId={currentUserId}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })()}
+      {!event.is_cancelled && (
+        <Card>
+          <CardContent className="pt-6 space-y-6">
+            <EventAvailability
+              eventId={event.id}
+              isPast={new Date(event.start_time) < new Date()}
+              members={members}
+              availabilityRows={availabilityRows}
+              isAdmin={isAdmin}
+              currentUserId={currentUserId}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cancel confirmation */}
       <AlertDialog open={showCancel} onOpenChange={setShowCancel}>
