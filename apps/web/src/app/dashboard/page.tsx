@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Users } from "lucide-react";
+import { Calendar } from "lucide-react";
 import Link from "next/link";
 import { CreateTeamForm } from "@/components/team/create-team-form";
 import { getActiveMembership } from "@/lib/get-active-membership";
@@ -12,6 +12,8 @@ import { isUsableTimeZone } from "@/lib/events/event-timezone";
 import { formatEventTime, formatShortEventDate } from "@/lib/notifications/event-time";
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
+import { TeamCard } from "@/components/team/team-card";
+import { teamRecord } from "@/lib/events/team-record";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   locations: { name: string } | null;
@@ -25,7 +27,14 @@ export default async function DashboardPage() {
 
   const membership = await getActiveMembership(supabase, user!.id);
   const team = membership?.teams as
-    | ({ id: string; name: string; season: string | null; timezone: string | null } & TeamUniforms)
+    | ({
+        id: string;
+        name: string;
+        season: string | null;
+        timezone: string | null;
+        logo_url: string | null;
+        organization_id: string | null;
+      } & TeamUniforms)
     | undefined;
   const isAdmin =
     membership?.role === "coach" ||
@@ -56,10 +65,24 @@ export default async function DashboardPage() {
 
   const upcomingEvents = (rawUpcomingEvents ?? []) as Event[];
 
-  const { count: memberCount } = await supabase
-    .from("team_members")
-    .select("*", { count: "exact", head: true })
-    .eq("team_id", team.id);
+  // The Team card: the club's branding, and the team's games with a result
+  // (spec: team-branding-and-labels §4).
+  const [{ count: memberCount }, { data: org }, { data: resultGames }] = await Promise.all([
+    supabase.from("team_members").select("*", { count: "exact", head: true }).eq("team_id", team.id),
+    team.organization_id
+      ? supabase
+          .from("organizations")
+          .select("name, org_name_public, logo_url, plan")
+          .eq("id", team.organization_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase
+      .from("events")
+      .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against")
+      .eq("team_id", team.id)
+      .eq("event_type", "game")
+      .not("game_result", "is", null),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -149,22 +172,11 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Team</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{memberCount ?? 0}</div>
-            <p className="text-sm text-muted-foreground">team members</p>
-            <Link
-              href="/dashboard/team"
-              className="mt-2 block text-sm text-primary hover:underline"
-            >
-              View roster
-            </Link>
-          </CardContent>
-        </Card>
+        <TeamCard
+          team={{ ...team, organizations: org }}
+          record={teamRecord(resultGames ?? [])}
+          memberCount={memberCount ?? 0}
+        />
       </div>
     </div>
   );

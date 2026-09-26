@@ -1,0 +1,179 @@
+// @vitest-environment jsdom
+/**
+ * The dashboard's Team card (spec: docs/specs/team-branding-and-labels.md §4).
+ *
+ * The card leads with the team's logo (its own, or its club's), then its name,
+ * club and season, its record over every game with a result entered, and its
+ * latest result; then the member count and roster link. Record and latest
+ * result are hidden until a game has a result; a team without a logo shows its
+ * initials.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, cleanup, within } from "@testing-library/react";
+import { teamRecord } from "@/lib/events/team-record";
+
+// ── The record ────────────────────────────────────────────────────────────────
+
+const NOW = new Date("2026-09-25T12:00:00Z");
+
+function game(start: string, result: string | null, extra: Record<string, unknown> = {}) {
+  return {
+    start_time: start,
+    timezone: "America/Los_Angeles",
+    opponent: "Rivals FC",
+    home_away: "home",
+    game_result: result,
+    score_for: null as number | null,
+    score_against: null as number | null,
+    ...extra,
+  };
+}
+
+describe("teamRecord", () => {
+  it("counts wins, losses and ties over games with a result", () => {
+    const record = teamRecord(
+      [
+        game("2026-09-20T17:00:00Z", "win"),
+        game("2026-09-13T17:00:00Z", "win"),
+        game("2026-09-06T17:00:00Z", "loss"),
+        game("2026-08-30T17:00:00Z", "tie"),
+        game("2026-08-23T17:00:00Z", null),
+      ],
+      NOW
+    );
+
+    expect(record?.wins).toBe(2);
+    expect(record?.losses).toBe(1);
+    expect(record?.ties).toBe(1);
+  });
+
+  it("the last game is the latest one with a result, with its score when entered", () => {
+    const record = teamRecord(
+      [
+        game("2026-09-13T17:00:00Z", "loss"),
+        game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1, home_away: "away", opponent: "Eagles" }),
+        game("2026-09-24T17:00:00Z", null),
+      ],
+      NOW
+    );
+
+    expect(record?.last).toMatchObject({ result: "win", scoreFor: 3, scoreAgainst: 1, opponent: "Eagles", homeAway: "away" });
+  });
+
+  it("is null when no game has a result", () => {
+    expect(teamRecord([game("2026-09-20T17:00:00Z", null)], NOW)).toBeNull();
+    expect(teamRecord([], NOW)).toBeNull();
+  });
+});
+
+// ── The card, on the dashboard ────────────────────────────────────────────────
+
+const mocks = vi.hoisted(() => {
+  const tables: Record<string, unknown> = {};
+  const from = (table: string) => {
+    let results = false;
+    const chain: Record<string, unknown> = {};
+    const data = () => {
+      if (table === "events") return results ? tables.results ?? [] : tables.upcoming ?? [];
+      return tables[table] ?? null;
+    };
+    const result = () => Promise.resolve({ data: data(), error: null, count: tables.memberCount ?? 0 });
+    for (const m of ["select", "eq", "neq", "in", "gte", "lte", "order", "limit", "is"]) chain[m] = () => chain;
+    chain.not = (column: string) => {
+      if (column === "game_result") results = true;
+      return chain;
+    };
+    chain.single = result;
+    chain.maybeSingle = result;
+    chain.then = (res: (v: unknown) => unknown) => result().then(res);
+    return chain;
+  };
+  return {
+    tables,
+    membership: null as unknown,
+    client: { from, auth: { getUser: async () => ({ data: { user: { id: "coach-1" } } }) } },
+  };
+});
+
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => mocks.client }));
+vi.mock("@/lib/get-active-membership", () => ({ getActiveMembership: async () => mocks.membership }));
+vi.mock("@/components/team/create-team-form", () => ({ CreateTeamForm: () => null }));
+
+import DashboardPage from "@/app/dashboard/page";
+
+const TEAM = {
+  id: "team-1",
+  name: "12U Girls",
+  season: "Fall 2026",
+  logo_url: null,
+  timezone: "America/Los_Angeles",
+  organization_id: "org-1",
+};
+const SLOFC = { name: "San Luis Obispo FC", org_name_public: "SLOFC", logo_url: "https://x/slofc.png", plan: "club_small" };
+
+beforeEach(() => {
+  for (const key of Object.keys(mocks.tables)) delete mocks.tables[key];
+  mocks.membership = { team_id: "team-1", role: "coach", profile_id: "coach-1", teams: TEAM };
+  mocks.tables.organizations = SLOFC;
+  mocks.tables.memberCount = 18;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+function card() {
+  return screen.getByRole("region", { name: "Team" });
+}
+
+describe("the Team card", () => {
+  it("leads with the team's logo, then its name, club and season", async () => {
+    render(await DashboardPage());
+
+    const logo = within(card()).getByRole("img", { name: "SLOFC - 12U Girls logo" });
+    expect(logo.getAttribute("src")).toBe("https://x/slofc.png");
+    expect(within(card()).getByText("12U Girls")).toBeTruthy();
+    expect(within(card()).getByText("SLOFC · Fall 2026")).toBeTruthy();
+  });
+
+  it("shows the record and the latest result", async () => {
+    mocks.tables.results = [
+      game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1 }),
+      game("2026-09-13T17:00:00Z", "loss"),
+      game("2026-09-06T17:00:00Z", "tie"),
+    ];
+
+    render(await DashboardPage());
+
+    expect(within(card()).getByText("1–1–1")).toBeTruthy();
+    expect(within(card()).getByText("W 3–1 vs Rivals FC")).toBeTruthy();
+    expect(within(card()).getByText("Sun, Sep 20")).toBeTruthy();
+  });
+
+  it("hides the record and latest result until a game has one", async () => {
+    render(await DashboardPage());
+
+    expect(within(card()).queryByText(/Record/)).toBeNull();
+    expect(within(card()).queryByText(/Last/)).toBeNull();
+  });
+
+  it("still shows the member count and roster link", async () => {
+    render(await DashboardPage());
+
+    expect(within(card()).getByText(/18/)).toBeTruthy();
+    expect(within(card()).getByRole("link", { name: /View roster/ })).toBeTruthy();
+  });
+
+  it("a team with no logo shows its initials", async () => {
+    mocks.tables.organizations = { ...SLOFC, logo_url: null };
+
+    render(await DashboardPage());
+
+    expect(within(card()).queryByRole("img")).toBeNull();
+    expect(within(card()).getByText("1G")).toBeTruthy();
+  });
+});
