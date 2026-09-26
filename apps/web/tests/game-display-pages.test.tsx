@@ -129,6 +129,9 @@ describe("the dashboard", () => {
     expect(screen.getByText("U10 Girls @ Rivals FC")).toBeTruthy();
     expect(screen.getByText("Evening practice")).toBeTruthy();
     expect(screen.getByLabelText("Uniform: Navy").style.backgroundColor).toBe("rgb(30, 58, 138)");
+    // Event types read capitalized, as text, not by CSS (spec: team-branding-and-labels §1).
+    expect(screen.getByText("Game")).toBeTruthy();
+    expect(screen.getByText("Practice")).toBeTruthy();
   });
 });
 

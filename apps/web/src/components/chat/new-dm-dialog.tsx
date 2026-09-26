@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
 import type { DmChannelWithProfile } from "./channel-list";
+import { displayLabel } from "@/lib/labels";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type MemberManager = {
@@ -156,7 +157,7 @@ export function NewDmDialog({
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{m.role}</p>
+                    <p className="text-xs text-muted-foreground">{displayLabel(m.role)}</p>
                   </div>
                   {isManaged && m.managers.length > 1 && (
                     <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
@@ -187,7 +188,7 @@ export function NewDmDialog({
                           </Avatar>
                           <span className="flex-1 font-medium">{mgrName}</span>
                           {mgr.relationship && (
-                            <span className="text-xs text-muted-foreground capitalize">{mgr.relationship}</span>
+                            <span className="text-xs text-muted-foreground">{displayLabel(mgr.relationship)}</span>
                           )}
                         </button>
                       );

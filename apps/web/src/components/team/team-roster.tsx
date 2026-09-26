@@ -15,6 +15,7 @@ import {
 import { AlertCircle, Clock, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
@@ -154,7 +155,7 @@ export function TeamRoster({
             <p className="font-medium text-foreground">
               {contact.name}
               {contact.relationship && (
-                <span className="font-normal capitalize text-muted-foreground"> · {contact.relationship}</span>
+                <span className="font-normal text-muted-foreground"> · {displayLabel(contact.relationship)}</span>
               )}
             </p>
             {contact.email && <p className="text-muted-foreground">{contact.email}</p>}
@@ -169,8 +170,8 @@ export function TeamRoster({
               Team Owner
             </Badge>
           )}
-          <Badge variant="secondary" className="capitalize shrink-0">
-            {member.role}
+          <Badge variant="secondary" className="shrink-0">
+            {displayLabel(member.role)}
           </Badge>
         </div>
       </div>

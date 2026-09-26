@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { acceptInvitationAsSelf } from "@/app/actions/invite";
+import { displayLabel } from "@/lib/labels";
 
 export function DirectAcceptClient({
   invitationId,
@@ -66,8 +67,8 @@ export function DirectAcceptClient({
           )}
           <div>
             <p className="text-lg font-semibold">{teamName}</p>
-            <Badge variant="secondary" className="mt-1 capitalize">
-              {role}
+            <Badge variant="secondary" className="mt-1">
+              {displayLabel(role)}
             </Badge>
           </div>
         </CardContent>

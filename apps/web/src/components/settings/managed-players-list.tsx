@@ -26,6 +26,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
@@ -89,8 +90,8 @@ export function ManagedPlayersList({
                     <p className="text-sm font-medium">{name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       {relationship && (
-                        <Badge variant="secondary" className="text-xs capitalize">
-                          {relationship}
+                        <Badge variant="secondary" className="text-xs">
+                          {displayLabel(relationship)}
                         </Badge>
                       )}
                       {profile.birthday && (

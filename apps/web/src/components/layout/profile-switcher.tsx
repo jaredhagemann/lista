@@ -15,6 +15,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import Link from "next/link";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -119,8 +120,8 @@ export function ProfileSwitcher({
                       </span>
                     )}
                   </p>
-                  <p className="text-xs capitalize text-muted-foreground">
-                    {membership.role}
+                  <p className="text-xs text-muted-foreground">
+                    {displayLabel(membership.role)}
                   </p>
                 </div>
               </div>

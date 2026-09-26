@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, Download, Upload, AlertTriangle } from "lucide-react";
 import { validateBulkRows } from "@/lib/invitations/bulk-validate";
 import type { ValidatedRow, BulkInputRow } from "@/lib/invitations/bulk-validate";
+import { displayLabel } from "@/lib/labels";
 
 interface BulkInviteModalProps {
   teamId: string;
@@ -294,7 +295,7 @@ export function BulkInviteModal({ teamId, open, onOpenChange }: BulkInviteModalP
                       <td className="px-3 py-2">{row.first_name}</td>
                       <td className="px-3 py-2">{row.last_name}</td>
                       <td className="px-3 py-2">{row.email}</td>
-                      <td className="px-3 py-2 capitalize">{row.role}</td>
+                      <td className="px-3 py-2">{displayLabel(row.role)}</td>
                       {hasBirthday && (
                         <td className="px-3 py-2">{row.birthday ?? ""}</td>
                       )}

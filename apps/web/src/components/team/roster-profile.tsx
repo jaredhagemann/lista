@@ -35,6 +35,7 @@ import { ImageUpload } from "@/components/ui/image-upload";
 import { ManagersCard } from "@/components/team/managers-card";
 import { removeTeamMember } from "@/app/actions/team";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
@@ -116,8 +117,8 @@ export function RosterProfile({
           </Avatar>
           <div>
             <h1 className="text-2xl font-bold">{fullName}</h1>
-            <Badge variant="secondary" className="capitalize">
-              {member.role}
+            <Badge variant="secondary">
+              {displayLabel(member.role)}
             </Badge>
           </div>
         </div>
@@ -251,12 +252,12 @@ function ReadOnlyMode({
             {profile.gender && (
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Gender</dt>
-                <dd className="capitalize">{profile.gender}</dd>
+                <dd>{displayLabel(profile.gender)}</dd>
               </div>
             )}
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Role</dt>
-              <dd className="capitalize">{member.role}</dd>
+              <dd>{displayLabel(member.role)}</dd>
             </div>
             {member.role === "player" && member.jersey_number != null && (
               <div className="flex justify-between">

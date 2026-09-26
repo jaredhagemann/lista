@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { transferOwnership } from "@/app/actions/team";
+import { displayLabel } from "@/lib/labels";
 
 interface EligibleAdmin {
   profileId: string;
@@ -90,7 +91,7 @@ export function TransferOwnershipSection({ teamId, eligibleAdmins }: TransferOwn
             <SelectContent>
               {eligibleAdmins.map((admin) => (
                 <SelectItem key={admin.profileId} value={admin.profileId}>
-                  {admin.name} ({admin.role})
+                  {admin.name} ({displayLabel(admin.role)})
                 </SelectItem>
               ))}
             </SelectContent>

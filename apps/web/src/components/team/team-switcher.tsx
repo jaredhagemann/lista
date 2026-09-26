@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { CreateTeamForm } from "@/components/team/create-team-form";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
   teams: Database["public"]["Tables"]["teams"]["Row"];
@@ -86,8 +87,8 @@ export function TeamSwitcher({
             <span className="text-muted-foreground">
               {currentTeam?.name ?? "Select team"}
               {activeMembership?.role && (
-                <span className="ml-1 capitalize">
-                  ({activeMembership.role})
+                <span className="ml-1">
+                  ({displayLabel(activeMembership.role)})
                 </span>
               )}
             </span>
@@ -118,7 +119,7 @@ export function TeamSwitcher({
                   )}
                   <div>
                     <p className="text-sm font-medium">{m.teams.name}</p>
-                    <p className="text-xs capitalize text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {multiProfile
                         ? `${profilesOnTeam.length} profiles`
                         : m.role}

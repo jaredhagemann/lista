@@ -11,6 +11,7 @@ import { gameTitle, uniformOf, type TeamUniforms } from "@/lib/events/game-displ
 import { isUsableTimeZone } from "@/lib/events/event-timezone";
 import { formatEventTime, formatShortEventDate } from "@/lib/notifications/event-time";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   locations: { name: string } | null;
@@ -88,8 +89,8 @@ export default async function DashboardPage() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{gameTitle(event, team.name)}</span>
-                      <Badge variant="outline" className="capitalize">
-                        {event.event_type}
+                      <Badge variant="outline">
+                        {displayLabel(event.event_type)}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
