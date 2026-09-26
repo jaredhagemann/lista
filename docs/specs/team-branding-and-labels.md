@@ -62,7 +62,8 @@ one place and "Mom" in another.
   - **Logo:** the team's logo (§2), 96px. Without one, the team's initials on a neutral tile.
   - **Name:** the team's own name, with the club (club teams only) and season under it.
   - **Members:** each member's name and role, coaches and staff first (director, coach, manager) and
-    then players, by name; each name links to the member's page, and a long list scrolls within the card.
+    then players, by name; each name links to the member's page. On wide screens the list fills the card's height (set by
+    Upcoming Events beside it) before it scrolls; on phones it takes its own height, up to a cap.
     Then the member count and the roster link.
 - **Dashboard Record card:** a full-width card under the Upcoming Events and Team cards, shown once a
   game has a result:

@@ -49,9 +49,9 @@ export function TeamCard({
   const subtitle = [brand.clubName, team.season].filter(Boolean).join(" · ");
 
   return (
-    <section aria-label="Team">
+    <section aria-label="Team" className="h-full">
       <Card className="h-full">
-        <CardContent className="space-y-4 pt-6">
+        <CardContent className="flex flex-1 flex-col gap-4 pt-6">
           <div className="flex items-center gap-4">
             {brand.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -74,18 +74,26 @@ export function TeamCard({
             </div>
           </div>
 
-
           {listed.length > 0 && (
-            <ul aria-label="Members" className="max-h-64 divide-y overflow-y-auto rounded-md border text-sm">
-              {listed.map((member) => (
-                <li key={member.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
-                  <Link href={`/dashboard/team/${member.id}`} className="truncate font-medium hover:underline">
-                    {member.name}
-                  </Link>
-                  <span className="shrink-0 text-muted-foreground">{displayLabel(member.role)}</span>
-                </li>
-              ))}
-            </ul>
+            // On wide screens the card stretches to the row Upcoming Events sets, and
+            // the list fills what's left of it before scrolling. Positioned out of the
+            // flow so a long roster can't grow the row itself. Stacked on phones, it
+            // takes its own height, up to a cap.
+            <div className="flex-1 md:relative md:min-h-64">
+              <ul
+                aria-label="Members"
+                className="divide-y overflow-y-auto rounded-md border text-sm max-md:max-h-96 md:absolute md:inset-x-0 md:top-0 md:max-h-full"
+              >
+                {listed.map((member) => (
+                  <li key={member.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                    <Link href={`/dashboard/team/${member.id}`} className="truncate font-medium hover:underline">
+                      {member.name}
+                    </Link>
+                    <span className="shrink-0 text-muted-foreground">{displayLabel(member.role)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           <p className="text-sm text-muted-foreground">

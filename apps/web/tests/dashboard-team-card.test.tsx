@@ -169,6 +169,21 @@ describe("the Team card", () => {
     expect(rows).toEqual(["Sam OkaforCoach", "Pat LeeManager", "Ava ChenPlayer", "Zoey ButlerPlayer"]);
   });
 
+  it("the list fills the card's height beside Upcoming Events before it scrolls", async () => {
+    // jsdom has no layout, so this checks the structure that gives it: on wide
+    // screens the list has no height cap of its own and fills a stretching area
+    // of a card that stretches to the grid row (set by Upcoming Events).
+    render(await DashboardPage());
+
+    const list = within(card()).getByRole("list", { name: "Members" });
+    const classes = list.className.split(/\s+/);
+    expect(classes.filter((c) => c.startsWith("max-h-"))).toEqual([]);
+    expect(classes).toEqual(expect.arrayContaining(["md:absolute", "md:inset-x-0", "md:top-0", "md:max-h-full", "overflow-y-auto"]));
+    expect(list.parentElement!.className.split(/\s+/)).toEqual(expect.arrayContaining(["md:relative", "flex-1"]));
+    expect(card().className).toContain("h-full");
+    expect(card().firstElementChild!.className).toContain("h-full");
+  });
+
   it("each name links to the member's page", async () => {
     render(await DashboardPage());
 
