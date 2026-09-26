@@ -52,13 +52,18 @@ one place and "Mom" in another.
   │ │   LOGO   │  12U Girls       │
   │ │   96px   │  SLOFC · Fall 26 │
   │ └──────────┘                  │
+  │ Sam Okafor              Coach │
+  │ Ava Chen               Player │
+  │ …                             │
   │ 18 members · View roster      │
   └───────────────────────────────┘
   ```
 
   - **Logo:** the team's logo (§2), 96px. Without one, the team's initials on a neutral tile.
   - **Name:** the team's own name, with the club (club teams only) and season under it.
-  - **Members:** the member count and the roster link, as today.
+  - **Members:** each member's name and role, coaches and staff first (director, coach, manager) and
+    then players, by name; each name links to the member's page, and a long list scrolls within the card.
+    Then the member count and the roster link.
 - **Dashboard Record card:** a full-width card under the Upcoming Events and Team cards, shown once a
   game has a result:
 
@@ -97,7 +102,8 @@ one place and "Mom" in another.
     team is unprefixed
 - Team picker: the button and options show the prefixed name and the inherited logo.
 - Header: shows the active team's logo, falling back to the tenant logo and then the wordmark.
-- Dashboard Team card: the logo, or initials without one; no record.
+- Dashboard Team card: the logo, or initials without one; the members in order, each linking to their
+  page; the count; no record.
 - Dashboard Record card:
   - the record counts only games with a result (W, L and T), and the bar is split in proportion
   - the last game is the latest one with a result: the scoreline with scores, "at" for away games, the

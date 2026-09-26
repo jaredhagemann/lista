@@ -68,8 +68,8 @@ export default async function DashboardPage() {
 
   // The Team card: the club's branding, and the team's games with a result
   // (spec: team-branding-and-labels §4).
-  const [{ count: memberCount }, { data: org }, { data: resultGames }] = await Promise.all([
-    supabase.from("team_members").select("*", { count: "exact", head: true }).eq("team_id", team.id),
+  const [{ data: members }, { data: org }, { data: resultGames }] = await Promise.all([
+    supabase.from("team_members").select("id, role, profiles(first_name, last_name)").eq("team_id", team.id),
     team.organization_id
       ? supabase
           .from("organizations")
@@ -175,7 +175,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <TeamCard team={{ ...team, organizations: org }} memberCount={memberCount ?? 0} />
+        <TeamCard team={{ ...team, organizations: org }} members={members ?? []} />
 
         {record && <RecordCard teamName={team.name} record={record} teamTimeZone={team.timezone} />}
       </div>
