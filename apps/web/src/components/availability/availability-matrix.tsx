@@ -39,6 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { displayLabel } from "@/lib/labels";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 type EventType = "practice" | "game" | "other";
@@ -750,11 +751,11 @@ export function AvailabilityMatrix({
                             {at.toLocaleDateString("en-US", { weekday: "short" })}
                           </span>
                           <span
-                            className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${
+                            className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
                               eventTypeBadge[event.event_type] ?? eventTypeBadge.other
                             }`}
                           >
-                            {event.event_type}
+                            {displayLabel(event.event_type)}
                           </span>
                         </Link>
                       </th>

@@ -330,7 +330,7 @@ export function ScheduleList({
               <button
                 key={t}
                 onClick={() => applyTypeFilter(t)}
-                className={`px-3 py-1 rounded text-sm capitalize transition-colors ${
+                className={`px-3 py-1 rounded text-sm transition-colors ${
                   typeFilter === t
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground"

@@ -14,6 +14,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -222,7 +223,7 @@ export function NewGroupDialog({
                           </Avatar>
                           <span className="flex-1 font-medium">{mgrName}</span>
                           {mgr.relationship && (
-                            <span className="text-xs text-muted-foreground capitalize mr-1">{mgr.relationship}</span>
+                            <span className="text-xs text-muted-foreground mr-1">{displayLabel(mgr.relationship)}</span>
                           )}
                           {isSel && <Check className="h-3.5 w-3.5 text-primary" />}
                         </button>

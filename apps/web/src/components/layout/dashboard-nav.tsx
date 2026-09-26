@@ -18,10 +18,11 @@ import { useState } from "react";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 import { ProfileSwitcher } from "@/components/layout/profile-switcher";
 import type { Database } from "@/types/database";
+import { teamBranding, type OrgBranding } from "@/lib/team-branding";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
-  teams: Database["public"]["Tables"]["teams"]["Row"];
+  teams: Database["public"]["Tables"]["teams"]["Row"] & { organizations?: OrgBranding | null };
 };
 
 const baseNavItems = [
@@ -91,22 +92,28 @@ export function DashboardNav({
     router.refresh();
   }
 
+  // The active team's logo (or the club logo it inherits), else the club
+  // subdomain's, else the wordmark (spec: team-branding-and-labels §4).
+  const activeBrand = activeMembership?.teams ? teamBranding(activeMembership.teams) : null;
+  const headerLogo = activeBrand?.logoUrl ?? logoUrl;
+  const headerAlt = activeBrand?.logoUrl ? `${activeBrand.displayName} logo` : (orgName ?? "Home");
+
   // Show ProfileSwitcher only when the active team has >1 of the user's profiles
   const showProfileSwitcher =
     profilesOnActiveTeam.length > 1 && activeMembership?.team_id;
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-24 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
           <Link href="/dashboard" className="flex items-center">
-            {logoUrl ? (
+            {headerLogo ? (
               <Image
-                src={logoUrl}
-                alt={orgName ?? "Home"}
-                width={180}
-                height={56}
-                className="h-14 w-auto object-contain"
+                src={headerLogo}
+                alt={headerAlt}
+                width={240}
+                height={72}
+                className="h-18 w-auto object-contain"
               />
             ) : (
               <span className="text-xl font-bold">{orgName ?? "lista"}</span>

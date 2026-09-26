@@ -66,6 +66,7 @@ import { UniformLabel } from "@/components/events/uniform-label";
 import { gameTitle, homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
 type Location = Database["public"]["Tables"]["locations"]["Row"];
@@ -849,7 +850,7 @@ export function EventDetail({
                 className={eventTypeColor[event.event_type] ?? ""}
                 variant="secondary"
               >
-                {event.event_type}
+                {displayLabel(event.event_type)}
               </Badge>
             </div>
             {isAdmin && !event.is_cancelled && (
@@ -961,9 +962,8 @@ export function EventDetail({
                               ? "destructive"
                               : "secondary"
                         }
-                        className="capitalize"
                       >
-                        {event.game_result}
+                        {displayLabel(event.game_result)}
                       </Badge>
                       {event.score_for != null &&
                         event.score_against != null && (

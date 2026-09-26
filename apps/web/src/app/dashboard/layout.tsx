@@ -6,10 +6,11 @@ import { Toaster } from "@/components/ui/sonner";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { isClubPlan, hasClubAccess } from "@/lib/plan";
 import type { Database } from "@/types/database";
+import type { OrgBranding } from "@/lib/team-branding";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
-  teams: Database["public"]["Tables"]["teams"]["Row"];
+  teams: Database["public"]["Tables"]["teams"]["Row"] & { organizations: OrgBranding | null };
 };
 
 export type ManagedProfileEntry = {
@@ -83,7 +84,8 @@ export default async function DashboardLayout({
 
   const { data: rawAllMemberships } = await supabase
     .from("team_members")
-    .select("*, teams(*), profiles(*)")
+    // Each team's club branding, for the header and team picker (spec: team-branding-and-labels).
+    .select("*, teams(*, organizations(name, org_name_public, logo_url, plan)), profiles(*)")
     .in("profile_id", allProfileIds)
     .order("created_at");
 

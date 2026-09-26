@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => {
   const from = (table: string) => {
     const result = () => Promise.resolve({ data: tables[table] ?? null, error: null, count: 0 });
     const chain: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "neq", "in", "gte", "lte", "order", "limit", "is"]) chain[m] = () => chain;
+    for (const m of ["select", "eq", "neq", "in", "gte", "lte", "order", "limit", "is", "not"]) chain[m] = () => chain;
     chain.single = result;
     chain.maybeSingle = result;
     chain.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => result().then(res, rej);
@@ -129,6 +129,9 @@ describe("the dashboard", () => {
     expect(screen.getByText("U10 Girls @ Rivals FC")).toBeTruthy();
     expect(screen.getByText("Evening practice")).toBeTruthy();
     expect(screen.getByLabelText("Uniform: Navy").style.backgroundColor).toBe("rgb(30, 58, 138)");
+    // Event types read capitalized, as text, not by CSS (spec: team-branding-and-labels §1).
+    expect(screen.getByText("Game")).toBeTruthy();
+    expect(screen.getByText("Practice")).toBeTruthy();
   });
 });
 

@@ -144,7 +144,7 @@ export function ChatLayout({
   }
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem-48px)] overflow-hidden rounded-lg border">
+    <div className="flex h-[calc(100vh-6rem-48px)] overflow-hidden rounded-lg border">
       {/* Channel list — always visible on desktop; toggleable on mobile */}
       <div
         className={`w-full md:w-64 md:flex flex-shrink-0 ${

@@ -35,6 +35,7 @@ import {
   updateProfileManager,
 } from "@/app/actions/managers";
 import type { Database } from "@/types/database";
+import { displayLabel } from "@/lib/labels";
 
 type ProfileManagerRow =
   Database["public"]["Tables"]["profile_managers"]["Row"] & {
@@ -247,7 +248,7 @@ export function ManagersCard({
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
                       {m.relationship && (
-                        <Badge variant="secondary">{m.relationship}</Badge>
+                        <Badge variant="secondary">{displayLabel(m.relationship)}</Badge>
                       )}
                       <span className="font-medium">
                         {m.profiles.first_name} {m.profiles.last_name}
@@ -295,7 +296,7 @@ export function ManagersCard({
                         Invited
                       </Badge>
                       {inv.relationship && (
-                        <Badge variant="secondary">{inv.relationship}</Badge>
+                        <Badge variant="secondary">{displayLabel(inv.relationship)}</Badge>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">{inv.email}</p>

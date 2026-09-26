@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { acceptManagerInvitation } from "@/app/actions/invite";
+import { displayLabel } from "@/lib/labels";
 
 export function ManagerInviteClient({
   invitationId,
@@ -64,8 +65,8 @@ export function ManagerInviteClient({
             <p className="text-lg font-semibold">{playerName}</p>
             <p className="text-sm text-muted-foreground">on {teamName}</p>
             {relationship && (
-              <Badge variant="secondary" className="mt-2 capitalize">
-                {relationship}
+              <Badge variant="secondary" className="mt-2">
+                {displayLabel(relationship)}
               </Badge>
             )}
           </div>
