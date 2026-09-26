@@ -19,6 +19,7 @@ import { TeamSwitcher } from "@/components/team/team-switcher";
 import { ProfileSwitcher } from "@/components/layout/profile-switcher";
 import type { Database } from "@/types/database";
 import { teamBranding, type OrgBranding } from "@/lib/team-branding";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -64,6 +65,7 @@ export function DashboardNav({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { navigate } = useNavigate();
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -88,7 +90,7 @@ export function DashboardNav({
 
   async function handleSignOut() {
     await supabase.auth.signOut();
-    router.push("/login");
+    navigate("/login");
     router.refresh();
   }
 

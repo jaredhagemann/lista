@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 /**
  * The owner closes the club (BUG-013, part 3; D7). Closing archives it: its
@@ -21,7 +21,7 @@ import {
  * with no refund, and only support can reopen it.
  */
 export function CloseClubSection({ orgId, clubName }: { orgId: string; clubName: string }) {
-  const router = useRouter();
+  const { navigate } = useNavigate();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,7 +41,7 @@ export function CloseClubSection({ orgId, clubName }: { orgId: string; clubName:
         return;
       }
       toast.success(`${clubName} is closed. Its history is still readable.`);
-      router.push("/dashboard");
+      navigate("/dashboard");
     } finally {
       setBusy(false);
     }

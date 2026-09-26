@@ -22,6 +22,7 @@ import {
   monthRange,
   type MonthKey,
 } from "@/lib/events/month-range";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 const eventTypeColors: Record<string, { bg: string; text: string }> = {
   practice: { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-700 dark:text-blue-300" },
@@ -67,6 +68,7 @@ export function ScheduleCalendar({
   team: TeamDisplay;
 }) {
   const router = useRouter();
+  const { navigate } = useNavigate();
   // Held in state so its identity is stable: this client is a dependency of the
   // data effect, and a fresh object each render would re-run it forever.
   const [supabase] = useState(() => createClient());
@@ -228,7 +230,7 @@ export function ScheduleCalendar({
 
   function handleEventClick(e: React.MouseEvent, eventId: string) {
     e.stopPropagation();
-    router.push(`/dashboard/schedule/${eventId}`);
+    navigate(`/dashboard/schedule/${eventId}`);
   }
 
   function handleFormClose() {

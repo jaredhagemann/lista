@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useNavigate } from "@/components/layout/navigation-progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AlertCircle, Clock, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, Clock, Loader2, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
@@ -48,6 +49,7 @@ export function TeamRoster({
   contactsMap = {},
 }: TeamRosterProps) {
   const router = useRouter();
+  const { navigate, pendingHref } = useNavigate();
   const [invites, setInvites] = useState(pendingInvites);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
@@ -135,10 +137,15 @@ export function TeamRoster({
 
     const contact = member.profile_id ? contactsMap[member.profile_id] : null;
 
+    const href = `/dashboard/team/${member.id}`;
+    // Marked from the click until the member's page is up.
+    const opening = pendingHref === href;
+
     return (
       <div
-        className="flex cursor-pointer items-center gap-3 rounded-md p-3 hover:bg-accent"
-        onClick={() => router.push(`/dashboard/team/${member.id}`)}
+        aria-busy={opening}
+        className={`flex cursor-pointer items-center gap-3 rounded-md p-3 hover:bg-accent ${opening ? "bg-accent opacity-70" : ""}`}
+        onClick={() => navigate(href)}
       >
         <Avatar>
           {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={fullName} />}
@@ -165,6 +172,7 @@ export function TeamRoster({
           <div className="hidden sm:block" />
         )}
         <div className="flex shrink-0 items-center gap-1">
+          {opening && <Loader2 aria-hidden className="size-4 animate-spin text-muted-foreground" />}
           {ownerId && member.profile_id === ownerId && (
             <Badge variant="outline" className="shrink-0 border-amber-400 text-amber-600">
               Team Owner

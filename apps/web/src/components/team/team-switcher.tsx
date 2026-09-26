@@ -22,6 +22,7 @@ import { CreateTeamForm } from "@/components/team/create-team-form";
 import type { Database } from "@/types/database";
 import { teamBranding, type OrgBranding } from "@/lib/team-branding";
 import { displayLabel } from "@/lib/labels";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
   teams: Database["public"]["Tables"]["teams"]["Row"] & { organizations?: OrgBranding | null };
@@ -36,6 +37,7 @@ export function TeamSwitcher({
   activeMembership: TeamMember | null;
 }) {
   const router = useRouter();
+  const { navigate, isPending } = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [ownedClubOrgs, setOwnedClubOrgs] = useState<{ id: string; name: string; orgNamePublic: string | null }[]>([]);
@@ -61,7 +63,7 @@ export function TeamSwitcher({
     if (result && "redirectUrl" in result && result.redirectUrl) {
       window.location.assign(result.redirectUrl);
     } else {
-      router.push("/dashboard");
+      navigate("/dashboard");
       setSwitching(false);
     }
   }
@@ -78,7 +80,7 @@ export function TeamSwitcher({
             variant="ghost"
             size="sm"
             className="flex h-auto items-center gap-2 px-2 py-1 text-sm"
-            disabled={switching}
+            disabled={switching || isPending}
           >
             {current?.logoUrl && (
               <img
@@ -154,7 +156,7 @@ export function TeamSwitcher({
             ownedClubOrgs={ownedClubOrgs}
             onSuccess={() => {
               setCreateOpen(false);
-              router.push("/dashboard");
+              navigate("/dashboard");
               router.refresh();
             }}
           />

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,13 +11,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UserPlus } from "lucide-react";
 import { BulkInviteModal } from "./bulk-invite-modal";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 interface AddMemberButtonProps {
   teamId: string;
 }
 
 export function AddMemberButton({ teamId }: AddMemberButtonProps) {
-  const router = useRouter();
+  const { navigate } = useNavigate();
   const [bulkOpen, setBulkOpen] = useState(false);
 
   return (
@@ -32,17 +32,17 @@ export function AddMemberButton({ teamId }: AddMemberButtonProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
-            onClick={() => router.push("/dashboard/team/new-member?role=player")}
+            onClick={() => navigate("/dashboard/team/new-member?role=player")}
           >
             Player
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => router.push("/dashboard/team/new-member?role=manager")}
+            onClick={() => navigate("/dashboard/team/new-member?role=manager")}
           >
             Manager
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => router.push("/dashboard/team/new-member?role=coach")}
+            onClick={() => navigate("/dashboard/team/new-member?role=coach")}
           >
             Coach
           </DropdownMenuItem>

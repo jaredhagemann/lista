@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 type ClubOrg = { id: string; name: string; orgNamePublic: string | null };
 
@@ -34,6 +35,7 @@ export function CreateTeamForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { navigate } = useNavigate();
 
   const hasClubOrgs = ownedClubOrgs.length > 0;
   const addingToExistingOrg = hasClubOrgs && selectedOrgId !== NEW_ORG_VALUE;
@@ -58,7 +60,7 @@ export function CreateTeamForm({
         }
         toast.success("Team created");
         onSuccess?.();
-        router.push("/dashboard");
+        navigate("/dashboard");
         router.refresh();
       } finally {
         setLoading(false);
@@ -73,7 +75,7 @@ export function CreateTeamForm({
       orgName,
       clearActiveProfileFn: clearActiveProfile,
       onSuccess,
-      routerPush: router.push,
+      routerPush: navigate,
       routerRefresh: router.refresh,
     });
 

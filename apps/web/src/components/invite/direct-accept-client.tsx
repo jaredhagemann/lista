@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { acceptInvitationAsSelf } from "@/app/actions/invite";
 import { displayLabel } from "@/lib/labels";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 export function DirectAcceptClient({
   invitationId,
@@ -24,7 +24,7 @@ export function DirectAcceptClient({
   teamName: string;
   role: string;
 }) {
-  const router = useRouter();
+  const { navigate } = useNavigate();
   // A director invitation is to a club: `teamName` is the club's (BUG-013).
   const club = role === "director";
   const [loading, setLoading] = useState(false);
@@ -40,10 +40,10 @@ export function DirectAcceptClient({
       return;
     }
     if (club) {
-      router.push("/dashboard/club");
+      navigate("/dashboard/club");
       return;
     }
-    router.push(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
+    navigate(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
   }
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Check, ChevronsUpDown, Users } from "lucide-react";
 import { setActiveProfile } from "@/app/actions/profile";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import Link from "next/link";
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
@@ -48,7 +48,7 @@ export function ProfileSwitcher({
   profilesOnActiveTeam: TeamMember[];
   activeTeamId: string;
 }) {
-  const router = useRouter();
+  const { navigate, isPending } = useNavigate();
   const [switching, setSwitching] = useState(false);
 
   const isViewingAsManaged =
@@ -58,7 +58,7 @@ export function ProfileSwitcher({
     if (profileId === activeProfile?.id) return;
     setSwitching(true);
     await setActiveProfile(profileId, activeTeamId);
-    router.push("/dashboard");
+    navigate("/dashboard");
     setSwitching(false);
   }
 
@@ -68,7 +68,7 @@ export function ProfileSwitcher({
         <Button
           variant="ghost"
           size="sm"
-          disabled={switching}
+          disabled={switching || isPending}
           className={`flex h-auto items-center gap-2 px-2 py-1 text-sm ${
             isViewingAsManaged
               ? "text-amber-600 dark:text-amber-400"

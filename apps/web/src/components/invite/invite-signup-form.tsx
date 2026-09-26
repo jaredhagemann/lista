@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 export function InviteSignupForm({
   inviteId,
@@ -33,6 +34,7 @@ export function InviteSignupForm({
   logoUrl?: string;
 }) {
   const router = useRouter();
+  const { navigate } = useNavigate();
   const supabase = createClient();
   const [form, setForm] = useState({
     firstName,
@@ -95,7 +97,7 @@ export function InviteSignupForm({
       return;
     }
 
-    router.push(`/invite/${inviteId}`);
+    navigate(`/invite/${inviteId}`);
     router.refresh();
   }
 
