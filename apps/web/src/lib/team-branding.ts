@@ -15,6 +15,7 @@ export type OrgBranding = {
   org_name_public?: string | null;
   logo_url?: string | null;
   plan?: string | null;
+  brand_color_secondary?: string | null;
 };
 
 export type BrandableTeam = {
@@ -37,4 +38,20 @@ export function teamBranding(team: BrandableTeam): {
     displayName: clubName ? `${clubName} - ${team.name}` : team.name,
     clubName,
   };
+}
+
+/** lista's own blue, from its logo: the accent for teams outside a club. */
+export const LISTA_BLUE = "#01D7F4";
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/**
+ * A club team's secondary brand color, or null outside a club (or for a club
+ * without one). The club settings route stores the value as given, so only a
+ * hex color is trusted.
+ */
+export function clubSecondaryColor(org: OrgBranding | null | undefined): string | null {
+  if (!org || !isClubPlan(org.plan)) return null;
+  const color = org.brand_color_secondary?.trim();
+  return color && HEX_COLOR.test(color) ? color : null;
 }

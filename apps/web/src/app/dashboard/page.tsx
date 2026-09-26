@@ -13,6 +13,8 @@ import { formatEventTime, formatShortEventDate } from "@/lib/notifications/event
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
 import { TeamCard } from "@/components/team/team-card";
+import { RecordCard } from "@/components/team/record-card";
+import { clubSecondaryColor, LISTA_BLUE } from "@/lib/team-branding";
 import { teamRecord } from "@/lib/events/team-record";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -67,12 +69,12 @@ export default async function DashboardPage() {
 
   // The Team card: the club's branding, and the team's games with a result
   // (spec: team-branding-and-labels §4).
-  const [{ count: memberCount }, { data: org }, { data: resultGames }] = await Promise.all([
-    supabase.from("team_members").select("*", { count: "exact", head: true }).eq("team_id", team.id),
+  const [{ data: members }, { data: org }, { data: resultGames }] = await Promise.all([
+    supabase.from("team_members").select("id, role, profiles(first_name, last_name)").eq("team_id", team.id),
     team.organization_id
       ? supabase
           .from("organizations")
-          .select("name, org_name_public, logo_url, plan")
+          .select("name, org_name_public, logo_url, plan, brand_color_secondary")
           .eq("id", team.organization_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -83,6 +85,8 @@ export default async function DashboardPage() {
       .eq("event_type", "game")
       .not("game_result", "is", null),
   ]);
+
+  const record = teamRecord(resultGames ?? []);
 
   return (
     <div className="space-y-6">
@@ -172,11 +176,16 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <TeamCard
-          team={{ ...team, organizations: org }}
-          record={teamRecord(resultGames ?? [])}
-          memberCount={memberCount ?? 0}
-        />
+        <TeamCard team={{ ...team, organizations: org }} members={members ?? []} />
+
+        {record && (
+          <RecordCard
+            teamName={team.name}
+            record={record}
+            teamTimeZone={team.timezone}
+            winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
+          />
+        )}
       </div>
     </div>
   );

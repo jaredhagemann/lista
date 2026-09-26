@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => ({ auth: { signOut
 vi.mock("@/app/actions/team", () => ({ setActiveTeam: vi.fn() }));
 vi.mock("@/components/team/create-team-form", () => ({ CreateTeamForm: () => null }));
 
-import { teamBranding } from "@/lib/team-branding";
+import { teamBranding, clubSecondaryColor } from "@/lib/team-branding";
 import { TeamSwitcher } from "@/components/team/team-switcher";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 
@@ -83,6 +83,23 @@ describe("teamBranding", () => {
       displayName: "12U Girls",
       clubName: null,
     });
+  });
+});
+
+describe("clubSecondaryColor", () => {
+  it("is a club's secondary brand color", () => {
+    expect(clubSecondaryColor({ ...SLOFC, brand_color_secondary: "#C8102E" })).toBe("#C8102E");
+  });
+
+  it("is null for a free team's organization, or a club without one", () => {
+    expect(clubSecondaryColor({ ...SLOFC, plan: "free", brand_color_secondary: "#C8102E" })).toBeNull();
+    expect(clubSecondaryColor({ ...SLOFC, brand_color_secondary: null })).toBeNull();
+    expect(clubSecondaryColor(null)).toBeNull();
+  });
+
+  it("is null unless the stored value is a hex color (the settings route doesn't check it)", () => {
+    expect(clubSecondaryColor({ ...SLOFC, brand_color_secondary: "red; background: url(x)" })).toBeNull();
+    expect(clubSecondaryColor({ ...SLOFC, brand_color_secondary: "#abc" })).toBe("#abc");
   });
 });
 

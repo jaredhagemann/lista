@@ -2,11 +2,15 @@
 /**
  * The dashboard's Team card (spec: docs/specs/team-branding-and-labels.md §4).
  *
- * The card leads with the team's logo (its own, or its club's), then its name,
- * club and season, its record over every game with a result entered, and its
- * latest result; then the member count and roster link. Record and latest
- * result are hidden until a game has a result; a team without a logo shows its
- * initials.
+ * The Team card leads with the team's logo (its own, or its club's), then its
+ * name, club and season, then its members by name and role (coaches and staff
+ * first, then players, each linking to their page), the member count and the
+ * roster link; a team without a logo shows its initials.
+ *
+ * Beside it, the Record card: the last game as a two-line scoreline (the team,
+ * then "vs"/"at" the opponent, each with its score) with its date and time, and
+ * the wins, losses and ties over every game with a result, with a bar split in
+ * those proportions. It appears once a game has a result.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -110,13 +114,22 @@ const TEAM = {
   timezone: "America/Los_Angeles",
   organization_id: "org-1",
 };
+function member(id: string, role: string, first: string, last: string) {
+  return { id, role, profiles: { first_name: first, last_name: last } };
+}
+const MEMBERS = [
+  member("m-1", "player", "Zoey", "Butler"),
+  member("m-2", "manager", "Pat", "Lee"),
+  member("m-3", "player", "Ava", "Chen"),
+  member("m-4", "coach", "Sam", "Okafor"),
+];
 const SLOFC = { name: "San Luis Obispo FC", org_name_public: "SLOFC", logo_url: "https://x/slofc.png", plan: "club_small" };
 
 beforeEach(() => {
   for (const key of Object.keys(mocks.tables)) delete mocks.tables[key];
   mocks.membership = { team_id: "team-1", role: "coach", profile_id: "coach-1", teams: TEAM };
   mocks.tables.organizations = SLOFC;
-  mocks.tables.memberCount = 18;
+  mocks.tables.team_members = MEMBERS;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
 });
@@ -140,31 +153,48 @@ describe("the Team card", () => {
     expect(within(card()).getByText("SLOFC · Fall 2026")).toBeTruthy();
   });
 
-  it("shows the record and the latest result", async () => {
-    mocks.tables.results = [
-      game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1 }),
-      game("2026-09-13T17:00:00Z", "loss"),
-      game("2026-09-06T17:00:00Z", "tie"),
-    ];
+  it("leaves the record to the Record card", async () => {
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1 })];
 
     render(await DashboardPage());
 
-    expect(within(card()).getByText("1–1–1")).toBeTruthy();
-    expect(within(card()).getByText("W 3–1 vs Rivals FC")).toBeTruthy();
-    expect(within(card()).getByText("Sun, Sep 20")).toBeTruthy();
+    expect(within(card()).queryByText(/Record|Last/)).toBeNull();
   });
 
-  it("hides the record and latest result until a game has one", async () => {
+  it("lists the members by name and role: coaches and staff first, then players by name", async () => {
     render(await DashboardPage());
 
-    expect(within(card()).queryByText(/Record/)).toBeNull();
-    expect(within(card()).queryByText(/Last/)).toBeNull();
+    const list = within(card()).getByRole("list", { name: "Members" });
+    const rows = within(list).getAllByRole("listitem").map((item) => item.textContent);
+    expect(rows).toEqual(["Sam OkaforCoach", "Pat LeeManager", "Ava ChenPlayer", "Zoey ButlerPlayer"]);
+  });
+
+  it("the list fills the card's height beside Upcoming Events before it scrolls", async () => {
+    // jsdom has no layout, so this checks the structure that gives it: on wide
+    // screens the list has no height cap of its own and fills a stretching area
+    // of a card that stretches to the grid row (set by Upcoming Events).
+    render(await DashboardPage());
+
+    const list = within(card()).getByRole("list", { name: "Members" });
+    const classes = list.className.split(/\s+/);
+    expect(classes.filter((c) => c.startsWith("max-h-"))).toEqual([]);
+    expect(classes).toEqual(expect.arrayContaining(["md:absolute", "md:inset-x-0", "md:top-0", "md:max-h-full", "overflow-y-auto"]));
+    expect(list.parentElement!.className.split(/\s+/)).toEqual(expect.arrayContaining(["md:relative", "flex-1"]));
+    expect(card().className).toContain("h-full");
+    expect(card().firstElementChild!.className).toContain("h-full");
+  });
+
+  it("each name links to the member's page", async () => {
+    render(await DashboardPage());
+
+    const link = within(card()).getByRole("link", { name: "Ava Chen" });
+    expect(link.getAttribute("href")).toBe("/dashboard/team/m-3");
   });
 
   it("still shows the member count and roster link", async () => {
     render(await DashboardPage());
 
-    expect(within(card()).getByText(/18/)).toBeTruthy();
+    expect(within(card()).getByText(/4 members/)).toBeTruthy();
     expect(within(card()).getByRole("link", { name: /View roster/ })).toBeTruthy();
   });
 
@@ -175,5 +205,108 @@ describe("the Team card", () => {
 
     expect(within(card()).queryByRole("img")).toBeNull();
     expect(within(card()).getByText("1G")).toBeTruthy();
+  });
+});
+
+// ── The Record card ───────────────────────────────────────────────────────────
+
+function recordCard() {
+  return screen.getByRole("region", { name: "Record" });
+}
+
+/** The number shown over a Wins/Losses/Ties label. */
+function stat(label: string) {
+  return within(recordCard()).getByText(label).parentElement!.textContent!.replace(label, "");
+}
+
+describe("the Record card", () => {
+  it("shows the last game as a scoreline: the team and its score, then the opponent and theirs", async () => {
+    mocks.tables.results = [
+      game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1 }),
+      game("2026-09-13T17:00:00Z", "loss"),
+    ];
+
+    render(await DashboardPage());
+
+    const record = recordCard();
+    expect(within(record).getByText("Last game")).toBeTruthy();
+    const [ours, theirs] = within(record).getAllByRole("row");
+    expect(ours.textContent).toBe("12U Girls3");
+    expect(theirs.textContent).toBe("vs Rivals FC1");
+    expect(within(record).getByText("Sun, Sep 20, 10:00 AM PDT")).toBeTruthy();
+  });
+
+  it("an away game reads 'at' the opponent", async () => {
+    mocks.tables.results = [
+      game("2026-09-20T17:00:00Z", "loss", { score_for: 0, score_against: 2, home_away: "away", opponent: "Eagles" }),
+    ];
+
+    render(await DashboardPage());
+
+    expect(within(recordCard()).getAllByRole("row")[1].textContent).toBe("at Eagles2");
+  });
+
+  it("without a score, the team's line shows the result", async () => {
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "tie")];
+
+    render(await DashboardPage());
+
+    const [ours, theirs] = within(recordCard()).getAllByRole("row");
+    expect(ours.textContent).toBe("12U GirlsTie");
+    expect(theirs.textContent).toBe("vs Rivals FC");
+  });
+
+  it("counts wins, losses and ties, with a bar split in those proportions", async () => {
+    mocks.tables.results = [
+      game("2026-09-20T17:00:00Z", "win"),
+      game("2026-09-13T17:00:00Z", "win"),
+      game("2026-09-06T17:00:00Z", "loss"),
+      game("2026-08-30T17:00:00Z", "tie"),
+    ];
+
+    render(await DashboardPage());
+
+    expect(stat("Wins")).toBe("2");
+    expect(stat("Losses")).toBe("1");
+    expect(stat("Ties")).toBe("1");
+    const bar = within(recordCard()).getByRole("img", { name: "2 wins, 1 loss, 1 tie" });
+    const widths = Array.from(bar.children).map((segment) => (segment as HTMLElement).style.width);
+    expect(widths).toEqual(["50%", "25%", "25%"]);
+  });
+
+  /** The bar's wins, losses and ties segments. */
+  function segments() {
+    return Array.from(within(recordCard()).getByRole("img").children) as HTMLElement[];
+  }
+
+  it("wins are the club's secondary color on a club team; losses black, ties grey", async () => {
+    mocks.tables.organizations = { ...SLOFC, brand_color_secondary: "#C8102E" };
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "win"), game("2026-09-13T17:00:00Z", "loss")];
+
+    render(await DashboardPage());
+
+    const [wins, losses, ties] = segments();
+    expect(wins.style.backgroundColor).toBe("rgb(200, 16, 46)");
+    expect(losses.className).toContain("bg-black");
+    expect(ties.className).toContain("bg-neutral-400");
+  });
+
+  it("wins are lista blue on a team outside a club, or a club without a secondary color", async () => {
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "win")];
+
+    mocks.tables.organizations = { ...SLOFC, plan: "free", brand_color_secondary: "#C8102E" };
+    render(await DashboardPage());
+    expect(segments()[0].style.backgroundColor).toBe("rgb(1, 215, 244)");
+    cleanup();
+
+    mocks.tables.organizations = { ...SLOFC, brand_color_secondary: null };
+    render(await DashboardPage());
+    expect(segments()[0].style.backgroundColor).toBe("rgb(1, 215, 244)");
+  });
+
+  it("isn't shown until a game has a result", async () => {
+    render(await DashboardPage());
+
+    expect(screen.queryByRole("region", { name: "Record" })).toBeNull();
   });
 });

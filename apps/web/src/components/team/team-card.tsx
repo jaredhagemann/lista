@@ -1,10 +1,20 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { teamBranding, type BrandableTeam } from "@/lib/team-branding";
-import type { TeamRecord } from "@/lib/events/team-record";
-import { formatShortEventDate, resolveTimeZone } from "@/lib/notifications/event-time";
+import { displayLabel } from "@/lib/labels";
 
-const LETTER = { win: "W", loss: "L", tie: "T" } as const;
+export type TeamCardMember = {
+  id: string;
+  role: string;
+  profiles: { first_name: string | null; last_name: string | null } | null;
+};
+
+/** Coaches and staff first, in the roster's order; then players. */
+const ROLE_ORDER: Record<string, number> = { director: 0, coach: 1, manager: 2, player: 4 };
+
+function nameOf(member: TeamCardMember) {
+  return [member.profiles?.first_name, member.profiles?.last_name].filter(Boolean).join(" ") || "Member";
+}
 
 /** "12U Girls" → "1G": a stand-in for a team with no logo. */
 function initials(name: string) {
@@ -18,35 +28,30 @@ function initials(name: string) {
 
 /**
  * The dashboard's Team card (spec: docs/specs/team-branding-and-labels.md §4):
- * the team's logo (its own, or its club's), its name, club and season, its
- * record and latest result once a game has one, and its members.
+ * the team's logo (its own, or its club's), its name, club and season, and its
+ * members by name and role, each linking to their page. The record has a card of its own (RecordCard).
  */
 export function TeamCard({
   team,
-  record,
-  memberCount,
+  members,
 }: {
-  team: BrandableTeam & { season?: string | null; timezone?: string | null };
-  record: TeamRecord | null;
-  memberCount: number;
+  team: BrandableTeam & { season?: string | null };
+  members: TeamCardMember[];
 }) {
+  const memberCount = members.length;
+  const listed = members
+    .map((member) => ({ ...member, name: nameOf(member) }))
+    .sort(
+      (a, b) =>
+        (ROLE_ORDER[a.role] ?? 3) - (ROLE_ORDER[b.role] ?? 3) || a.name.localeCompare(b.name)
+    );
   const brand = teamBranding(team);
   const subtitle = [brand.clubName, team.season].filter(Boolean).join(" · ");
-  const last = record?.last;
-  const lastLine = last
-    ? [
-        LETTER[last.result],
-        last.scoreFor != null && last.scoreAgainst != null ? `${last.scoreFor}–${last.scoreAgainst}` : null,
-        last.opponent ? `${last.homeAway === "away" ? "@" : "vs"} ${last.opponent}` : null,
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : null;
 
   return (
-    <section aria-label="Team">
+    <section aria-label="Team" className="h-full">
       <Card className="h-full">
-        <CardContent className="space-y-4 pt-6">
+        <CardContent className="flex flex-1 flex-col gap-4 pt-6">
           <div className="flex items-center gap-4">
             {brand.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -69,21 +74,26 @@ export function TeamCard({
             </div>
           </div>
 
-          {record && last && lastLine && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Record</dt>
-              <dd>
-                <span className="font-semibold">{`${record.wins}–${record.losses}–${record.ties}`}</span>
-                <span className="text-muted-foreground"> (W–L–T)</span>
-              </dd>
-              <dt className="text-muted-foreground">Last</dt>
-              <dd>
-                <span className="font-medium">{lastLine}</span>
-                <span className="block text-muted-foreground">
-                  {formatShortEventDate(last.startTime, resolveTimeZone(last.timeZone ?? team.timezone))}
-                </span>
-              </dd>
-            </dl>
+          {listed.length > 0 && (
+            // On wide screens the card stretches to the row Upcoming Events sets, and
+            // the list fills what's left of it before scrolling. Positioned out of the
+            // flow so a long roster can't grow the row itself. Stacked on phones, it
+            // takes its own height, up to a cap.
+            <div className="flex-1 md:relative md:min-h-64">
+              <ul
+                aria-label="Members"
+                className="divide-y overflow-y-auto rounded-md border text-sm max-md:max-h-96 md:absolute md:inset-x-0 md:top-0 md:max-h-full"
+              >
+                {listed.map((member) => (
+                  <li key={member.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                    <Link href={`/dashboard/team/${member.id}`} className="truncate font-medium hover:underline">
+                      {member.name}
+                    </Link>
+                    <span className="shrink-0 text-muted-foreground">{displayLabel(member.role)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           <p className="text-sm text-muted-foreground">
