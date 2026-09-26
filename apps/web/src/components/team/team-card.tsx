@@ -1,10 +1,6 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { teamBranding, type BrandableTeam } from "@/lib/team-branding";
-import type { TeamRecord } from "@/lib/events/team-record";
-import { formatShortEventDate, resolveTimeZone } from "@/lib/notifications/event-time";
-
-const LETTER = { win: "W", loss: "L", tie: "T" } as const;
 
 /** "12U Girls" → "1G": a stand-in for a team with no logo. */
 function initials(name: string) {
@@ -18,30 +14,18 @@ function initials(name: string) {
 
 /**
  * The dashboard's Team card (spec: docs/specs/team-branding-and-labels.md §4):
- * the team's logo (its own, or its club's), its name, club and season, its
- * record and latest result once a game has one, and its members.
+ * the team's logo (its own, or its club's), its name, club and season, and its
+ * members. The record has a card of its own (RecordCard).
  */
 export function TeamCard({
   team,
-  record,
   memberCount,
 }: {
-  team: BrandableTeam & { season?: string | null; timezone?: string | null };
-  record: TeamRecord | null;
+  team: BrandableTeam & { season?: string | null };
   memberCount: number;
 }) {
   const brand = teamBranding(team);
   const subtitle = [brand.clubName, team.season].filter(Boolean).join(" · ");
-  const last = record?.last;
-  const lastLine = last
-    ? [
-        LETTER[last.result],
-        last.scoreFor != null && last.scoreAgainst != null ? `${last.scoreFor}–${last.scoreAgainst}` : null,
-        last.opponent ? `${last.homeAway === "away" ? "@" : "vs"} ${last.opponent}` : null,
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : null;
 
   return (
     <section aria-label="Team">
@@ -69,22 +53,6 @@ export function TeamCard({
             </div>
           </div>
 
-          {record && last && lastLine && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Record</dt>
-              <dd>
-                <span className="font-semibold">{`${record.wins}–${record.losses}–${record.ties}`}</span>
-                <span className="text-muted-foreground"> (W–L–T)</span>
-              </dd>
-              <dt className="text-muted-foreground">Last</dt>
-              <dd>
-                <span className="font-medium">{lastLine}</span>
-                <span className="block text-muted-foreground">
-                  {formatShortEventDate(last.startTime, resolveTimeZone(last.timeZone ?? team.timezone))}
-                </span>
-              </dd>
-            </dl>
-          )}
 
           <p className="text-sm text-muted-foreground">
             {memberCount} {memberCount === 1 ? "member" : "members"} ·{" "}

@@ -2,11 +2,14 @@
 /**
  * The dashboard's Team card (spec: docs/specs/team-branding-and-labels.md §4).
  *
- * The card leads with the team's logo (its own, or its club's), then its name,
- * club and season, its record over every game with a result entered, and its
- * latest result; then the member count and roster link. Record and latest
- * result are hidden until a game has a result; a team without a logo shows its
- * initials.
+ * The Team card leads with the team's logo (its own, or its club's), then its
+ * name, club and season, then the member count and roster link; a team without
+ * a logo shows its initials.
+ *
+ * Beside it, the Record card: the last game as a two-line scoreline (the team,
+ * then "vs"/"at" the opponent, each with its score) with its date and time, and
+ * the wins, losses and ties over every game with a result, with a bar split in
+ * those proportions. It appears once a game has a result.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -140,25 +143,12 @@ describe("the Team card", () => {
     expect(within(card()).getByText("SLOFC · Fall 2026")).toBeTruthy();
   });
 
-  it("shows the record and the latest result", async () => {
-    mocks.tables.results = [
-      game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1 }),
-      game("2026-09-13T17:00:00Z", "loss"),
-      game("2026-09-06T17:00:00Z", "tie"),
-    ];
+  it("leaves the record to the Record card", async () => {
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1 })];
 
     render(await DashboardPage());
 
-    expect(within(card()).getByText("1–1–1")).toBeTruthy();
-    expect(within(card()).getByText("W 3–1 vs Rivals FC")).toBeTruthy();
-    expect(within(card()).getByText("Sun, Sep 20")).toBeTruthy();
-  });
-
-  it("hides the record and latest result until a game has one", async () => {
-    render(await DashboardPage());
-
-    expect(within(card()).queryByText(/Record/)).toBeNull();
-    expect(within(card()).queryByText(/Last/)).toBeNull();
+    expect(within(card()).queryByText(/Record|Last/)).toBeNull();
   });
 
   it("still shows the member count and roster link", async () => {
@@ -175,5 +165,78 @@ describe("the Team card", () => {
 
     expect(within(card()).queryByRole("img")).toBeNull();
     expect(within(card()).getByText("1G")).toBeTruthy();
+  });
+});
+
+// ── The Record card ───────────────────────────────────────────────────────────
+
+function recordCard() {
+  return screen.getByRole("region", { name: "Record" });
+}
+
+/** The number shown over a Wins/Losses/Ties label. */
+function stat(label: string) {
+  return within(recordCard()).getByText(label).parentElement!.textContent!.replace(label, "");
+}
+
+describe("the Record card", () => {
+  it("shows the last game as a scoreline: the team and its score, then the opponent and theirs", async () => {
+    mocks.tables.results = [
+      game("2026-09-20T17:00:00Z", "win", { score_for: 3, score_against: 1 }),
+      game("2026-09-13T17:00:00Z", "loss"),
+    ];
+
+    render(await DashboardPage());
+
+    const record = recordCard();
+    expect(within(record).getByText("Last game")).toBeTruthy();
+    const [ours, theirs] = within(record).getAllByRole("row");
+    expect(ours.textContent).toBe("12U Girls3");
+    expect(theirs.textContent).toBe("vs Rivals FC1");
+    expect(within(record).getByText("Sun, Sep 20, 10:00 AM PDT")).toBeTruthy();
+  });
+
+  it("an away game reads 'at' the opponent", async () => {
+    mocks.tables.results = [
+      game("2026-09-20T17:00:00Z", "loss", { score_for: 0, score_against: 2, home_away: "away", opponent: "Eagles" }),
+    ];
+
+    render(await DashboardPage());
+
+    expect(within(recordCard()).getAllByRole("row")[1].textContent).toBe("at Eagles2");
+  });
+
+  it("without a score, the team's line shows the result", async () => {
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "tie")];
+
+    render(await DashboardPage());
+
+    const [ours, theirs] = within(recordCard()).getAllByRole("row");
+    expect(ours.textContent).toBe("12U GirlsTie");
+    expect(theirs.textContent).toBe("vs Rivals FC");
+  });
+
+  it("counts wins, losses and ties, with a bar split in those proportions", async () => {
+    mocks.tables.results = [
+      game("2026-09-20T17:00:00Z", "win"),
+      game("2026-09-13T17:00:00Z", "win"),
+      game("2026-09-06T17:00:00Z", "loss"),
+      game("2026-08-30T17:00:00Z", "tie"),
+    ];
+
+    render(await DashboardPage());
+
+    expect(stat("Wins")).toBe("2");
+    expect(stat("Losses")).toBe("1");
+    expect(stat("Ties")).toBe("1");
+    const bar = within(recordCard()).getByRole("img", { name: "2 wins, 1 loss, 1 tie" });
+    const widths = Array.from(bar.children).map((segment) => (segment as HTMLElement).style.width);
+    expect(widths).toEqual(["50%", "25%", "25%"]);
+  });
+
+  it("isn't shown until a game has a result", async () => {
+    render(await DashboardPage());
+
+    expect(screen.queryByRole("region", { name: "Record" })).toBeNull();
   });
 });

@@ -52,20 +52,32 @@ one place and "Mom" in another.
   │ │   LOGO   │  12U Girls       │
   │ │   96px   │  SLOFC · Fall 26 │
   │ └──────────┘                  │
-  │ Record  7–2–1  (W–L–T)        │
-  │ Last    W 3–1 vs Rivals FC    │
-  │         Sat, Sep 20           │
   │ 18 members · View roster      │
   └───────────────────────────────┘
   ```
 
   - **Logo:** the team's logo (§2), 96px. Without one, the team's initials on a neutral tile.
   - **Name:** the team's own name, with the club (club teams only) and season under it.
-  - **Record:** wins–losses–ties over **every game on this team with a result entered**. Games without a
-    result do not count. The record is hidden when no game has a result.
-  - **Last:** the **most recent past game with a result**: "W/L/T", the score when entered, the opponent,
-    and the date in the game's timezone. It is hidden when no game has a result.
   - **Members:** the member count and the roster link, as today.
+- **Dashboard Record card:** a full-width card under the Upcoming Events and Team cards, shown once a
+  game has a result:
+
+  ```
+  ┌ Record ──────────────────────────────────────────────────────┐
+  │ [LAST GAME]                          4        1        1     │
+  │ 12U Girls ················ 3        Wins   Losses    Ties    │
+  │ vs Rivals FC ············· 1     ████████████████▓▓▓▓░░░░    │
+  │ Sun, Sep 20, 10:00 AM PDT                                    │
+  └──────────────────────────────────────────────────────────────┘
+  ```
+
+  - **Last game:** the **most recent past game with a result**, as a two-line scoreline: the team's own
+    name and its score, then "vs" (home) or "at" (away) the opponent and theirs. Without a score, the
+    team's line shows the result ("Win", "Loss", "Tie"). Under it, the date and time in the game's
+    timezone.
+  - **Record:** wins, losses and ties over **every game on this team with a result entered**. Games
+    without a result do not count. The bar is split in those proportions: wins in the primary color,
+    losses orange, ties grey.
 
 ## Testing
 
@@ -85,8 +97,9 @@ one place and "Mom" in another.
     team is unprefixed
 - Team picker: the button and options show the prefixed name and the inherited logo.
 - Header: shows the active team's logo, falling back to the tenant logo and then the wordmark.
-- Dashboard Team card:
-  - the record counts only games with a result (W, L and T)
-  - the last game is the latest one with a result, with its score when entered
-  - both are hidden when no game has a result
-  - the logo, or initials without one
+- Dashboard Team card: the logo, or initials without one; no record.
+- Dashboard Record card:
+  - the record counts only games with a result (W, L and T), and the bar is split in proportion
+  - the last game is the latest one with a result: the scoreline with scores, "at" for away games, the
+    result in place of a missing score, and its date and time
+  - the card is hidden when no game has a result

@@ -13,6 +13,7 @@ import { formatEventTime, formatShortEventDate } from "@/lib/notifications/event
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
 import { TeamCard } from "@/components/team/team-card";
+import { RecordCard } from "@/components/team/record-card";
 import { teamRecord } from "@/lib/events/team-record";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -83,6 +84,8 @@ export default async function DashboardPage() {
       .eq("event_type", "game")
       .not("game_result", "is", null),
   ]);
+
+  const record = teamRecord(resultGames ?? []);
 
   return (
     <div className="space-y-6">
@@ -172,11 +175,9 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <TeamCard
-          team={{ ...team, organizations: org }}
-          record={teamRecord(resultGames ?? [])}
-          memberCount={memberCount ?? 0}
-        />
+        <TeamCard team={{ ...team, organizations: org }} memberCount={memberCount ?? 0} />
+
+        {record && <RecordCard teamName={team.name} record={record} teamTimeZone={team.timezone} />}
       </div>
     </div>
   );
