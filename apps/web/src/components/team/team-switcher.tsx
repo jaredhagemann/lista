@@ -20,10 +20,11 @@ import {
 } from "@/components/ui/dialog";
 import { CreateTeamForm } from "@/components/team/create-team-form";
 import type { Database } from "@/types/database";
+import { teamBranding, type OrgBranding } from "@/lib/team-branding";
 import { displayLabel } from "@/lib/labels";
 
 type TeamMember = Database["public"]["Tables"]["team_members"]["Row"] & {
-  teams: Database["public"]["Tables"]["teams"]["Row"];
+  teams: Database["public"]["Tables"]["teams"]["Row"] & { organizations?: OrgBranding | null };
 };
 
 export function TeamSwitcher({
@@ -66,6 +67,8 @@ export function TeamSwitcher({
   }
 
   const currentTeam = activeMembership?.teams;
+  // Club teams inherit the club logo and carry the club name (spec: team-branding-and-labels).
+  const current = currentTeam ? teamBranding(currentTeam) : null;
 
   return (
     <>
@@ -77,15 +80,15 @@ export function TeamSwitcher({
             className="flex h-auto items-center gap-2 px-2 py-1 text-sm"
             disabled={switching}
           >
-            {currentTeam?.logo_url && (
+            {current?.logoUrl && (
               <img
-                src={currentTeam.logo_url}
-                alt={`${currentTeam.name} logo`}
-                className="h-5 w-5 rounded object-cover"
+                src={current.logoUrl}
+                alt={`${current.displayName} logo`}
+                className="h-6 w-6 rounded object-contain"
               />
             )}
             <span className="text-muted-foreground">
-              {currentTeam?.name ?? "Select team"}
+              {current?.displayName ?? "Select team"}
               {activeMembership?.role && (
                 <span className="ml-1">
                   ({displayLabel(activeMembership.role)})
@@ -97,6 +100,7 @@ export function TeamSwitcher({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           {uniqueTeams.map((m) => {
+            const brand = teamBranding(m.teams);
             // Count how many of the user's profiles are on this team
             const profilesOnTeam = allMemberships.filter(
               (mb) => mb.team_id === m.team_id
@@ -110,15 +114,15 @@ export function TeamSwitcher({
                 className="flex items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  {m.teams.logo_url && (
+                  {brand.logoUrl && (
                     <img
-                      src={m.teams.logo_url}
-                      alt={`${m.teams.name} logo`}
-                      className="h-4 w-4 rounded object-cover"
+                      src={brand.logoUrl}
+                      alt={`${brand.displayName} logo`}
+                      className="h-6 w-6 rounded object-contain"
                     />
                   )}
                   <div>
-                    <p className="text-sm font-medium">{m.teams.name}</p>
+                    <p className="text-sm font-medium">{brand.displayName}</p>
                     <p className="text-xs text-muted-foreground">
                       {multiProfile
                         ? `${profilesOnTeam.length} profiles`
