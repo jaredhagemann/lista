@@ -82,8 +82,9 @@ one place and "Mom" in another.
     team's line shows the result ("Win", "Loss", "Tie"). Under it, the date and time in the game's
     timezone.
   - **Record:** wins, losses and ties over **every game on this team with a result entered**. Games
-    without a result do not count. The bar is split in those proportions: wins in the primary color,
-    losses orange, ties grey.
+    without a result do not count. The bar is split in those proportions: wins in the club's
+    secondary brand color on a club team (a valid hex color only), else lista blue (#01D7F4); losses
+    black (white on the dark theme); ties grey.
 
 ## Testing
 

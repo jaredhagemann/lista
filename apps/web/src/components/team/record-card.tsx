@@ -26,17 +26,21 @@ function ScoreRow({ name, score }: { name: string; score: string | null }) {
 /**
  * The dashboard's Record card (spec: docs/specs/team-branding-and-labels.md §4):
  * the last game as a scoreline with its date and time, and the season's wins,
- * losses and ties with a bar split in those proportions. Only shown once a game
- * has a result.
+ * losses and ties with a bar split in those proportions: wins in the club's
+ * secondary color (lista blue outside a club), losses black, ties grey. Only
+ * shown once a game has a result.
  */
 export function RecordCard({
   teamName,
   record,
   teamTimeZone,
+  winColor,
 }: {
   teamName: string;
   record: TeamRecord;
   teamTimeZone?: string | null;
+  /** The club's secondary color on a club team, else lista blue. */
+  winColor: string;
 }) {
   const { wins, losses, ties, last } = record;
   const scored = last.scoreFor != null && last.scoreAgainst != null;
@@ -85,9 +89,10 @@ export function RecordCard({
               aria-label={`${plural(wins, "win", "wins")}, ${plural(losses, "loss", "losses")}, ${plural(ties, "tie", "ties")}`}
               className="flex h-3 overflow-hidden rounded-full bg-muted"
             >
-              <div className="bg-primary" style={{ width: share(wins) }} />
-              <div className="bg-orange-500" style={{ width: share(losses) }} />
-              <div className="bg-muted-foreground/30" style={{ width: share(ties) }} />
+              <div style={{ width: share(wins), backgroundColor: winColor }} />
+              {/* Black would vanish on the dark theme's card, so it turns white there. */}
+              <div className="bg-black dark:bg-white" style={{ width: share(losses) }} />
+              <div className="bg-neutral-400" style={{ width: share(ties) }} />
             </div>
           </div>
         </CardContent>

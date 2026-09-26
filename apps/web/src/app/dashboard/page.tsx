@@ -14,6 +14,7 @@ import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
 import { TeamCard } from "@/components/team/team-card";
 import { RecordCard } from "@/components/team/record-card";
+import { clubSecondaryColor, LISTA_BLUE } from "@/lib/team-branding";
 import { teamRecord } from "@/lib/events/team-record";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -73,7 +74,7 @@ export default async function DashboardPage() {
     team.organization_id
       ? supabase
           .from("organizations")
-          .select("name, org_name_public, logo_url, plan")
+          .select("name, org_name_public, logo_url, plan, brand_color_secondary")
           .eq("id", team.organization_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -177,7 +178,14 @@ export default async function DashboardPage() {
 
         <TeamCard team={{ ...team, organizations: org }} members={members ?? []} />
 
-        {record && <RecordCard teamName={team.name} record={record} teamTimeZone={team.timezone} />}
+        {record && (
+          <RecordCard
+            teamName={team.name}
+            record={record}
+            teamTimeZone={team.timezone}
+            winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
+          />
+        )}
       </div>
     </div>
   );

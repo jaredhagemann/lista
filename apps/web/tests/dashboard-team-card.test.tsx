@@ -274,6 +274,36 @@ describe("the Record card", () => {
     expect(widths).toEqual(["50%", "25%", "25%"]);
   });
 
+  /** The bar's wins, losses and ties segments. */
+  function segments() {
+    return Array.from(within(recordCard()).getByRole("img").children) as HTMLElement[];
+  }
+
+  it("wins are the club's secondary color on a club team; losses black, ties grey", async () => {
+    mocks.tables.organizations = { ...SLOFC, brand_color_secondary: "#C8102E" };
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "win"), game("2026-09-13T17:00:00Z", "loss")];
+
+    render(await DashboardPage());
+
+    const [wins, losses, ties] = segments();
+    expect(wins.style.backgroundColor).toBe("rgb(200, 16, 46)");
+    expect(losses.className).toContain("bg-black");
+    expect(ties.className).toContain("bg-neutral-400");
+  });
+
+  it("wins are lista blue on a team outside a club, or a club without a secondary color", async () => {
+    mocks.tables.results = [game("2026-09-20T17:00:00Z", "win")];
+
+    mocks.tables.organizations = { ...SLOFC, plan: "free", brand_color_secondary: "#C8102E" };
+    render(await DashboardPage());
+    expect(segments()[0].style.backgroundColor).toBe("rgb(1, 215, 244)");
+    cleanup();
+
+    mocks.tables.organizations = { ...SLOFC, brand_color_secondary: null };
+    render(await DashboardPage());
+    expect(segments()[0].style.backgroundColor).toBe("rgb(1, 215, 244)");
+  });
+
   it("isn't shown until a game has a result", async () => {
     render(await DashboardPage());
 
