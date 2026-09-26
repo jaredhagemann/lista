@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 export function LoginForm({
   appName = "lista",
@@ -31,6 +32,7 @@ export function LoginForm({
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const router = useRouter();
+  const { navigate } = useNavigate();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/dashboard";
   const supabase = createClient();
@@ -51,7 +53,7 @@ export function LoginForm({
       return;
     }
 
-    router.push("/dashboard");
+    navigate("/dashboard");
     router.refresh();
   }
 

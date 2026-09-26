@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { changePassword } from "@/app/dashboard/settings/actions";
 import { Button } from "@/components/ui/button";
@@ -18,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { TrainingLeaderboardToggle } from "@/components/settings/training-leaderboard-toggle";
+import { useNavigate } from "@/components/layout/navigation-progress";
+import { Loader2 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Password reset
@@ -131,7 +132,7 @@ function PasswordResetForm() {
 // ---------------------------------------------------------------------------
 
 function DeleteAccountSection() {
-  const router = useRouter();
+  const { navigate, pendingHref } = useNavigate();
   const supabase = createClient();
 
   const [checking, setChecking] = useState(false);
@@ -222,7 +223,7 @@ function DeleteAccountSection() {
       } catch {
         // non-fatal
       }
-      router.push("/login");
+      navigate("/login");
       return;
     }
 
@@ -258,7 +259,13 @@ function DeleteAccountSection() {
                 You are the owner of <strong>{ownedClubs.join(", ")}</strong>. Hand the club over to one of its
                 directors, or close it, before deleting your account.
               </p>
-              <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/club/settings")}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pendingHref !== null}
+                onClick={() => navigate("/dashboard/club/settings")}
+              >
+                {pendingHref === "/dashboard/club/settings" && <Loader2 aria-hidden className="size-4 animate-spin" />}
                 Go to Club Settings
               </Button>
             </div>
@@ -275,8 +282,10 @@ function DeleteAccountSection() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => router.push("/dashboard/settings?tab=team")}
+                disabled={pendingHref !== null}
+                onClick={() => navigate("/dashboard/settings?tab=team")}
               >
+                {pendingHref === "/dashboard/settings?tab=team" && <Loader2 aria-hidden className="size-4 animate-spin" />}
                 Go to Team Settings
               </Button>
             </div>
@@ -294,8 +303,10 @@ function DeleteAccountSection() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => router.push("/dashboard/settings/managed-players")}
+                disabled={pendingHref !== null}
+                onClick={() => navigate("/dashboard/settings/managed-players")}
               >
+                {pendingHref === "/dashboard/settings/managed-players" && <Loader2 aria-hidden className="size-4 animate-spin" />}
                 Go to Managed Players
               </Button>
             </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { acceptInvitationAsSelf, acceptInvitationAsGuardian } from "@/app/actions/invite";
 import type { Database } from "@/types/database";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 type Invitation = Database["public"]["Tables"]["invitations"]["Row"] & {
   teams: { name: string };
@@ -39,7 +39,7 @@ export function IdentityConfirmation({
   /** Children this user already manages (BUG-011). */
   managedChildren?: ManagedChild[];
 }) {
-  const router = useRouter();
+  const { navigate } = useNavigate();
   const [identity, setIdentity] = useState<"self" | "guardian" | null>(null);
   const [relationship, setRelationship] = useState("");
   const [guardianFirstName, setGuardianFirstName] = useState(
@@ -68,7 +68,7 @@ export function IdentityConfirmation({
         setLoading(false);
         return;
       }
-      router.push(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
+      navigate(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
     } else if (identity === "guardian") {
       if (!relationship) {
         setError("Please select your relationship.");
@@ -86,7 +86,7 @@ export function IdentityConfirmation({
         setLoading(false);
         return;
       }
-      router.push(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
+      navigate(result.memberId ? `/dashboard/team/${result.memberId}` : "/dashboard");
     }
   }
 

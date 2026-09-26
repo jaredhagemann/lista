@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useNavigate } from "@/components/layout/navigation-progress";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,7 +84,7 @@ export function RosterProfile({
     .join("")
     .toUpperCase();
 
-  const router = useRouter();
+  const { navigate } = useNavigate();
 
   async function handleRemove() {
     setRemoving(true);
@@ -93,7 +94,7 @@ export function RosterProfile({
       setRemoving(false);
     } else {
       toast.success("Member removed from team");
-      router.push("/dashboard/team");
+      navigate("/dashboard/team");
     }
   }
 
@@ -105,7 +106,7 @@ export function RosterProfile({
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/dashboard/team")}
+            onClick={() => navigate("/dashboard/team")}
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>

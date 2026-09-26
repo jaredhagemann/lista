@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 interface InviteResult {
   emailSent: boolean;
@@ -27,7 +27,7 @@ export function NewMemberForm({
   teamId: string;
   role: "player" | "manager" | "coach";
 }) {
-  const router = useRouter();
+  const { navigate } = useNavigate();
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -122,7 +122,7 @@ export function NewMemberForm({
           </div>
         )}
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push("/dashboard/team")}>
+          <Button variant="outline" onClick={() => navigate("/dashboard/team")}>
             Back to team
           </Button>
           <Button onClick={resetForm}>Invite another</Button>
@@ -199,7 +199,7 @@ export function NewMemberForm({
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.push("/dashboard/team")}
+          onClick={() => navigate("/dashboard/team")}
         >
           Cancel
         </Button>

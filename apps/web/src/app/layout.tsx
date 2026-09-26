@@ -50,10 +50,11 @@ export default async function RootLayout({
     <html lang="en" style={brandVars}>
       <head />
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ProgressBar color={tenant?.isWhiteLabel ? tenant.brandColorSecondary : null} />
-        <AppNameProvider value={appName}>
-          <TooltipProvider>{children}</TooltipProvider>
-        </AppNameProvider>
+        <ProgressBar color={tenant?.isWhiteLabel ? tenant.brandColorSecondary : null}>
+          <AppNameProvider value={appName}>
+            <TooltipProvider>{children}</TooltipProvider>
+          </AppNameProvider>
+        </ProgressBar>
         <script
           dangerouslySetInnerHTML={{
             __html: `

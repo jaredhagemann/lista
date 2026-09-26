@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { acceptManagerInvitation } from "@/app/actions/invite";
 import { displayLabel } from "@/lib/labels";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 export function ManagerInviteClient({
   invitationId,
@@ -27,6 +28,7 @@ export function ManagerInviteClient({
   relationship: string | null;
 }) {
   const router = useRouter();
+  const { navigate } = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +41,7 @@ export function ManagerInviteClient({
       setLoading(false);
       return;
     }
-    router.push("/dashboard");
+    navigate("/dashboard");
     router.refresh();
   }
 

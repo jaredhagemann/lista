@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { MoreHorizontal, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { MoreHorizontal, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
+import { useNavigate } from "@/components/layout/navigation-progress";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -96,7 +96,7 @@ export function ScheduleList({
   /** Names games and shows their uniforms (spec: game-display-and-uniform-colors). */
   team: TeamDisplay;
 }) {
-  const router = useRouter();
+  const { navigate, pendingHref } = useNavigate();
   const titleOf = (event: EventWithLocation) => gameTitle(event, team.name);
   const [viewerZone] = useState(() => browserTimeZone() ?? "UTC");
   // Held in state so its identity is stable: this client is a dependency of the
@@ -459,13 +459,16 @@ export function ScheduleList({
                     ? formatEventTime(new Date(start.getTime() - event.arrival_time * 60 * 1000), zone)
                     : null;
 
+                const href = `/dashboard/schedule/${event.id}`;
+                // Marked from the click until the event's page is up.
+                const opening = pendingHref?.startsWith(href) ?? false;
+
                 return (
                   <TableRow
                     key={event.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() =>
-                      router.push(`/dashboard/schedule/${event.id}`)
-                    }
+                    aria-busy={opening}
+                    className={`cursor-pointer hover:bg-muted/50 ${opening ? "bg-muted/50 opacity-70" : ""}`}
+                    onClick={() => navigate(href)}
                   >
                     {/* Title + type badge */}
                     <TableCell>
@@ -480,6 +483,9 @@ export function ScheduleList({
                           >
                             {titleOf(event)}
                           </span>
+                          {opening && (
+                            <Loader2 aria-hidden className="size-3.5 animate-spin text-muted-foreground" />
+                          )}
                           {event.is_cancelled && (
                             <Badge variant="outline" className="text-xs text-muted-foreground">
                               Cancelled
@@ -539,7 +545,7 @@ export function ScheduleList({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() =>
-                                router.push(`/dashboard/schedule/${event.id}?edit=true`)
+                                navigate(`/dashboard/schedule/${event.id}?edit=true`)
                               }
                             >
                               Edit

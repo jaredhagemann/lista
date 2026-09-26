@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -22,6 +23,7 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { navigate } = useNavigate();
   const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -44,7 +46,7 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    router.push("/dashboard");
+    navigate("/dashboard");
     router.refresh();
   }
 

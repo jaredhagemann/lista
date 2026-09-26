@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Check, ExternalLink } from "lucide-react";
 import { isClubPlan } from "@/lib/plan";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 /**
  * Plan tab — pricing comparison and self-serve upgrade UI.
@@ -103,6 +104,7 @@ function tierFromPlan(plan: string | null): Tier {
 
 export function PlanTabClient({ orgPlan }: { orgPlan: OrgPlanData | null }) {
   const router = useRouter();
+  const { navigate } = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [adminPlan, setAdminPlan] = useState<"club_small" | "club_large">(
     "club_large",
@@ -146,7 +148,7 @@ export function PlanTabClient({ orgPlan }: { orgPlan: OrgPlanData | null }) {
         return;
       }
       toast.success("Trial started — welcome to Lista Club!");
-      router.push("/dashboard/club");
+      navigate("/dashboard/club");
       router.refresh();
     } finally {
       setBusy(null);

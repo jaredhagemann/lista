@@ -67,6 +67,7 @@ import { gameTitle, homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/eve
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
+import { useNavigate } from "@/components/layout/navigation-progress";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
 type Location = Database["public"]["Tables"]["locations"]["Row"];
@@ -616,6 +617,7 @@ export function EventDetail({
   members: { profileId: string; name: string; role?: string | null }[];
 }) {
   const router = useRouter();
+  const { navigate } = useNavigate();
   const supabase = createClient();
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -674,7 +676,7 @@ export function EventDetail({
     }
 
     toast.success(withNotice("Event deleted", await drainNotifications()));
-    router.push("/dashboard/schedule");
+    navigate("/dashboard/schedule");
     router.refresh();
   }
 
@@ -710,7 +712,7 @@ export function EventDetail({
     }
 
     toast.success(withNotice(`Series deleted (${data} events)`, await drainNotifications()));
-    router.push("/dashboard/schedule");
+    navigate("/dashboard/schedule");
     router.refresh();
   }
 
@@ -767,7 +769,7 @@ export function EventDetail({
     setEditState(null);
     setSeries(null);
     if (wasBulk) {
-      router.push("/dashboard/schedule");
+      navigate("/dashboard/schedule");
     } else {
       router.refresh();
     }
