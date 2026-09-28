@@ -105,7 +105,7 @@ describe("inviteBranding", () => {
     const chain = { select: () => chain, eq: () => chain, single: () => Promise.resolve({ data: team, error: null }) };
     mockFrom.mockReturnValue(chain);
   }
-  const LISTA = { name: "Lista", logoUrl: "https://lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null };
+  const LISTA = { name: "Lista", logoUrl: "https://www.lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null };
 
   it("a club team: the club's public name, logo and secondary color, sent in its name", async () => {
     setupTeam({

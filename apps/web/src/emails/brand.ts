@@ -24,9 +24,11 @@ export type EmailBrand = {
 /**
  * lista's mark (images/lista_blue_alpha.png at 96px tall, D4), served from the
  * app's public folder. Always the production host: mail is read long after it's
- * sent, and a preview or local host may be gone by then.
+ * sent, and a preview or local host may be gone by then. The www host itself,
+ * because lista.team redirects there and not every mail client follows a
+ * redirect for an image.
  */
-export const LISTA_MARK_URL = "https://lista.team/email/lista-mark.png";
+export const LISTA_MARK_URL = "https://www.lista.team/email/lista-mark.png";
 
 export const LISTA_BRAND: EmailBrand = { name: "Lista", logoUrl: LISTA_MARK_URL, color: LISTA_BLUE, fromName: null };
 
