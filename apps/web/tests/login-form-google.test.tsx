@@ -227,3 +227,29 @@ describe("LoginForm — email/password path still works after the Google additio
     });
   });
 });
+
+// ── BUG-025: a password sign-in returns to where the link was for ───────────────
+
+describe("LoginForm — password sign-in follows ?next= (BUG-025)", () => {
+  async function signIn() {
+    const user = userEvent.setup();
+    render(<LoginForm />);
+    await user.type(screen.getByLabelText(/email/i), "user@example.com");
+    await user.type(screen.getByLabelText(/password/i), "supersecret");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+  }
+
+  it("goes to the page the link was for", async () => {
+    searchParamsStore.set("next", "/dashboard/schedule/e1?answer=available&for=p1");
+    await signIn();
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/dashboard/schedule/e1?answer=available&for=p1"));
+  });
+
+  it("goes to the dashboard when next points off the site", async () => {
+    searchParamsStore.set("next", "//evil.example/phish");
+    await signIn();
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/dashboard"));
+  });
+});

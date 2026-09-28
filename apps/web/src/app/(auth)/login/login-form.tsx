@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/auth/google";
+import { sanitizeNext } from "@/lib/auth/sanitize-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,7 +54,8 @@ export function LoginForm({
       return;
     }
 
-    navigate("/dashboard");
+    // Back to the page the link was for (BUG-025), if it's on this site.
+    navigate(sanitizeNext(next));
     router.refresh();
   }
 
