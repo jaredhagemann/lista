@@ -1,6 +1,6 @@
 # Email Upgrade
 
-**Status:** Draft. Decisions in §6 are open.
+**Status:** Decided (§6). Building in two PRs (D6).
 **Roadmap:** #1, Email Upgrade (`docs/roadmap.md`)
 **Scope:** web app server only. Every email is sent from `apps/web`, so the mobile app is unaffected.
 
@@ -87,7 +87,7 @@ The brand is resolved from the team (or club) the email is about:
 
 | Email is about | Brand |
 | --- | --- |
-| A team on a club plan | The club: `logo_url` (the team's own logo first, as in the app), public name (else internal name), and color (D2) |
+| A team on a club plan | The club: `logo_url` (the team's own logo first, as in the app), public name (else internal name), and color: the secondary color (D2) |
 | Any other team; billing; signup on lista.team | lista: the lista logo (D4) and lista blue `#01D7F4` |
 | A club (director invite, ownership, closure) | The club, when it is on a club plan |
 
@@ -157,11 +157,11 @@ Generated from the same template, so it can't drift from the HTML. Links are wri
 
 ## 6. Decisions
 
-| # | Question | Options | Recommendation |
-| --- | --- | --- | --- |
-| D1 | How templates are written | (a) **React Email**: JSX templates that escape by default, a plain-text render and a preview server; one new dependency. (b) Keep HTML strings, but move them into one layout module with an escape-everything helper. | (a) |
-| D2 | A club's email color | (a) Secondary color, matching the dashboard record bar. (b) Primary brand color, matching the in-app buttons and progress bar. | (b) |
-| D3 | Availability in reminder emails | (a) "Going / Maybe / Can't go" buttons that answer **without signing in**: a signed link per recipient and event, which is a new token route with its own security design. (b) The same buttons, but they open the event page, sign in if needed, and record the answer there. (c) No answers; just "View event". | (b) now; (a) later |
-| D4 | lista logo image | Needs a hosted PNG of the lista logo. SVG doesn't render in Gmail or Outlook. | You provide the file |
-| D5 | The chat digest | (a) A separate feature afterwards, on this layout. (b) Part of this work. | (a) |
-| D6 | Rollout | (a) Everything in one PR. (b) Layout, escaping and branding first, moving every email over; then the richer event and invite content. | (b) |
+| # | Question | Decision |
+| --- | --- | --- |
+| D1 | How templates are written | **React Email.** JSX templates escape user text by default, render a plain-text part from the same template, and come with a preview server. |
+| D2 | A club's email color | **The club's secondary color**, matching the dashboard record bar (`clubSecondaryColor`). It falls back to lista blue when the club has none, or its value isn't a valid hex color. |
+| D3 | Availability in reminder emails | **Buttons through sign-in.** "Going / Maybe / Can't go" open the event page, sign in if needed, and record the answer there. Answering without signing in (signed per-recipient links) may come later, with its own security design. |
+| D4 | lista logo image | **A hosted PNG, to be provided.** Until then, lista's header stays the "lista" wordmark in text. |
+| D5 | The chat digest | **A separate feature afterwards,** built on this layout. |
+| D6 | Rollout | **Two PRs.** (1) The shared layout, escaping, branding and plain text, with every email moved over and the same wording. (2) The richer event and invite content (§4.3, §4.4), including the availability buttons. |
