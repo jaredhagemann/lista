@@ -304,7 +304,7 @@ describe("invitation", () => {
   it("a club's invitation names the club in the heading and footer, not Lista", async () => {
     const { html } = await renderInviteEmail({ ...INVITE, brand: CLUB });
 
-    expect(html).toContain("invited to join a team on SLOFC");
+    expect(html).toContain("Join U12 Blue on SLOFC");
     expect(html).not.toMatch(/on Lista/);
   });
 
@@ -443,13 +443,15 @@ describe("previews (scripts/email-previews.ts)", () => {
       "invite-coach-club",
       "invite-guardian-club",
       "invite-director",
-      "event-created-game-club",
+      "event-created-game-guardian",
       "event-created-practice-lista",
-      "event-updated-game-club",
+      "event-updated-game-guardian",
+      "event-updated-game-no-previous",
       "event-restored-practice-lista",
       "event-cancelled-game-club",
       "series-updated-club",
-      "reminder-game-club",
+      "reminder-game-guardian",
+      "reminder-game-coach",
       "reminder-practice-lista",
       "confirmation-club",
       "confirmation-lista",
@@ -475,10 +477,10 @@ describe("previews (scripts/email-previews.ts)", () => {
 
   it("uses the senders' own subjects", () => {
     const subject = (name: string) => samples.find((s) => s.name === name)!.subject;
-    expect(subject("event-created-game-club")).toBe("New: Saturday game");
+    expect(subject("event-created-game-guardian")).toBe("New: 12U Girls @ Rivals FC");
     expect(subject("event-restored-practice-lista")).toBe("Back on: Tuesday practice");
     expect(subject("series-updated-club")).toBe("Updated: Tuesday practice — 12 events");
-    expect(subject("reminder-game-club")).toBe("Reminder: Saturday game tomorrow");
+    expect(subject("reminder-game-guardian")).toBe("Reminder: 12U Girls @ Rivals FC tomorrow");
     expect(subject("club-ownership-offer")).toBe("Olive Owner wants to hand SLOFC over to you");
   });
 

@@ -130,14 +130,15 @@ PR 2 adds a migration:
 
 ### 4.7 Answering availability from an email (D3)
 
-Each "Going / Maybe / Can't go" button links to the event page:
+Each answer button, labelled "✓ Available / ? Maybe / ✗ Unavailable" as in the app,
+links to the event page:
 `/dashboard/schedule/<event>?answer=<available|maybe|unavailable>&for=<profile>`.
 
 - **Rows of buttons:** one row per person the recipient answers for, taken from `coversProfileIds`:
   - themselves, when they're on the team (a player with a login, a coach, a manager)
   - each managed player the email is on behalf of
 
-  A guardian of two players on the team gets two rows: "Ava: Going · Maybe · Can't go" and one for Zoey.
+  A guardian of two players on the team gets two rows: "Ava: ✓ Available · ? Maybe · ✗ Unavailable" and one for Zoey.
   Because rows differ, event emails are rendered once per recipient, not once per event.
 - **Signing in:** a signed-out reader is sent to sign in, then returned to the same link. This depends on
   BUG-025.
@@ -147,7 +148,7 @@ Each "Going / Maybe / Can't go" button links to the event page:
   or one of their guardians. The same rules as answering on the page, enforced by RLS.
 - **Current answer (D10):** each row also shows that person's current answer, or "No answer yet", with the chosen
   button highlighted.
-- **Confirmation:** the page says what it did ("Ava is marked Going"). The answer can still be changed on the
+- **Confirmation:** the page says what it did ("Ava is marked Available"). The answer can still be changed on the
   page, and the parameters are removed from the address so a reload doesn't repeat them.
 - **When nothing is recorded:** an event that has started or been cancelled records nothing, and the page
   says why. So does a `for` the reader can't answer for.
@@ -206,7 +207,7 @@ Generated from the same template, so it can't drift from the HTML. Links are wri
 | D4 | lista logo image | **lista's mark beside the "lista" wordmark.** The mark is `images/lista_blue_alpha.png`, scaled to 96px tall (13KB) and served from `apps/web/public/email/lista-mark.png`. Emails always use the production URL, `https://www.lista.team/email/lista-mark.png` (the www host: `lista.team` redirects there, and not every mail client follows an image redirect): mail is read long after it's sent, and a preview host may be gone by then. |
 | D5 | The chat digest | **A separate feature afterwards,** built on this layout. |
 | D6 | Rollout | **Two PRs.** (1) The shared layout, escaping, branding and plain text, with every email moved over and the same wording. (2) The richer event and invite content (§4.3, §4.4), including the availability buttons. |
-| D7 | Answering from an email | **Recorded when the page opens**, with a banner saying what was recorded ("Ava is marked Going"). The answer can still be changed on the page. One tap from the email (§4.7). |
+| D7 | Answering from an email | **Recorded when the page opens**, with a banner saying what was recorded ("Ava is marked Available"). The answer can still be changed on the page. One tap from the email (§4.7). |
 | D8 | Which emails carry the answer buttons | **New event, event updated, and the reminder.** Not cancellations or series summaries. |
 | D9 | A guardian of several players | **One email with a row of buttons per player** ("For Ava and Zoey"), so a family gets no more emails than today. |
 | D10 | Showing the recipient's current answer (asked 2026-09-28) | **On the reminder, updated, back-on and new-event emails,** in the answer rows, one per person the recipient answers for. The row shows that person's current answer, highlighted among the buttons, or "No answer yet". On an updated or back-on email it reads as a re-check ("Still good?"), since a new time may change it. Not shown on cancellations, series summaries or non-event emails. Only the recipient's own people appear, never anyone else's answer. The reminder cron and the worker read the event's responses once per event. |
