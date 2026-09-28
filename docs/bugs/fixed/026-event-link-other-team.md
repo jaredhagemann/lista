@@ -58,7 +58,7 @@ from the team picker) that the link never takes.
 ## Fix as implemented
 
 **Branch:** `fix/026-event-link-other-team`
-**PR:** #PR
+**PR:** #94
 **Migration:** none
 
 - **The event page** (`apps/web/src/app/dashboard/schedule/[eventId]/page.tsx`): when the event's team isn't
