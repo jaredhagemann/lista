@@ -71,6 +71,18 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
         render: () => renderEventEmail({ ...game, action: "reminder", brand }),
       },
       {
+        name: `event-created-${label}`,
+        brand,
+        subject: "New event: 12U Girls vs Rivals FC",
+        render: () => renderEventEmail({ ...game, action: "created", brand }),
+      },
+      {
+        name: `event-updated-${label}`,
+        brand,
+        subject: "Updated: 12U Girls vs Rivals FC",
+        render: () => renderEventEmail({ ...game, action: "updated", brand }),
+      },
+      {
         name: `event-cancelled-${label}`,
         brand,
         subject: "Cancelled: 12U Girls vs Rivals FC",

@@ -431,7 +431,15 @@ describe("previews (scripts/email-previews.ts)", () => {
     const samples = emailSamples();
     const names = samples.map((s) => s.name);
 
-    for (const kind of ["invite", "event-reminder", "event-cancelled", "series-update", "confirmation"]) {
+    for (const kind of [
+      "invite",
+      "event-created",
+      "event-updated",
+      "event-reminder",
+      "event-cancelled",
+      "series-update",
+      "confirmation",
+    ]) {
       expect(names).toContain(`${kind}-club`);
       expect(names).toContain(`${kind}-lista`);
     }
