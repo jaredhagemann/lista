@@ -2,40 +2,66 @@
 
 A living document for tracking feature ideas, process improvements, and architectural decisions. Update this as new ideas come up.
 
+Shipped features are removed from this list. Their specs stay in `docs/specs/`, and git history keeps the record.
+
 ---
 
 ## Next Features to Build
 
 Roughly prioritized — revisit ordering as the product evolves.
 
-### ~~1. Managed Profiles~~ ✅
-Parents managing player profiles on their behalf. Spec in `docs/specs/managed-profiles.md`. Shipped — includes invite flow redesign, new member flow, profile manager contacts, and self-manager backfill.
+### 1. Email Upgrade
+Every email the app sends — team and director invitations, event reminders, schedule-change notifications,
+signup confirmation, billing and trial notices, club ownership, closure and team deletion — is a hand-written
+HTML string, sent through Resend. They live in `apps/web/src/lib/notifications/email.ts`, `billing-emails.ts`,
+`lib/club/ownership.ts`, `team-deletion.ts` and the invite routes, so each one looks a little different and a
+change to the look means touching them all. Upgrade them to one consistent, polished design:
 
-### ~~2. Team Chat / Messaging~~ ✅
-Core messaging feature shipped on the web app. Includes team channel (auto-created per team), 1:1 DMs, named group channels, real-time delivery, unread badges, soft delete, and push notifications via the existing VAPID system. Spec in `docs/specs/team-chat.md`. Deferred to later: daily digest email for unread messages, mobile push (APNs/FCM), and notification preference controls in the settings UI.
+- **One shared layout:** header, footer and button styles in one place, with every email built from it.
+- **Branding:** a club team's email carries the club's logo, name and colors (the same rules as the in-app
+  branding in `docs/specs/team-branding-and-labels.md`); everything else carries lista's.
+- **Richer content:** e.g. event reminders and schedule changes show the event's date, time with its zone,
+  location, opponent and uniform, and a one-tap availability answer; invitations show the team's logo and
+  who invited you.
+- **Reliable rendering:** tested across the main mail clients (Gmail, Outlook, Apple Mail, dark mode and
+  phones), with a plain-text version alongside the HTML.
+- **Preview and test:** a way to preview every email with sample data, and tests on the content of each.
 
-### 3. Stats & Season Records
-The schema already has `game_result`, `score_for`, `score_against` on events — the data exists but there's no UI for it. A season record view (W-L, goals for/against) and per-player stats dashboard would add significant value for coaches, mostly as a read layer on existing data.
+Open questions for the spec: which emails come first, whether to adopt a template library (e.g. React Email),
+and whether the chat digest email (below) is part of this work.
 
-### 4. Attendance Tracking
+### 2. Stats & Season Records
+Game results and scores can be entered on an event, and the dashboard's Record card shows the team's W–L–T
+and last game (`docs/specs/team-branding-and-labels.md` §4). Still to build: a season view (goals for and
+against, results by opponent, filtered by season) and a per-player stats dashboard.
+
+### 3. Attendance Tracking
 "Availability" is a pre-event RSVP — there's no record of who actually showed up. Coaches need this for rostering decisions and parent communication. Likely a lightweight addition: a second status on `availability` or a separate `attendance` table.
 
-### 5. Media / Document Sharing
-Supabase Storage is already configured with RLS policies (`tests/rls/storage.test.ts`). A shared team library for playbooks, game film links, and event photos would round out the feature set without much infrastructure work.
+### 4. Media / Document Sharing
+Supabase Storage is already configured with RLS policies (`tests/rls/storage.test.ts`), but only for avatars and team images. A shared team library for playbooks, game film links, and event photos would round out the feature set without much infrastructure work.
+
+### 5. Chat Follow-ups
+Team chat has shipped on web and mobile (`docs/specs/team-chat.md`), including mobile push and chat
+notification settings in the mobile app. Still to do:
+- **Daily digest email** for unread messages. `notification_preferences.chat_digest_enabled` exists, but
+  nothing sends the digest yet.
+- **Chat notification settings on the web**: the web settings page only has the general email and push
+  toggles.
 
 ---
 
 ## Mobile App Strategy
 
-**Decision: Monorepo (Turborepo) with React Native / Expo**
+**Decision: Monorepo (Turborepo) with React Native / Expo — in place.**
 
-`@supabase/supabase-js` works identically in React Native, meaning the existing auth patterns, RLS policies, and database types are immediately portable. Proposed structure:
+`@supabase/supabase-js` works identically in React Native, so the auth patterns, RLS policies and database types are shared between the apps:
 
 ```
 lista/ (Turborepo root)
 ├── apps/
-│   ├── web/        ← current Next.js app (moved here)
-│   └── mobile/     ← new React Native / Expo app
+│   ├── web/        ← Next.js app
+│   └── mobile/     ← React Native / Expo app
 ├── packages/
 │   ├── supabase/   ← shared Supabase client + config
 │   ├── types/      ← shared database.ts types
@@ -43,4 +69,4 @@ lista/ (Turborepo root)
 └── turbo.json
 ```
 
-Shared packages eliminate duplicated type changes across repos. If native Swift/Kotlin is chosen instead of React Native, revisit this — the shared-code argument disappears when languages diverge.
+If native Swift/Kotlin is ever chosen instead of React Native, revisit this — the shared-code argument disappears when languages diverge.
