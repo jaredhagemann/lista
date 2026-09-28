@@ -145,6 +145,8 @@ Each "Going / Maybe / Can't go" button links to the event page:
   it, the page switches to it rather than sending them to the dashboard. This depends on BUG-026.
 - **Recording:** the page records the answer (D7), for the `for` profile only if the reader is that person
   or one of their guardians. The same rules as answering on the page, enforced by RLS.
+- **Current answer (D10):** each row also shows that person's current answer, or "No answer yet", with the chosen
+  button highlighted.
 - **Confirmation:** the page says what it did ("Ava is marked Going"). The answer can still be changed on the
   page, and the parameters are removed from the address so a reload doesn't repeat them.
 - **When nothing is recorded:** an event that has started or been cancelled records nothing, and the page
@@ -207,3 +209,4 @@ Generated from the same template, so it can't drift from the HTML. Links are wri
 | D7 | Answering from an email | **Recorded when the page opens**, with a banner saying what was recorded ("Ava is marked Going"). The answer can still be changed on the page. One tap from the email (§4.7). |
 | D8 | Which emails carry the answer buttons | **New event, event updated, and the reminder.** Not cancellations or series summaries. |
 | D9 | A guardian of several players | **One email with a row of buttons per player** ("For Ava and Zoey"), so a family gets no more emails than today. |
+| D10 | Showing the recipient's current answer (asked 2026-09-28) | **On the reminder, updated, back-on and new-event emails,** in the answer rows, one per person the recipient answers for. The row shows that person's current answer, highlighted among the buttons, or "No answer yet". On an updated or back-on email it reads as a re-check ("Still good?"), since a new time may change it. Not shown on cancellations, series summaries or non-event emails. Only the recipient's own people appear, never anyone else's answer. The reminder cron and the worker read the event's responses once per event. |
