@@ -113,7 +113,42 @@ The brand is resolved from the team (or club) the email is about:
 - **Cancelled:** a red badge, and the details struck through.
 - **Guardians:** a guardian's copy names the player(s) it's about: "For Ava and Zoey". Each recipient's
   `coversProfileIds` (`resolveRecipients`) already lists the players it's on behalf of.
-- **Button:** "View event", plus availability answers (D3).
+- **Button:** "View event", plus availability answers (D3, §4.7).
+
+**What the data holds today** (checked for PR 2):
+- **Reminders** are built from the event row, which has everything above.
+- **Change notices** are built from the job's snapshot (`event_notification_snapshot`). It has the title,
+  times, arrival, location and cancelled flag, but no opponent, home/away, uniform or notes. It also has no
+  previous values, so "what changed" can't be shown.
+
+PR 2 adds a migration:
+- The snapshot gains `opponent`, `home_away`, `uniform`, `notes` and `timezone`.
+- An `updated` job also stores `previous`: the snapshot of the row before the change, so the email can show
+  old values.
+- Jobs queued before the migration have neither, and render as today.
+- The worker loads the team's uniform colors alongside its brand.
+
+### 4.7 Answering availability from an email (D3)
+
+Each "Going / Maybe / Can't go" button links to the event page:
+`/dashboard/schedule/<event>?answer=<available|maybe|unavailable>&for=<profile>`.
+
+- **Rows of buttons:** one row per person the recipient answers for, taken from `coversProfileIds`:
+  - themselves, when they're on the team (a player with a login, a coach, a manager)
+  - each managed player the email is on behalf of
+
+  A guardian of two players on the team gets two rows: "Ava: Going · Maybe · Can't go" and one for Zoey.
+  Because rows differ, event emails are rendered once per recipient, not once per event.
+- **Signing in:** a signed-out reader is sent to sign in, then returned to the same link. This depends on
+  BUG-025.
+- **Right team:** if the event's team isn't the reader's active team, but they (or the `for` player) are on
+  it, the page switches to it rather than sending them to the dashboard. This depends on BUG-026.
+- **Recording:** the page records the answer (D7), for the `for` profile only if the reader is that person
+  or one of their guardians. The same rules as answering on the page, enforced by RLS.
+- **Confirmation:** the page says what it did ("Ava is marked Going"). The answer can still be changed on the
+  page, and the parameters are removed from the address so a reload doesn't repeat them.
+- **When nothing is recorded:** an event that has started or been cancelled records nothing, and the page
+  says why. So does a `for` the reader can't answer for.
 
 ### 4.4 Invitations
 
@@ -169,3 +204,6 @@ Generated from the same template, so it can't drift from the HTML. Links are wri
 | D4 | lista logo image | **lista's mark beside the "lista" wordmark.** The mark is `images/lista_blue_alpha.png`, scaled to 96px tall (13KB) and served from `apps/web/public/email/lista-mark.png`. Emails always use the production URL, `https://www.lista.team/email/lista-mark.png` (the www host: `lista.team` redirects there, and not every mail client follows an image redirect): mail is read long after it's sent, and a preview host may be gone by then. |
 | D5 | The chat digest | **A separate feature afterwards,** built on this layout. |
 | D6 | Rollout | **Two PRs.** (1) The shared layout, escaping, branding and plain text, with every email moved over and the same wording. (2) The richer event and invite content (§4.3, §4.4), including the availability buttons. |
+| D7 | Answering from an email | **Recorded when the page opens**, with a banner saying what was recorded ("Ava is marked Going"). The answer can still be changed on the page. One tap from the email (§4.7). |
+| D8 | Which emails carry the answer buttons | **New event, event updated, and the reminder.** Not cancellations or series summaries. |
+| D9 | A guardian of several players | **One email with a row of buttons per player** ("For Ava and Zoey"), so a family gets no more emails than today. |
