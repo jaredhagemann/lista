@@ -39,7 +39,6 @@ const mocks = vi.hoisted(() => {
 vi.mock("@supabase/ssr", () => ({ createServerClient: mocks.createServerClient }));
 vi.mock("@/lib/notifications/email", () => ({
   sendEmail: mocks.sendEmail,
-  buildEventEmailHtml: vi.fn(() => ""),
 }));
 vi.mock("@/lib/notifications/push", () => ({
   sendPushNotification: mocks.sendPushNotification,

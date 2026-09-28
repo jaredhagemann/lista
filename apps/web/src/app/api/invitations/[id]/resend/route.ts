@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
-import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderInviteEmail } from "@/emails/invite-email";
 import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -55,7 +56,7 @@ export async function POST(
       .join(" ") || "Your coach";
 
   // Resolve branding and invite URL from the team's org (not the request host)
-  const [{ brandName, logoUrl }, baseUrl] = await Promise.all([
+  const [brand, baseUrl] = await Promise.all([
     inviteBranding(teamId),
     inviteBaseUrl(teamId),
   ]);
@@ -66,9 +67,9 @@ export async function POST(
   try {
     await sendEmail({
       to: invitation.email,
-      subject: `You've been invited to join ${teamName} on ${brandName ?? "Lista"}`,
-      html: buildInviteEmailHtml({ teamName, inviterName, role: invitation.role, inviteUrl, brandName, logoUrl }),
-      brandName,
+      subject: `You've been invited to join ${teamName} on ${brand.name}`,
+      ...(await renderInviteEmail({ teamName, inviterName, role: invitation.role, inviteUrl, brand })),
+      brandName: brand.fromName,
     });
     emailSent = true;
   } catch (err) {

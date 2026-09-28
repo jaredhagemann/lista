@@ -3,7 +3,7 @@
  *
  * Covers:
  *   - inviteBaseUrl: club+subdomain, club+custom_domain, club+neither, free plan, no org
- *   - inviteBranding: club org with values, club org with nulls, free plan, no org
+ *   - inviteBranding: the email brand for a club team, a club with nulls, a free team, no org
  *
  * Both helpers use adminClient() — mocked below.
  */
@@ -99,36 +99,64 @@ describe("inviteBaseUrl", () => {
 // ── inviteBranding ────────────────────────────────────────────────────────────
 
 describe("inviteBranding", () => {
-  it("returns brandName and logoUrl for a club org", async () => {
-    setupDb(
-      { organization_id: "org-1" },
-      { plan: "club_small", org_name_public: "Joga FC", logo_url: "https://cdn.example.com/logo.png" },
-    );
-    const result = await inviteBranding("team-1");
-    expect(result).toEqual({ brandName: "Joga FC", logoUrl: "https://cdn.example.com/logo.png" });
+  // One query: the team with its club (TEAM_BRAND_COLUMNS). A club team's
+  // invitation carries the club's brand; anything else carries lista's.
+  function setupTeam(team: object | null) {
+    const chain = { select: () => chain, eq: () => chain, single: () => Promise.resolve({ data: team, error: null }) };
+    mockFrom.mockReturnValue(chain);
+  }
+  const LISTA = { name: "Lista", logoUrl: "https://lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null };
+
+  it("a club team: the club's public name, logo and secondary color, sent in its name", async () => {
+    setupTeam({
+      logo_url: null,
+      organizations: {
+        plan: "club_small",
+        name: "Joga Futbol Club",
+        org_name_public: "Joga FC",
+        logo_url: "https://cdn.example.com/logo.png",
+        brand_color_secondary: "#C8102E",
+      },
+    });
+    expect(await inviteBranding("team-1")).toEqual({
+      name: "Joga FC",
+      logoUrl: "https://cdn.example.com/logo.png",
+      color: "#C8102E",
+      fromName: "Joga FC",
+    });
   });
 
-  it("returns undefined values when club org has null org_name_public and logo_url", async () => {
-    setupDb(
-      { organization_id: "org-1" },
-      { plan: "club_small", org_name_public: null, logo_url: null },
-    );
-    const result = await inviteBranding("team-1");
-    expect(result).toEqual({ brandName: undefined, logoUrl: undefined });
+  it("a club team's own logo comes first", async () => {
+    setupTeam({
+      logo_url: "https://cdn.example.com/team.png",
+      organizations: { plan: "club_small", name: "Joga", org_name_public: "Joga FC", logo_url: "https://cdn.example.com/logo.png" },
+    });
+    expect((await inviteBranding("team-1")).logoUrl).toBe("https://cdn.example.com/team.png");
   });
 
-  it("returns both undefined for a free-plan org", async () => {
-    setupDb(
-      { organization_id: "org-1" },
-      { plan: "free", org_name_public: "Some Club", logo_url: "https://cdn.example.com/logo.png" },
-    );
-    const result = await inviteBranding("team-1");
-    expect(result).toEqual({ brandName: undefined, logoUrl: undefined });
+  it("a club without a public name, logo or color: its internal name, no logo, lista blue", async () => {
+    setupTeam({
+      logo_url: null,
+      organizations: { plan: "club_small", name: "Joga Futbol Club", org_name_public: null, logo_url: null, brand_color_secondary: null },
+    });
+    expect(await inviteBranding("team-1")).toEqual({
+      name: "Joga Futbol Club",
+      logoUrl: null,
+      color: "#01D7F4",
+      fromName: "Joga Futbol Club",
+    });
   });
 
-  it("returns both undefined when the team has no org", async () => {
-    setupDb({ organization_id: null }, null);
-    const result = await inviteBranding("team-1");
-    expect(result).toEqual({ brandName: undefined, logoUrl: undefined });
+  it("a free-plan team gets lista", async () => {
+    setupTeam({
+      logo_url: null,
+      organizations: { plan: "free", name: "Some Club", org_name_public: "Some Club", logo_url: "https://cdn.example.com/logo.png" },
+    });
+    expect(await inviteBranding("team-1")).toEqual(LISTA);
+  });
+
+  it("a team with no org gets lista", async () => {
+    setupTeam({ logo_url: null, organizations: null });
+    expect(await inviteBranding("team-1")).toEqual(LISTA);
   });
 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
-import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderInviteEmail } from "@/emails/invite-email";
 import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import { bulkInvitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { validateBulkRows } from "@/lib/invitations/bulk-validate";
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
   // Resolve shared context once for all rows
   const [
     { data: inviterProfile },
-    { brandName, logoUrl },
+    brand,
     baseUrl,
     { data: team },
     { data: pendingInvites },
@@ -153,16 +154,9 @@ export async function POST(request: Request) {
     try {
       await sendEmail({
         to: row.email.trim(),
-        subject: `You've been invited to join ${teamName} on ${brandName ?? "Lista"}`,
-        html: buildInviteEmailHtml({
-          teamName,
-          inviterName,
-          role,
-          inviteUrl,
-          brandName,
-          logoUrl,
-        }),
-        brandName,
+        subject: `You've been invited to join ${teamName} on ${brand.name}`,
+        ...(await renderInviteEmail({ teamName, inviterName, role, inviteUrl, brand })),
+        brandName: brand.fromName,
       });
       emailSent = true;
     } catch (err) {

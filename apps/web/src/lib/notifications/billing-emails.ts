@@ -2,12 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import {
   sendEmail,
-  buildTrialReminderEmailHtml,
-  buildTrialConvertedEmailHtml,
-  buildTrialDowngradedEmailHtml,
-  buildPaymentSucceededEmailHtml,
-  buildPaymentFailedEmailHtml,
-  buildSubscriptionCancelledEmailHtml,
   trialConvertedSubject,
   paymentFailedSubject,
   PAYMENT_SUCCEEDED_SUBJECT,
@@ -15,6 +9,15 @@ import {
   SUBSCRIPTION_CANCELLED_SUBJECT,
   type ClubTier,
 } from "@/lib/notifications/email";
+import {
+  renderTrialReminderEmail,
+  renderTrialConvertedEmail,
+  renderTrialDowngradedEmail,
+  renderPaymentSucceededEmail,
+  renderPaymentFailedEmail,
+  renderSubscriptionCancelledEmail,
+} from "@/emails/billing-emails";
+import type { RenderedEmail } from "@/emails/layout";
 
 /**
  * Resolve-owner-and-send helpers for the club-billing email triggers in
@@ -106,11 +109,12 @@ async function lookupOwnerBySubscriptionId(
 async function safeSend(args: {
   to: string;
   subject: string;
-  html: string;
+  /** Rendered inside the try, so a template failure is swallowed like a send failure. */
+  email: () => Promise<RenderedEmail>;
   context: string;
 }): Promise<boolean> {
   try {
-    await sendEmail({ to: args.to, subject: args.subject, html: args.html });
+    await sendEmail({ to: args.to, subject: args.subject, ...(await args.email()) });
     return true;
   } catch (err) {
     console.error(`Email send failed (${args.context}):`, err);
@@ -136,12 +140,12 @@ export async function sendTrialReminderEmail(args: {
   await sendEmail({
     to: args.to,
     subject: args.subject,
-    html: buildTrialReminderEmailHtml({
+    ...(await renderTrialReminderEmail({
       orgName: args.orgName,
       subject: args.subject,
       trialEndsAt: args.trialEndsAt,
       manageBillingUrl: billingUrl(),
-    }),
+    })),
   });
 }
 
@@ -157,7 +161,7 @@ export async function sendTrialConvertedEmail(
   return safeSend({
     to: owner.email,
     subject: trialConvertedSubject(tier),
-    html: buildTrialConvertedEmailHtml({
+    email: () => renderTrialConvertedEmail({
       orgName: owner.orgName,
       tier,
       manageBillingUrl: billingUrl(),
@@ -177,7 +181,7 @@ export async function sendTrialDowngradedEmail(
   return safeSend({
     to: owner.email,
     subject: TRIAL_DOWNGRADED_SUBJECT,
-    html: buildTrialDowngradedEmailHtml({
+    email: () => renderTrialDowngradedEmail({
       orgName: owner.orgName,
       upgradeUrl: upgradeUrl(),
     }),
@@ -195,7 +199,7 @@ export async function sendPaymentSucceededEmail(
   return safeSend({
     to: owner.email,
     subject: PAYMENT_SUCCEEDED_SUBJECT,
-    html: buildPaymentSucceededEmailHtml({
+    email: () => renderPaymentSucceededEmail({
       orgName: owner.orgName,
       manageBillingUrl: billingUrl(),
     }),
@@ -213,7 +217,7 @@ export async function sendPaymentFailedEmail(
   return safeSend({
     to: owner.email,
     subject: paymentFailedSubject(owner.orgName),
-    html: buildPaymentFailedEmailHtml({
+    email: () => renderPaymentFailedEmail({
       orgName: owner.orgName,
       manageBillingUrl: billingUrl(),
     }),
@@ -231,7 +235,7 @@ export async function sendSubscriptionCancelledEmail(
   return safeSend({
     to: owner.email,
     subject: SUBSCRIPTION_CANCELLED_SUBJECT,
-    html: buildSubscriptionCancelledEmailHtml({
+    email: () => renderSubscriptionCancelledEmail({
       orgName: owner.orgName,
       upgradeUrl: upgradeUrl(),
     }),

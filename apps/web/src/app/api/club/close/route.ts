@@ -3,7 +3,9 @@ import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { getStripe } from "@/lib/stripe";
 import { invalidateTenantCache } from "@/lib/supabase/tenant";
 import { clubRefusal } from "@/lib/club/errors";
-import { sendEmail, buildClubNoticeEmailHtml, escapeHtml } from "@/lib/notifications/email";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderClubNoticeEmail } from "@/emails/club-notice-email";
+import { orgInviteBranding } from "@/lib/invitations/invite-base-url";
 
 /**
  * Closes a club (BUG-013, part 3; D7: archive, never erase).
@@ -88,20 +90,26 @@ export async function POST(request: Request) {
   );
 
   const { data: members } = await admin.rpc("club_member_emails", { p_org_id: orgId });
-  const clubName = escapeHtml(org.name);
+  // The club's brand while it has one; a closed club is usually off its club plan, so lista's.
+  const brand = await orgInviteBranding(orgId);
   const results = await Promise.allSettled(
-    ((members ?? []) as Array<{ email: string; first_name: string | null }>).map((member) =>
+    ((members ?? []) as Array<{ email: string; first_name: string | null }>).map(async (member) =>
       sendEmail({
         to: member.email,
         subject: `${org.name} has closed`,
-        html: buildClubNoticeEmailHtml({
-          heading: `${clubName} has closed`,
+        ...(await renderClubNoticeEmail({
+          heading: `${org.name} has closed`,
           paragraphs: [
-            `Hi ${escapeHtml(member.first_name || "there")},`,
-            `<strong>${clubName}</strong> has been closed by its owner. Its teams, schedules and chat are still readable on Lista, but nothing new can be added.`,
+            `Hi ${member.first_name || "there"},`,
+            [
+              { strong: org.name },
+              " has been closed by its owner. Its teams, schedules and chat are still readable on Lista, but nothing new can be added.",
+            ],
           ],
-          footer: `You received this email because you were a member of ${clubName} on Lista.`,
-        }),
+          footer: `You received this email because you were a member of ${org.name} on Lista.`,
+          brand,
+        })),
+        brandName: brand.fromName,
       })
     )
   );

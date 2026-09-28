@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => {
   const mockLimiterLimit = vi.fn();
   const mockSendEmail = vi.fn();
   const mockInviteBaseUrl = vi.fn().mockResolvedValue("https://lista.team");
-  const mockInviteBranding = vi.fn().mockResolvedValue({ brandName: undefined, logoUrl: undefined });
+  const mockInviteBranding = vi.fn().mockResolvedValue({ name: "Lista", logoUrl: "https://lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null });
   const mockUpdate = vi.fn();
 
   return {
@@ -44,7 +44,6 @@ vi.mock("@/lib/rate-limit", () => ({
 
 vi.mock("@/lib/notifications/email", () => ({
   sendEmail: mocks.mockSendEmail,
-  buildInviteEmailHtml: vi.fn().mockReturnValue("<html>invite</html>"),
 }));
 
 vi.mock("@/lib/invitations/invite-base-url", () => ({

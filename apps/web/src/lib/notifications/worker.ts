@@ -13,11 +13,11 @@
  */
 
 import { adminClient } from "@/lib/api-auth";
-import {
-  sendEmail,
-  buildEventEmailHtml,
-  buildSeriesUpdateEmailHtml,
-} from "@/lib/notifications/email";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderEventEmail } from "@/emails/event-email";
+import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
+import { TEAM_BRAND_COLUMNS, teamEmailBrand, type EmailBrand } from "@/emails/brand";
+import type { RenderedEmail } from "@/emails/layout";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendExpoPushNotification, isDeadTokenError } from "@/lib/notifications/expo-push";
 import { formatEventTime, formatShortEventDate, resolveTimeZone } from "@/lib/notifications/event-time";
@@ -78,7 +78,7 @@ async function runJob(db: Db, job: NotificationJob) {
     const timeZone = resolveTimeZone(isChat ? team.timezone : job.snapshot.timezone ?? team.timezone);
     const chat = isChat ? (job.snapshot as unknown as ChatSnapshot) : null;
     const subject = chat ? chat.title : jobSubject(job);
-    const html = chat ? "" : buildJobEmail(job, team.name, timeZone);
+    const email = chat ? null : await buildJobEmail(job, team.name, timeZone, team.brand);
     const pushPayload = chat
       ? { title: chat.title, body: chat.body, url: chat.url }
       : {
@@ -95,7 +95,8 @@ async function runJob(db: Db, job: NotificationJob) {
       }
       try {
         if (item.channel === "email") {
-          await sendEmail({ to: item.target, subject, html });
+          // Chat plans no email, so an email item always has one.
+          await sendEmail({ to: item.target, subject, ...email!, brandName: team.brand.fromName });
         } else {
           await sendPush(item.push!, pushPayload);
         }
@@ -160,11 +161,13 @@ function sendPush(target: PushTarget, payload: { title: string; body: string; ur
 }
 
 async function loadTeam(db: Db, teamId: string) {
-  const { data } = await db.from("teams").select("name, timezone").eq("id", teamId).single();
-  return { name: data?.name ?? "Your team", timezone: data?.timezone ?? null };
+  const { data } = await db.from("teams").select(`name, timezone, ${TEAM_BRAND_COLUMNS}`).eq("id", teamId).single();
+  const team = data as { name?: string; timezone?: string | null } | null;
+  // A club team's notices come from the club, in its brand (email-upgrade §4.2).
+  return { name: team?.name ?? "Your team", timezone: team?.timezone ?? null, brand: teamEmailBrand(data) };
 }
 
-function buildJobEmail(job: NotificationJob, teamName: string, timeZone: string): string {
+function buildJobEmail(job: NotificationJob, teamName: string, timeZone: string, brand: EmailBrand): Promise<RenderedEmail> {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.NEXT_PUBLIC_VERCEL_URL
@@ -174,14 +177,16 @@ function buildJobEmail(job: NotificationJob, teamName: string, timeZone: string)
   // A bulk operation gets one summary for the team rather than one mail per
   // occurrence, so it uses the series template.
   if (job.occurrence_count > 1) {
-    return buildSeriesUpdateEmailHtml({
+    return renderSeriesUpdateEmail({
       eventTitle: job.snapshot.title,
       teamName,
       changes: bulkChanges(job),
+      brand,
     });
   }
 
-  return buildEventEmailHtml({
+  return renderEventEmail({
+    brand,
     eventTitle: job.snapshot.title,
     eventType: job.snapshot.event_type ?? "other",
     startTime: job.snapshot.start_time,

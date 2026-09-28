@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => {
   const mockSingleLimiterLimit = vi.fn();
   const mockSendEmail = vi.fn();
   const mockInviteBaseUrl = vi.fn().mockResolvedValue("https://lista.team");
-  const mockInviteBranding = vi.fn().mockResolvedValue({ brandName: undefined, logoUrl: undefined });
+  const mockInviteBranding = vi.fn().mockResolvedValue({ name: "Lista", logoUrl: "https://lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null });
 
   return {
     mockResolveRequestUser,
@@ -41,7 +41,6 @@ vi.mock("@/lib/rate-limit", () => ({
 
 vi.mock("@/lib/notifications/email", () => ({
   sendEmail: mocks.mockSendEmail,
-  buildInviteEmailHtml: vi.fn().mockReturnValue("<html>invite</html>"),
 }));
 
 vi.mock("@/lib/invitations/invite-base-url", () => ({
@@ -376,5 +375,36 @@ describe("POST /api/invitations/send — player authority (BUG-002 review, findi
     );
 
     expect(res.status).not.toBe(403);
+  });
+});
+
+// ── The email (email-upgrade §4.2) ────────────────────────────────────────────
+
+describe("POST /api/invitations/send — the invitation email", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupBaseAuth();
+  });
+
+  it("a club team's invitation is sent in the club's name and brand, with a plain-text part", async () => {
+    mocks.mockInviteBranding.mockResolvedValueOnce({
+      name: "SLOFC",
+      logoUrl: "https://x/slofc.png",
+      color: "#C8102E",
+      fromName: "SLOFC",
+    });
+    setupFromRouting({ profileResponses: [[], { first_name: "Coach", last_name: "User" }], teamMembersResponses: [[]] });
+
+    const res = await POST(makeRequest(VALID_BODY));
+
+    expect(res.status).toBe(200);
+    const [message] = mocks.mockSendEmail.mock.calls[0] as unknown as [
+      { subject: string; html: string; text: string; brandName: string | null },
+    ];
+    expect(message.brandName).toBe("SLOFC");
+    expect(message.subject).toBe("You've been invited to join Test Team on SLOFC");
+    expect(message.html).toContain('src="https://x/slofc.png"');
+    expect(message.text).toContain("Coach User has invited you to join Test Team");
+    expect(message.text).toMatch(/\/invite\//);
   });
 });

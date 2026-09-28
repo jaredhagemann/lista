@@ -1,5 +1,6 @@
 import { adminClient } from "@/lib/api-auth";
 import { isClubPlan } from "@/lib/plan";
+import { LISTA_BRAND, TEAM_BRAND_COLUMNS, clubEmailBrand, teamEmailBrand, type EmailBrand } from "@/emails/brand";
 
 /**
  * Resolves the correct base URL for invite links based on the team's org.
@@ -39,33 +40,21 @@ async function teamOrgId(teamId: string): Promise<string | null> {
 }
 
 /**
- * Resolves branding (brandName, logoUrl) for a team from its org record.
- * Returns nulls for free-plan or unaffiliated teams.
+ * The email brand for a team's invitations: its club's, on a club plan, with
+ * the team's own logo first; lista's otherwise (email-upgrade §4.2).
  */
-export async function inviteBranding(
-  teamId: string
-): Promise<{ brandName: string | undefined; logoUrl: string | undefined }> {
-  return orgInviteBranding(await teamOrgId(teamId));
+export async function inviteBranding(teamId: string): Promise<EmailBrand> {
+  const { data: team } = await adminClient().from("teams").select(TEAM_BRAND_COLUMNS).eq("id", teamId).single();
+  return teamEmailBrand(team as Parameters<typeof teamEmailBrand>[0]);
 }
 
-/** Branding for an organization's invitations; nulls unless it is on a club plan. */
-export async function orgInviteBranding(
-  orgId: string | null
-): Promise<{ brandName: string | undefined; logoUrl: string | undefined }> {
-  if (orgId) {
-    const { data: org } = await adminClient()
-      .from("organizations")
-      .select("plan, org_name_public, logo_url")
-      .eq("id", orgId)
-      .single();
-
-    if (org && isClubPlan(org.plan)) {
-      return {
-        brandName: org.org_name_public ?? undefined,
-        logoUrl: org.logo_url ?? undefined,
-      };
-    }
-  }
-
-  return { brandName: undefined, logoUrl: undefined };
+/** The email brand for an organization's invitations (BUG-013 director invites): the club's, on a club plan. */
+export async function orgInviteBranding(orgId: string | null): Promise<EmailBrand> {
+  if (!orgId) return LISTA_BRAND;
+  const { data: org } = await adminClient()
+    .from("organizations")
+    .select("name, org_name_public, logo_url, plan, brand_color_secondary")
+    .eq("id", orgId)
+    .single();
+  return clubEmailBrand(org);
 }

@@ -63,3 +63,6 @@ PROGRESS.md
 .ralph/
 PROMPT_plan.md
 PROMPT_build.md
+
+# Rendered email previews (pnpm email:preview)
+.email-previews/
