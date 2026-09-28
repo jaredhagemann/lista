@@ -96,7 +96,7 @@ describe("the email brand", () => {
   it("anything that isn't a club gets lista", () => {
     expect(clubEmailBrand({ ...SLOFC, plan: "free" })).toEqual(LISTA_BRAND);
     expect(clubEmailBrand(null)).toEqual(LISTA_BRAND);
-    expect(LISTA_BRAND).toMatchObject({ name: "Lista", color: "#01D7F4", fromName: null });
+    expect(LISTA_BRAND).toEqual({ name: "Lista", logoUrl: "https://lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null });
   });
 
   it("a signup on a club's site gets the club; elsewhere lista", () => {
@@ -142,11 +142,13 @@ describe("the layout", () => {
     expect(html).toContain("SLOFC");
   });
 
-  it("lista's email shows the lista wordmark, and a lista-blue button with dark text", async () => {
+  it("lista's email shows the lista mark beside the wordmark, and a lista-blue button with dark text", async () => {
     const { html } = await renderInviteEmail({ ...INVITE, brand: LISTA_BRAND });
 
+    expect(html).toContain(`src="https://lista.team/email/lista-mark.png"`);
     expect(html).toContain(">lista<");
-    expect(html).not.toContain("<img");
+    // The mark sits beside the name, so it's decoration: the name is already read out.
+    expect(html).toMatch(/<img[^>]*alt=""/);
     expect(html).toMatch(/background-color:\s*#01D7F4/i);
     expect(html).toMatch(/color:\s*#111827/i);
   });

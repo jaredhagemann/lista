@@ -21,8 +21,14 @@ export type EmailBrand = {
   fromName: string | null;
 };
 
-// No lista logo image yet (D4): the header shows the "lista" wordmark.
-export const LISTA_BRAND: EmailBrand = { name: "Lista", logoUrl: null, color: LISTA_BLUE, fromName: null };
+/**
+ * lista's mark (images/lista_blue_alpha.png at 96px tall, D4), served from the
+ * app's public folder. Always the production host: mail is read long after it's
+ * sent, and a preview or local host may be gone by then.
+ */
+export const LISTA_MARK_URL = "https://lista.team/email/lista-mark.png";
+
+export const LISTA_BRAND: EmailBrand = { name: "Lista", logoUrl: LISTA_MARK_URL, color: LISTA_BLUE, fromName: null };
 
 export function clubEmailBrand(org: OrgBranding | null | undefined, teamLogoUrl?: string | null): EmailBrand {
   if (!org || !isClubPlan(org.plan)) return LISTA_BRAND;

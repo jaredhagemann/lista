@@ -84,8 +84,32 @@ export function EmailLayout({
   );
 }
 
-/** The header: the brand's logo, or its name as a wordmark. */
+const WORDMARK = { margin: 0, fontSize: "26px", fontWeight: 700, color: "#111827", letterSpacing: "-0.5px" };
+
+/**
+ * The header. lista's: its mark beside the "lista" wordmark, so the mark is
+ * decoration (empty alt). A club's: its logo, or its name as a wordmark.
+ */
 function BrandMark({ brand }: { brand: EmailBrand }) {
+  if (brand.fromName === null) {
+    return (
+      <table align="center" cellPadding={0} cellSpacing={0} role="presentation">
+        <tbody>
+          <tr>
+            {brand.logoUrl && (
+              <td style={{ verticalAlign: "middle", paddingRight: "10px" }}>
+                <Img src={brand.logoUrl} alt="" width="40" height="36" style={{ display: "block" }} />
+              </td>
+            )}
+            <td style={{ verticalAlign: "middle" }}>
+              <Text style={WORDMARK}>lista</Text>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    );
+  }
+
   if (brand.logoUrl) {
     return (
       <Img
@@ -96,12 +120,7 @@ function BrandMark({ brand }: { brand: EmailBrand }) {
       />
     );
   }
-  const wordmark = brand.fromName ? brand.name : "lista";
-  return (
-    <Text style={{ margin: 0, fontSize: "22px", fontWeight: 700, color: "#111827", letterSpacing: "-0.5px" }}>
-      {wordmark}
-    </Text>
-  );
+  return <Text style={WORDMARK}>{brand.name}</Text>;
 }
 
 export function EmailHeading({ children, spaced = true }: { children: ReactNode; spaced?: boolean }) {

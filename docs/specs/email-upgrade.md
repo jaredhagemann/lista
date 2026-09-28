@@ -88,7 +88,7 @@ The brand is resolved from the team (or club) the email is about:
 | Email is about | Brand |
 | --- | --- |
 | A team on a club plan | The club: `logo_url` (the team's own logo first, as in the app), public name (else internal name), and color: the secondary color (D2) |
-| Any other team; billing; signup on lista.team | lista: the lista logo (D4) and lista blue `#01D7F4` |
+| Any other team; billing; signup on lista.team | lista: the lista mark and wordmark (D4) and lista blue `#01D7F4` |
 | A club (director invite, ownership, closure) | The club, when it is on a club plan |
 
 - **Colors:** only valid hex values are used (as `clubSecondaryColor` does), falling back to lista blue.
@@ -166,6 +166,6 @@ Generated from the same template, so it can't drift from the HTML. Links are wri
 | D1 | How templates are written | **React Email.** JSX templates escape user text by default, render a plain-text part from the same template, and come with a preview server. |
 | D2 | A club's email color | **The club's secondary color**, matching the dashboard record bar (`clubSecondaryColor`). It falls back to lista blue when the club has none, or its value isn't a valid hex color. |
 | D3 | Availability in reminder emails | **Buttons through sign-in.** "Going / Maybe / Can't go" open the event page, sign in if needed, and record the answer there. Answering without signing in (signed per-recipient links) may come later, with its own security design. |
-| D4 | lista logo image | **A hosted PNG, to be provided.** Until then, lista's header stays the "lista" wordmark in text. |
+| D4 | lista logo image | **lista's mark beside the "lista" wordmark.** The mark is `images/lista_blue_alpha.png`, scaled to 96px tall (13KB) and served from `apps/web/public/email/lista-mark.png`. Emails always use the production URL, `https://lista.team/email/lista-mark.png`: mail is read long after it's sent, and a preview host may be gone by then. |
 | D5 | The chat digest | **A separate feature afterwards,** built on this layout. |
 | D6 | Rollout | **Two PRs.** (1) The shared layout, escaping, branding and plain text, with every email moved over and the same wording. (2) The richer event and invite content (§4.3, §4.4), including the availability buttons. |

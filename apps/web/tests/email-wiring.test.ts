@@ -165,7 +165,7 @@ describe("the reminder cron", () => {
     await remind();
 
     expect(sent().brandName ?? null).toBeNull();
-    expect(sent().html).not.toContain("<img");
+    expect(sent().html).toContain('src="https://lista.team/email/lista-mark.png"');
     expect(sent().text).toContain("Practice");
   });
 });

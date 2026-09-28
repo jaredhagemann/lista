@@ -13,6 +13,10 @@ pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example
 pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example.com --logo https://<a real club logo>.png
 ```
 
+Until PR 1 is deployed, the lista mark at `https://lista.team/email/lista-mark.png` doesn't exist yet. Either
+pass `--lista-logo https://<vercel preview host>/email/lista-mark.png` (the preview must be publicly reachable),
+or check the lista header again after deploy. The local files from `pnpm email:preview` always show the mark.
+
 These are the 19 samples (subjects start with "[Preview]"):
 - **Club and lista versions:** invite, event reminder, event cancelled, series update, confirmation.
 - **Club only:** director invite, ownership offer.
@@ -20,7 +24,7 @@ These are the 19 samples (subjects start with "[Preview]"):
 
 ## What to check in each email
 
-- **Header:** the club's logo, or its name, on club emails; the "lista" wordmark on lista's.
+- **Header:** the club's logo, or its name, on club emails; the lista mark beside the "lista" wordmark on lista's.
 - **Button:**
   - club emails: the club's secondary color, with readable text
   - lista's: lista blue with dark text
