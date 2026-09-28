@@ -57,7 +57,7 @@ All three points above. There is no `next` to follow, and the password path woul
 ## Fix as implemented
 
 **Branch:** `fix/025-sign-in-loses-destination`
-**PR:** #PR
+**PR:** #93
 **Migration:** none
 
 - **The middleware** (`apps/web/src/lib/supabase/middleware.ts`):
