@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
 
   // inviteBaseUrl and inviteBranding return simple values
   const mockInviteBaseUrl = vi.fn().mockResolvedValue("https://lista.team");
-  const mockInviteBranding = vi.fn().mockResolvedValue({ brandName: undefined, logoUrl: undefined });
+  const mockInviteBranding = vi.fn().mockResolvedValue({ name: "Lista", logoUrl: null, color: "#01D7F4", fromName: null });
 
   return {
     mockResolveRequestUser,
@@ -54,7 +54,6 @@ vi.mock("@/lib/rate-limit", () => ({
 
 vi.mock("@/lib/notifications/email", () => ({
   sendEmail: mocks.mockSendEmail,
-  buildInviteEmailHtml: vi.fn().mockReturnValue("<html>invite</html>"),
 }));
 
 vi.mock("@/lib/invitations/invite-base-url", () => ({

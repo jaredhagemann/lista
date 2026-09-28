@@ -28,13 +28,15 @@ import {
   SUBSCRIPTION_CANCELLED_SUBJECT,
   trialConvertedSubject,
   paymentFailedSubject,
-  buildTrialReminderEmailHtml,
-  buildTrialConvertedEmailHtml,
-  buildTrialDowngradedEmailHtml,
-  buildPaymentSucceededEmailHtml,
-  buildPaymentFailedEmailHtml,
-  buildSubscriptionCancelledEmailHtml,
 } from "@/lib/notifications/email";
+import {
+  renderTrialReminderEmail,
+  renderTrialConvertedEmail,
+  renderTrialDowngradedEmail,
+  renderPaymentSucceededEmail,
+  renderPaymentFailedEmail,
+  renderSubscriptionCancelledEmail,
+} from "@/emails/billing-emails";
 
 describe("billing email — subjects", () => {
   it("matches the spec's exact subject strings (regression guard)", () => {
@@ -74,9 +76,9 @@ describe("billing email — subjects", () => {
 
 // ── 2. Pure HTML builders ────────────────────────────────────────────────────
 
-describe("billing email — buildTrialReminderEmailHtml", () => {
-  it("includes the subject, org name, formatted trial-end date, and CTA URL", () => {
-    const html = buildTrialReminderEmailHtml({
+describe("billing email — renderTrialReminderEmail", () => {
+  it("includes the subject, org name, formatted trial-end date, and CTA URL", async () => {
+    const { html } = await renderTrialReminderEmail({
       orgName: "Acme FC",
       subject: TRIAL_REMINDER_30D_SUBJECT,
       trialEndsAt: "2026-08-19T12:00:00Z",
@@ -89,8 +91,8 @@ describe("billing email — buildTrialReminderEmailHtml", () => {
     expect(html).toContain("Add payment method");
   });
 
-  it("falls back to 'soon' when trialEndsAt is null (defensive — query already filters NOT NULL)", () => {
-    const html = buildTrialReminderEmailHtml({
+  it("falls back to 'soon' when trialEndsAt is null (defensive — query already filters NOT NULL)", async () => {
+    const { html } = await renderTrialReminderEmail({
       orgName: "Beta FC",
       subject: TRIAL_REMINDER_7D_SUBJECT,
       trialEndsAt: null,
@@ -100,29 +102,29 @@ describe("billing email — buildTrialReminderEmailHtml", () => {
   });
 });
 
-describe("billing email — buildTrialConvertedEmailHtml", () => {
-  it("renders the Club Small subject + label when tier='club_small'", () => {
-    const html = buildTrialConvertedEmailHtml({
+describe("billing email — renderTrialConvertedEmail", () => {
+  it("renders the Club Small subject + label when tier='club_small'", async () => {
+    const { html, text } = await renderTrialConvertedEmail({
       orgName: "Acme FC",
       tier: "club_small",
       manageBillingUrl: "https://x/y",
     });
-    expect(html).toContain("You're now on Lista Club Small");
+    expect(text).toContain("You're now on Lista Club Small");
     expect(html).toContain("Lista Club Small");
   });
 
-  it("renders the Club Large subject + label when tier='club_large'", () => {
-    const html = buildTrialConvertedEmailHtml({
+  it("renders the Club Large subject + label when tier='club_large'", async () => {
+    const { html, text } = await renderTrialConvertedEmail({
       orgName: "Big FC",
       tier: "club_large",
       manageBillingUrl: "https://x/y",
     });
-    expect(html).toContain("You're now on Lista Club Large");
+    expect(text).toContain("You're now on Lista Club Large");
     expect(html).toContain("Lista Club Large");
   });
 
-  it("includes the org name and Manage-billing CTA href", () => {
-    const html = buildTrialConvertedEmailHtml({
+  it("includes the org name and Manage-billing CTA href", async () => {
+    const { html } = await renderTrialConvertedEmail({
       orgName: "Acme FC",
       tier: "club_small",
       manageBillingUrl: "https://app.example/billing",
@@ -133,9 +135,9 @@ describe("billing email — buildTrialConvertedEmailHtml", () => {
   });
 });
 
-describe("billing email — buildTrialDowngradedEmailHtml", () => {
-  it("uses the spec subject and links to the upgrade page", () => {
-    const html = buildTrialDowngradedEmailHtml({
+describe("billing email — renderTrialDowngradedEmail", () => {
+  it("uses the spec subject and links to the upgrade page", async () => {
+    const { html } = await renderTrialDowngradedEmail({
       orgName: "Acme FC",
       upgradeUrl: "https://app.example/upgrade",
     });
@@ -146,9 +148,9 @@ describe("billing email — buildTrialDowngradedEmailHtml", () => {
   });
 });
 
-describe("billing email — buildPaymentSucceededEmailHtml", () => {
-  it("uses the spec subject and includes a Billing-history CTA", () => {
-    const html = buildPaymentSucceededEmailHtml({
+describe("billing email — renderPaymentSucceededEmail", () => {
+  it("uses the spec subject and includes a Billing-history CTA", async () => {
+    const { html } = await renderPaymentSucceededEmail({
       orgName: "Acme FC",
       manageBillingUrl: "https://app.example/billing",
     });
@@ -159,9 +161,9 @@ describe("billing email — buildPaymentSucceededEmailHtml", () => {
   });
 });
 
-describe("billing email — buildPaymentFailedEmailHtml", () => {
-  it("interpolates org name into both the subject and body, and uses a red CTA", () => {
-    const html = buildPaymentFailedEmailHtml({
+describe("billing email — renderPaymentFailedEmail", () => {
+  it("interpolates org name into both the subject and body, and uses a red CTA", async () => {
+    const { html } = await renderPaymentFailedEmail({
       orgName: "Acme FC",
       manageBillingUrl: "https://app.example/billing",
     });
@@ -172,9 +174,9 @@ describe("billing email — buildPaymentFailedEmailHtml", () => {
   });
 });
 
-describe("billing email — buildSubscriptionCancelledEmailHtml", () => {
-  it("uses the spec subject and offers a Re-subscribe CTA", () => {
-    const html = buildSubscriptionCancelledEmailHtml({
+describe("billing email — renderSubscriptionCancelledEmail", () => {
+  it("uses the spec subject and offers a Re-subscribe CTA", async () => {
+    const { html } = await renderSubscriptionCancelledEmail({
       orgName: "Acme FC",
       upgradeUrl: "https://app.example/upgrade",
     });

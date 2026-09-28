@@ -152,8 +152,12 @@ Generated from the same template, so it can't drift from the HTML. Links are wri
   event's game fields (the page-level wiring tests from #85 and #86 showed why this matters).
 - **Existing tests keep passing:** `tests/unit/email*.test.ts`, `billing-emails`, `reminders-cron`,
   `notification-times` and the invite route tests, updated where the HTML changes.
+- **Previews:** `src/emails/samples.tsx` has sample data for every email, both club and lista versions
+  where an email can carry either. `pnpm email:preview` renders them to `.email-previews/`, and
+  `scripts/email-previews.ts --send <address>` sends them to a real inbox. A test checks there is a sample
+  of every email and that each one renders.
 - **Manual:** every email sent to real Gmail, Outlook and Apple Mail inboxes, in light and dark mode and on
-  a phone, before merge. Results are recorded in `docs/test-plans/`.
+  a phone, before merge. Results are recorded in `docs/test-plans/email-upgrade.md`.
 
 ## 6. Decisions
 

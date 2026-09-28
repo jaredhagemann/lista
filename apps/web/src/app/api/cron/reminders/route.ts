@@ -3,7 +3,9 @@ import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { drainNotificationJobs } from "@/lib/notifications/worker";
 import { resolveRecipients } from "@/lib/notifications/recipients";
 import { createServerClient } from "@supabase/ssr";
-import { sendEmail, buildEventEmailHtml } from "@/lib/notifications/email";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderEventEmail } from "@/emails/event-email";
+import { TEAM_BRAND_COLUMNS, teamEmailBrand, type BrandedTeam } from "@/emails/brand";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
 import {
@@ -15,7 +17,7 @@ import {
 import type { Database } from "@/types/database";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
-  teams: { name: string; timezone: string | null };
+  teams: ({ name: string; timezone: string | null } & BrandedTeam) | null;
   locations: { name: string } | null;
 };
 
@@ -38,7 +40,7 @@ export async function GET(request: Request) {
   // Find events in the next 24 hours that aren't cancelled
   const { data: rawEvents, error } = await supabase
     .from("events")
-    .select("*, teams(name, timezone), locations(name)")
+    .select(`*, teams(name, timezone, ${TEAM_BRAND_COLUMNS}), locations(name)`)
     .eq("is_cancelled", false)
     .gte("start_time", now.toISOString())
     .lte("start_time", in24h.toISOString());
@@ -76,7 +78,9 @@ export async function GET(request: Request) {
         ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
         : "http://localhost:3000");
 
-    const emailHtml = buildEventEmailHtml({
+    // A club team's reminder comes from the club, in its brand (email-upgrade §4.2).
+    const brand = teamEmailBrand(event.teams);
+    const message = await renderEventEmail({
       eventTitle: event.title,
       eventType: event.event_type,
       startTime: event.start_time,
@@ -84,6 +88,7 @@ export async function GET(request: Request) {
       location: event.locations?.name ?? null,
       teamName,
       action: "reminder",
+      brand,
       arrivalTime: event.arrival_time,
       eventUrl: `${appUrl}/dashboard/schedule/${event.id}`,
       timeZone,
@@ -102,7 +107,8 @@ export async function GET(request: Request) {
             await sendEmail({
               to: email,
               subject: `Reminder: ${event.title} ${relativeDay ?? `on ${dayLabel}`}`,
-              html: emailHtml,
+              ...message,
+              brandName: brand.fromName,
             });
             sent++;
           } catch (err) {

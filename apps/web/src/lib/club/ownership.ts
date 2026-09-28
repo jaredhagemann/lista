@@ -1,7 +1,8 @@
 import type { adminClient } from "@/lib/api-auth";
 import { getStripe } from "@/lib/stripe";
-import { sendEmail, buildClubNoticeEmailHtml, escapeHtml } from "@/lib/notifications/email";
-import { orgInviteBaseUrl } from "@/lib/invitations/invite-base-url";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderClubNoticeEmail } from "@/emails/club-notice-email";
+import { orgInviteBaseUrl, orgInviteBranding } from "@/lib/invitations/invite-base-url";
 
 /**
  * What happens around a change of club owner (BUG-013, part 2): the emails, and
@@ -40,11 +41,15 @@ async function portalUrl(orgId: string) {
   return `${await orgInviteBaseUrl(orgId)}/dashboard/club`;
 }
 
-/** Sends a notice; reports whether it went, and never throws. */
-async function notify(to: string | null, subject: string, html: string): Promise<boolean> {
+type Notice = Omit<Parameters<typeof renderClubNoticeEmail>[0], "brand" | "footer">;
+
+/** Sends a notice in the club's brand; reports whether it went, and never throws. */
+async function notify(orgId: string, to: string | null, subject: string, notice: Notice): Promise<boolean> {
   if (!to) return false;
   try {
-    await sendEmail({ to, subject, html });
+    const brand = await orgInviteBranding(orgId);
+    const email = await renderClubNoticeEmail({ ...notice, footer: FOOTER, brand });
+    await sendEmail({ to, subject, ...email, brandName: brand.fromName });
     return true;
   } catch (err) {
     console.error("Failed to send club notice:", err);
@@ -60,36 +65,24 @@ export async function sendTransferOffer(admin: Admin, { orgId, fromId, toId }: {
     personOf(admin, toId),
     portalUrl(orgId),
   ]);
-  const clubName = escapeHtml(club.name);
-  const fromName = escapeHtml(from.name);
-  await notify(
-    to.email,
-    `${from.name} wants to hand ${club.name} over to you`,
-    buildClubNoticeEmailHtml({
-      heading: `You've been offered ownership of ${clubName}`,
-      paragraphs: [
-        `<strong>${fromName}</strong> would like you to become the owner of <strong>${clubName}</strong> on Lista.`,
-        `As owner you'll be responsible for the club's billing and settings. ${fromName} will stay on as a director.`,
-        `The offer expires in 14 days. You can accept or decline it from the club portal.`,
-      ],
-      cta: { label: "Review the offer", url },
-      footer: FOOTER,
-    })
-  );
+  await notify(orgId, to.email, `${from.name} wants to hand ${club.name} over to you`, {
+    heading: `You've been offered ownership of ${club.name}`,
+    paragraphs: [
+      [{ strong: from.name }, " would like you to become the owner of ", { strong: club.name }, " on Lista."],
+      `As owner you'll be responsible for the club's billing and settings. ${from.name} will stay on as a director.`,
+      `The offer expires in 14 days. You can accept or decline it from the club portal.`,
+    ],
+    cta: { label: "Review the offer", url },
+  });
 }
 
 /** Tells the owner their offer was declined. */
 export async function sendTransferDeclined(admin: Admin, { orgId, fromId, toId }: { orgId: string; fromId: string; toId: string }) {
   const [club, from, to] = await Promise.all([clubOf(admin, orgId), personOf(admin, fromId), personOf(admin, toId)]);
-  await notify(
-    from.email,
-    `${to.name} declined ownership of ${club.name}`,
-    buildClubNoticeEmailHtml({
-      heading: `${escapeHtml(to.name)} declined ownership of ${escapeHtml(club.name)}`,
-      paragraphs: [`You're still the owner. You can offer ownership to another director from the club settings.`],
-      footer: FOOTER,
-    })
-  );
+  await notify(orgId, from.email, `${to.name} declined ownership of ${club.name}`, {
+    heading: `${to.name} declined ownership of ${club.name}`,
+    paragraphs: [`You're still the owner. You can offer ownership to another director from the club settings.`],
+  });
 }
 
 /**
@@ -122,25 +115,29 @@ export async function applyOwnershipChange(
     }
   }
 
-  const clubName = escapeHtml(club.name);
-  const nextName = escapeHtml(next.name);
   const noticeSent = await notify(
+    orgId,
     previous.email,
     how === "accepted" ? `${next.name} is now the owner of ${club.name}` : `Ownership of ${club.name} has moved to ${next.name}`,
-    buildClubNoticeEmailHtml({
-      heading: how === "accepted" ? `${nextName} is now the owner of ${clubName}` : `Ownership of ${clubName} has moved`,
+    {
+      heading: how === "accepted" ? `${next.name} is now the owner of ${club.name}` : `Ownership of ${club.name} has moved`,
       paragraphs:
         how === "accepted"
           ? [
-              `${nextName} accepted your offer and is now the owner of <strong>${clubName}</strong>, including its billing.`,
+              [`${next.name} accepted your offer and is now the owner of `, { strong: club.name }, ", including its billing."],
               `You're now a director of the club.`,
             ]
           : [
-              `Lista support has made <strong>${nextName}</strong> the owner of <strong>${clubName}</strong> at the request of the club, because its owner could no longer be reached.`,
+              [
+                "Lista support has made ",
+                { strong: next.name },
+                " the owner of ",
+                { strong: club.name },
+                " at the request of the club, because its owner could no longer be reached.",
+              ],
               `You're now a director of the club. If you didn't expect this, reply to this email or contact support right away.`,
             ],
-      footer: FOOTER,
-    })
+    }
   );
 
   return { billingEmailUpdated, noticeSent };

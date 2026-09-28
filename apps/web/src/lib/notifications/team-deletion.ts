@@ -1,68 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "./email";
+import { renderTeamDeletionEmail } from "@/emails/team-deletion-email";
 import { sendPushNotification } from "./push";
 import { sendExpoPushNotification } from "./expo-push";
 import type { Database } from "@/types/database";
-
-export function buildTeamDeletionEmailHtml({ teamName }: { teamName: string }) {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-    <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 40px 16px;">
-        <tr>
-          <td align="center">
-            <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 560px;">
-
-              <!-- Logo / brand -->
-              <tr>
-                <td align="center" style="padding-bottom: 24px;">
-                  <span style="font-size: 22px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">lista</span>
-                </td>
-              </tr>
-
-              <!-- Card -->
-              <tr>
-                <td style="background: #ffffff; border-radius: 12px; padding: 40px 40px 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-
-                  <!-- Status badge -->
-                  <p style="margin: 0 0 16px;">
-                    <span style="display: inline-block; background: #fee2e2; color: #dc2626; padding: 3px 12px; border-radius: 99px; font-size: 13px; font-weight: 600;">
-                      Team Deleted
-                    </span>
-                  </p>
-
-                  <h1 style="margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #111827; line-height: 1.3;">
-                    ${teamName} has been deleted
-                  </h1>
-
-                  <p style="margin: 0 0 24px; font-size: 15px; color: #6b7280; line-height: 1.6;">
-                    The team owner has permanently deleted <strong>${teamName}</strong>. All team data — including members, events, and chat history — has been removed. No further action is required.
-                  </p>
-
-                  <p style="margin: 0; font-size: 13px; color: #9ca3af;">
-                    This is an automated notification from lista. If you have questions, contact your team owner directly.
-                  </p>
-
-                </td>
-              </tr>
-
-              <!-- Footer -->
-              <tr>
-                <td align="center" style="padding-top: 24px;">
-                  <p style="margin: 0; font-size: 12px; color: #9ca3af;">lista · team management made simple</p>
-                </td>
-              </tr>
-
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
-}
 
 /**
  * A self-contained snapshot of who to notify about a team deletion, gathered
@@ -199,10 +140,10 @@ export async function sendTeamDeletionNotifications(
   if (emails.length === 0 && pushSubs.length === 0) return;
 
   const subject = `${teamName} has been deleted`;
-  const html = buildTeamDeletionEmailHtml({ teamName });
+  const email = emails.length > 0 ? await renderTeamDeletionEmail({ teamName }) : null;
 
   const emailPromises = emails.map((to) =>
-    sendEmail({ to, subject, html }).catch((err) =>
+    sendEmail({ to, subject, ...email! }).catch((err) =>
       console.error(`[team-deletion] Email to ${to} failed:`, err)
     )
   );

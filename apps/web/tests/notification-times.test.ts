@@ -68,7 +68,8 @@ vi.mock("@/lib/notifications/email", async (importOriginal) => ({
 vi.mock("@/lib/notifications/push", () => ({ sendPushNotification: mocks.sendPushNotification }));
 vi.mock("@/lib/notifications/expo-push", () => ({ sendExpoPushNotification: mocks.sendExpoPushNotification }));
 
-import { buildEventEmailHtml } from "@/lib/notifications/email";
+import { renderEventEmail } from "@/emails/event-email";
+import { LISTA_BRAND } from "@/emails/brand";
 import { GET as runReminders } from "@/app/api/cron/reminders/route";
 import { drainNotificationJobs } from "@/lib/notifications/worker";
 
@@ -92,8 +93,9 @@ function eventFor(timezone: string | null, overrides: Partial<typeof PRACTICE> =
   return { ...PRACTICE, ...overrides, teams: { name: "AYSO Girls U10", timezone } };
 }
 
-function email(overrides: Partial<Parameters<typeof buildEventEmailHtml>[0]> = {}) {
-  return buildEventEmailHtml({
+async function email(overrides: Partial<Parameters<typeof renderEventEmail>[0]> = {}) {
+  const { html } = await renderEventEmail({
+    brand: LISTA_BRAND,
     eventTitle: "Practice",
     eventType: "practice",
     startTime: PRACTICE.start_time,
@@ -105,6 +107,7 @@ function email(overrides: Partial<Parameters<typeof buildEventEmailHtml>[0]> = {
     timeZone: PACIFIC,
     ...overrides,
   });
+  return html;
 }
 
 function configureTeam(events: unknown) {
@@ -151,20 +154,20 @@ describe("test environment", () => {
 });
 
 describe("event email times use the team's timezone (BUG-020)", () => {
-  it("shows the reported practice as 4:00 PM – 5:30 PM PDT, not 11:00 PM", () => {
-    const html = email();
+  it("shows the reported practice as 4:00 PM – 5:30 PM PDT, not 11:00 PM", async () => {
+    const html = await email();
 
     expect(html).toContain("4:00 PM – 5:30 PM PDT");
     expect(html).not.toContain("11:00 PM");
     expect(html).toContain("Thursday, September 17, 2026");
   });
 
-  it("shows the arrival time in the team's timezone", () => {
-    expect(email()).toContain("3:30 PM PDT");
+  it("shows the arrival time in the team's timezone", async () => {
+    expect(await email()).toContain("3:30 PM PDT");
   });
 
-  it("keeps the local date for an evening event that is already the next day in UTC", () => {
-    const html = email({
+  it("keeps the local date for an evening event that is already the next day in UTC", async () => {
+    const html = await email({
       startTime: "2026-09-18T01:30:00.000Z", // 6:30 PM PDT, Sept 17
       endTime: "2026-09-18T03:00:00.000Z",
     });
@@ -173,8 +176,8 @@ describe("event email times use the team's timezone (BUG-020)", () => {
     expect(html).toContain("6:30 PM – 8:00 PM PDT");
   });
 
-  it("labels winter events PST", () => {
-    const html = email({
+  it("labels winter events PST", async () => {
+    const html = await email({
       startTime: "2026-01-15T00:00:00.000Z", // 4:00 PM PST, Jan 14
       endTime: "2026-01-15T01:30:00.000Z",
     });
@@ -183,8 +186,8 @@ describe("event email times use the team's timezone (BUG-020)", () => {
     expect(html).toContain("4:00 PM – 5:30 PM PST");
   });
 
-  it.each([null, "Not/AZone"])("falls back to labeled UTC when the team timezone is %s", (timeZone) => {
-    expect(email({ timeZone })).toContain("11:00 PM – 12:30 AM UTC");
+  it.each([null, "Not/AZone"])("falls back to labeled UTC when the team timezone is %s", async (timeZone) => {
+    expect(await email({ timeZone })).toContain("11:00 PM – 12:30 AM UTC");
   });
 });
 

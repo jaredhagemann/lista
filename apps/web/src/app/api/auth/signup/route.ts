@@ -1,10 +1,9 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import {
-  sendEmail,
-  buildConfirmationEmailHtml,
-} from "@/lib/notifications/email";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderConfirmationEmail } from "@/emails/confirmation-email";
+import { tenantEmailBrand } from "@/emails/brand";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { signupLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -31,8 +30,7 @@ export async function POST(request: Request) {
 
   // Resolve branding and base URL from the tenant the user signed up on
   const tenant = getTenantFromHeaders(await headers());
-  const brandName = tenant?.isWhiteLabel ? (tenant.orgNamePublic ?? undefined) : undefined;
-  const logoUrl = tenant?.logoUrl ?? undefined;
+  const brand = tenantEmailBrand(tenant);
 
   // Derive the base URL from the request origin so confirmation links land
   // on the correct host (club subdomain or lista.team)
@@ -75,14 +73,13 @@ export async function POST(request: Request) {
   }
 
   const confirmUrl = data.properties.action_link;
-  const platform = brandName ?? "Lista";
 
   try {
     await sendEmail({
       to: email,
-      subject: `Confirm your ${platform} account`,
-      html: buildConfirmationEmailHtml({ confirmUrl, firstName, brandName, logoUrl }),
-      brandName,
+      subject: `Confirm your ${brand.name} account`,
+      ...(await renderConfirmationEmail({ confirmUrl, firstName, brand })),
+      brandName: brand.fromName,
     });
   } catch (err) {
     console.error("Failed to send confirmation email:", err);

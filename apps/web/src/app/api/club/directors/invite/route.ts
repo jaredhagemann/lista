@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
-import { sendEmail, buildInviteEmailHtml } from "@/lib/notifications/email";
+import { sendEmail } from "@/lib/notifications/email";
+import { renderInviteEmail } from "@/emails/invite-email";
 import { orgInviteBaseUrl, orgInviteBranding } from "@/lib/invitations/invite-base-url";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
   }
   const { invitation_id: invitationId, resent } = data as { invitation_id: string; resent: boolean };
 
-  const [{ data: org }, { data: inviter }, { brandName, logoUrl }, baseUrl] = await Promise.all([
+  const [{ data: org }, { data: inviter }, brand, baseUrl] = await Promise.all([
     admin.from("organizations").select("name").eq("id", orgId).single(),
     admin.from("profiles").select("first_name, last_name").eq("id", user.id).single(),
     orgInviteBranding(orgId),
@@ -61,17 +62,9 @@ export async function POST(request: Request) {
   try {
     await sendEmail({
       to: email,
-      subject: `You've been invited to help run ${clubName} on ${brandName ?? "Lista"}`,
-      html: buildInviteEmailHtml({
-        teamName: clubName,
-        inviterName,
-        role: "director",
-        inviteUrl,
-        brandName,
-        logoUrl,
-        kind: "club",
-      }),
-      brandName,
+      subject: `You've been invited to help run ${clubName} on ${brand.name}`,
+      ...(await renderInviteEmail({ teamName: clubName, inviterName, role: "director", inviteUrl, brand, kind: "club" })),
+      brandName: brand.fromName,
     });
     emailSent = true;
   } catch (err) {
