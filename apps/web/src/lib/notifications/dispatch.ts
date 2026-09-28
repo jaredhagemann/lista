@@ -168,11 +168,18 @@ const ACTION_WORDS: Record<JobAction, string> = {
  * one notice can stand for twelve occurrences (D3 batching).
  */
 export function jobSubject(job: NotificationJob): string {
-  const word = ACTION_WORDS[job.action];
-  if (job.occurrence_count > 1) {
-    return `${word}: ${job.snapshot.title} — ${job.occurrence_count} events`;
-  }
-  return `${word}: ${job.snapshot.title}`;
+  return eventNoticeSubject(job.action, job.snapshot.title, job.occurrence_count);
+}
+
+/** The subject of a schedule notice: "New: Practice", "Updated: Practice — 12 events". */
+export function eventNoticeSubject(action: JobAction, title: string, occurrences = 1): string {
+  const word = ACTION_WORDS[action];
+  return occurrences > 1 ? `${word}: ${title} — ${occurrences} events` : `${word}: ${title}`;
+}
+
+/** The subject of a reminder: "Reminder: Practice today", "Reminder: Practice on Sat, Oct 3". */
+export function reminderSubject(title: string, relativeDay: string | null, dayLabel: string): string {
+  return `Reminder: ${title} ${relativeDay ?? `on ${dayLabel}`}`;
 }
 
 /**

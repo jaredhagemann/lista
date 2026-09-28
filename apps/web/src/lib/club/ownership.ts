@@ -3,6 +3,13 @@ import { getStripe } from "@/lib/stripe";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderClubNoticeEmail } from "@/emails/club-notice-email";
 import { orgInviteBaseUrl, orgInviteBranding } from "@/lib/invitations/invite-base-url";
+import {
+  OWNERSHIP_NOTICE_FOOTER,
+  ownershipChangedNotice,
+  transferDeclinedNotice,
+  transferOfferNotice,
+  type ClubNotice,
+} from "@/emails/club-notices";
 
 /**
  * What happens around a change of club owner (BUG-013, part 2): the emails, and
@@ -14,8 +21,6 @@ import { orgInviteBaseUrl, orgInviteBranding } from "@/lib/invitations/invite-ba
  */
 
 type Admin = ReturnType<typeof adminClient>;
-
-const FOOTER = "You received this email because you're an owner or director of a club on Lista.";
 
 export async function personOf(admin: Admin, profileId: string | null) {
   if (!profileId) return { name: "Someone", email: null as string | null };
@@ -41,14 +46,12 @@ async function portalUrl(orgId: string) {
   return `${await orgInviteBaseUrl(orgId)}/dashboard/club`;
 }
 
-type Notice = Omit<Parameters<typeof renderClubNoticeEmail>[0], "brand" | "footer">;
-
 /** Sends a notice in the club's brand; reports whether it went, and never throws. */
-async function notify(orgId: string, to: string | null, subject: string, notice: Notice): Promise<boolean> {
+async function notify(orgId: string, to: string | null, { subject, ...notice }: ClubNotice): Promise<boolean> {
   if (!to) return false;
   try {
     const brand = await orgInviteBranding(orgId);
-    const email = await renderClubNoticeEmail({ ...notice, footer: FOOTER, brand });
+    const email = await renderClubNoticeEmail({ ...notice, footer: OWNERSHIP_NOTICE_FOOTER, brand });
     await sendEmail({ to, subject, ...email, brandName: brand.fromName });
     return true;
   } catch (err) {
@@ -65,24 +68,13 @@ export async function sendTransferOffer(admin: Admin, { orgId, fromId, toId }: {
     personOf(admin, toId),
     portalUrl(orgId),
   ]);
-  await notify(orgId, to.email, `${from.name} wants to hand ${club.name} over to you`, {
-    heading: `You've been offered ownership of ${club.name}`,
-    paragraphs: [
-      [{ strong: from.name }, " would like you to become the owner of ", { strong: club.name }, " on Lista."],
-      `As owner you'll be responsible for the club's billing and settings. ${from.name} will stay on as a director.`,
-      `The offer expires in 14 days. You can accept or decline it from the club portal.`,
-    ],
-    cta: { label: "Review the offer", url },
-  });
+  await notify(orgId, to.email, transferOfferNotice({ clubName: club.name, fromName: from.name, url }));
 }
 
 /** Tells the owner their offer was declined. */
 export async function sendTransferDeclined(admin: Admin, { orgId, fromId, toId }: { orgId: string; fromId: string; toId: string }) {
   const [club, from, to] = await Promise.all([clubOf(admin, orgId), personOf(admin, fromId), personOf(admin, toId)]);
-  await notify(orgId, from.email, `${to.name} declined ownership of ${club.name}`, {
-    heading: `${to.name} declined ownership of ${club.name}`,
-    paragraphs: [`You're still the owner. You can offer ownership to another director from the club settings.`],
-  });
+  await notify(orgId, from.email, transferDeclinedNotice({ clubName: club.name, toName: to.name }));
 }
 
 /**
@@ -118,26 +110,7 @@ export async function applyOwnershipChange(
   const noticeSent = await notify(
     orgId,
     previous.email,
-    how === "accepted" ? `${next.name} is now the owner of ${club.name}` : `Ownership of ${club.name} has moved to ${next.name}`,
-    {
-      heading: how === "accepted" ? `${next.name} is now the owner of ${club.name}` : `Ownership of ${club.name} has moved`,
-      paragraphs:
-        how === "accepted"
-          ? [
-              [`${next.name} accepted your offer and is now the owner of `, { strong: club.name }, ", including its billing."],
-              `You're now a director of the club.`,
-            ]
-          : [
-              [
-                "Lista support has made ",
-                { strong: next.name },
-                " the owner of ",
-                { strong: club.name },
-                " at the request of the club, because its owner could no longer be reached.",
-              ],
-              `You're now a director of the club. If you didn't expect this, reply to this email or contact support right away.`,
-            ],
-    }
+    ownershipChangedNotice({ clubName: club.name, nextName: next.name, how })
   );
 
   return { billingEmailUpdated, noticeSent };

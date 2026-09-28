@@ -1,15 +1,17 @@
 /**
- * Renders every email with sample data, to look at and to test in real inboxes
+ * Renders every email with sample data, to review and to test in real inboxes
  * (spec: docs/specs/email-upgrade.md §5).
  *
  *   pnpm email:preview
- *     Writes each email's HTML and plain text to .email-previews/, with an
- *     index.html linking them. Open it in a browser.
+ *     Writes each email's HTML and plain text to .email-previews/, and a
+ *     gallery, index.html, showing every email at phone and desktop width with
+ *     its plain text. Open it in a browser. Nothing is sent.
  *
  *   pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example.com [--only invite] [--logo <url>] [--lista-logo <url>]
  *     Also sends each one to that address through Resend (RESEND_API_KEY),
  *     subject prefixed "[Preview]", to check Gmail, Outlook and Apple Mail.
- *     --only sends just the samples whose name contains the text.
+ *     Mind the account's daily sending limit: use --only to send a few.
+ *     --only takes just the samples whose name contains the text.
  *     --logo uses a real club logo in place of the stand-in image.
  *     --lista-logo serves lista's mark from elsewhere, e.g. a preview deployment's
  *       /email/lista-mark.png, before the production copy exists.
@@ -22,6 +24,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { emailSamples, sampleClub } from "@/emails/samples";
+import { buildGallery, type GalleryEntry } from "@/emails/gallery";
 import { LISTA_MARK_URL } from "@/emails/brand";
 import { sendEmail } from "@/lib/notifications/email";
 
@@ -41,14 +44,19 @@ async function main() {
   mkdirSync(dir, { recursive: true });
   const localMark = pathToFileURL(join(process.cwd(), "public", "email", "lista-mark.png")).href;
 
-  const links: string[] = [];
+  const entries: GalleryEntry[] = [];
   for (const sample of samples) {
     const { html, text } = await sample.render();
     writeFileSync(join(dir, `${sample.name}.html`), html.split(LISTA_MARK_URL).join(localMark));
     writeFileSync(join(dir, `${sample.name}.txt`), text);
-    links.push(
-      `<li><a href="${sample.name}.html">${sample.name}</a> · <a href="${sample.name}.txt">text</a> — ${sample.subject}</li>`
-    );
+    entries.push({
+      group: sample.group,
+      name: sample.name,
+      title: sample.title,
+      subject: sample.subject,
+      from: sample.brand.fromName ?? "lista",
+      text,
+    });
 
     if (to) {
       await sendEmail({
@@ -62,11 +70,9 @@ async function main() {
     }
   }
 
-  writeFileSync(
-    join(dir, "index.html"),
-    `<!DOCTYPE html><meta charset="utf-8"><title>Email previews</title><h1>Email previews</h1><ul>${links.join("")}</ul>`
-  );
-  console.log(`Wrote ${samples.length} emails to ${dir}${to ? `, and sent them to ${to}` : ""}.`);
+  const gallery = join(dir, "index.html");
+  writeFileSync(gallery, buildGallery(entries));
+  console.log(`Wrote ${samples.length} emails${to ? `, and sent them to ${to}` : ""}. Open ${pathToFileURL(gallery).href}`);
 }
 
 main().catch((err) => {

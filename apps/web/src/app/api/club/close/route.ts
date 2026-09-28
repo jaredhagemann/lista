@@ -5,6 +5,7 @@ import { invalidateTenantCache } from "@/lib/supabase/tenant";
 import { clubRefusal } from "@/lib/club/errors";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderClubNoticeEmail } from "@/emails/club-notice-email";
+import { clubClosedNotice } from "@/emails/club-notices";
 import { orgInviteBranding } from "@/lib/invitations/invite-base-url";
 
 /**
@@ -93,25 +94,15 @@ export async function POST(request: Request) {
   // The club's brand while it has one; a closed club is usually off its club plan, so lista's.
   const brand = await orgInviteBranding(orgId);
   const results = await Promise.allSettled(
-    ((members ?? []) as Array<{ email: string; first_name: string | null }>).map(async (member) =>
-      sendEmail({
+    ((members ?? []) as Array<{ email: string; first_name: string | null }>).map(async (member) => {
+      const { subject, ...notice } = clubClosedNotice({ clubName: org.name, firstName: member.first_name });
+      return sendEmail({
         to: member.email,
-        subject: `${org.name} has closed`,
-        ...(await renderClubNoticeEmail({
-          heading: `${org.name} has closed`,
-          paragraphs: [
-            `Hi ${member.first_name || "there"},`,
-            [
-              { strong: org.name },
-              " has been closed by its owner. Its teams, schedules and chat are still readable on Lista, but nothing new can be added.",
-            ],
-          ],
-          footer: `You received this email because you were a member of ${org.name} on Lista.`,
-          brand,
-        })),
+        subject,
+        ...(await renderClubNoticeEmail({ ...notice, brand })),
         brandName: brand.fromName,
-      })
-    )
+      });
+    })
   );
 
   return NextResponse.json({

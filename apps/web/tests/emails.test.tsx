@@ -39,7 +39,8 @@ import {
   renderSubscriptionCancelledEmail,
 } from "@/emails/billing-emails";
 import { sendEmail } from "@/lib/notifications/email";
-import { emailSamples } from "@/emails/samples";
+import { SAMPLE_GROUPS, emailSamples } from "@/emails/samples";
+import { buildGallery } from "@/emails/gallery";
 
 beforeEach(() => mockSend.mockClear());
 
@@ -427,28 +428,42 @@ describe("sendEmail", () => {
 
 
 describe("previews (scripts/email-previews.ts)", () => {
-  it("there's a sample of every email, in a club's brand and lista's where it can carry either, and each renders", async () => {
-    const samples = emailSamples();
-    const names = samples.map((s) => s.name);
+  const samples = emailSamples();
 
-    for (const kind of [
-      "invite",
-      "event-created",
-      "event-updated",
-      "event-reminder",
-      "event-cancelled",
-      "series-update",
-      "confirmation",
-    ]) {
-      expect(names).toContain(`${kind}-club`);
-      expect(names).toContain(`${kind}-lista`);
+  it("covers every email and its variants, each in a gallery section, with unique names", () => {
+    const names = samples.map((s) => s.name);
+    expect(new Set(names).size).toBe(names.length);
+
+    for (const group of SAMPLE_GROUPS) {
+      expect(samples.some((s) => s.group === group), group).toBe(true);
     }
     for (const name of [
-      "director-invite-club",
+      "invite-player-club",
+      "invite-player-lista",
+      "invite-coach-club",
+      "invite-guardian-club",
+      "invite-director",
+      "event-created-game-club",
+      "event-created-practice-lista",
+      "event-updated-game-club",
+      "event-restored-practice-lista",
+      "event-cancelled-game-club",
+      "series-updated-club",
+      "reminder-game-club",
+      "reminder-practice-lista",
+      "confirmation-club",
+      "confirmation-lista",
       "club-ownership-offer",
+      "club-ownership-declined",
+      "club-ownership-accepted",
+      "club-ownership-recovered",
+      "club-closed",
       "team-deleted",
-      "billing-trial-reminder",
-      "billing-trial-converted",
+      "billing-trial-30-days",
+      "billing-trial-7-days",
+      "billing-trial-1-day",
+      "billing-trial-converted-small",
+      "billing-trial-converted-large",
       "billing-trial-downgraded",
       "billing-payment-succeeded",
       "billing-payment-failed",
@@ -456,11 +471,50 @@ describe("previews (scripts/email-previews.ts)", () => {
     ]) {
       expect(names).toContain(name);
     }
+  });
 
+  it("uses the senders' own subjects", () => {
+    const subject = (name: string) => samples.find((s) => s.name === name)!.subject;
+    expect(subject("event-created-game-club")).toBe("New: Saturday game");
+    expect(subject("event-restored-practice-lista")).toBe("Back on: Tuesday practice");
+    expect(subject("series-updated-club")).toBe("Updated: Tuesday practice — 12 events");
+    expect(subject("reminder-game-club")).toBe("Reminder: Saturday game tomorrow");
+    expect(subject("club-ownership-offer")).toBe("Olive Owner wants to hand SLOFC over to you");
+  });
+
+  it("every sample renders", async () => {
     for (const sample of samples) {
       const { html, text } = await sample.render();
       expect(html.length, sample.name).toBeGreaterThan(500);
       expect(text.length, sample.name).toBeGreaterThan(20);
     }
+  });
+});
+
+describe("the preview gallery", () => {
+  const entry = {
+    group: "Schedule changes",
+    name: "event-created-game-club",
+    title: "New game <club>",
+    subject: "New: Saturday game & more",
+    from: "SLOFC",
+    text: "New Event\n\nSaturday <game>",
+  };
+
+  it("shows each email at phone and desktop width, with its plain text", () => {
+    const page = buildGallery([entry]);
+
+    expect(page).toMatch(/<iframe[^>]*src="event-created-game-club\.html"[^>]*width="390"/);
+    expect(page).toMatch(/<iframe[^>]*src="event-created-game-club\.html"[^>]*width="720"/);
+    expect(page).toContain("Saturday &lt;game&gt;");
+  });
+
+  it("escapes what it prints, and lists each group in its navigation", () => {
+    const page = buildGallery([entry]);
+
+    expect(page).toContain("New game &lt;club&gt;");
+    expect(page).toContain("New: Saturday game &amp; more");
+    expect(page).toContain('href="#schedule-changes"');
+    expect(page).toContain('href="#event-created-game-club"');
   });
 });
