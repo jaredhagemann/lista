@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { EventDetail } from "@/components/calendar/event-detail";
 import { getActiveMembership } from "@/lib/get-active-membership";
+import { EMAIL_ANSWER_PARAMS, isAnswer, recordEmailAnswer } from "@/lib/availability/email-answer";
+import { EmailAnswerNotice } from "@/components/availability/email-answer-notice";
 import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
@@ -80,6 +82,25 @@ export default async function EventDetailPage({
     ? [creatorProfile.first_name, creatorProfile.last_name].filter(Boolean).join(" ")
     : "Unknown";
 
+  // An answer given from an email link, recorded before the answers are read
+  // back so the page already shows it (email-upgrade §4.7, D7). Without a
+  // `for`, it's for whoever the viewer is answering as here.
+  const answer = query.answer;
+  const emailAnswer = isAnswer(answer)
+    ? await recordEmailAnswer(supabase, {
+        event,
+        answer,
+        forProfileId: typeof query.for === "string" && query.for ? query.for : activeProfileId,
+        userId: user.id,
+      })
+    : null;
+  // The same address without the answer, for the notice to put back once shown.
+  const kept = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string" && !EMAIL_ANSWER_PARAMS.includes(key)) kept.set(key, value);
+  }
+  const cleanPath = kept.size > 0 ? `/dashboard/schedule/${eventId}?${kept}` : `/dashboard/schedule/${eventId}`;
+
   // Fetch availability rows and team members in parallel
   const [{ data: availabilityRows }, { data: teamMembersRaw }] = await Promise.all([
     supabase
@@ -114,22 +135,25 @@ export default async function EventDetailPage({
     });
 
   return (
-    <EventDetail
-      event={event}
-      isAdmin={isAdmin}
-      creatorName={creatorName}
-      initialEdit={edit === "true"}
-      team={{
-        name: team.name,
-        home_uniform: team.home_uniform,
-        away_uniform: team.away_uniform,
-        home_uniform_color: team.home_uniform_color,
-        away_uniform_color: team.away_uniform_color,
-      }}
-      teamTimeZone={team.timezone ?? null}
-      currentUserId={activeProfileId}
-      availabilityRows={availabilityData}
-      members={membersData}
-    />
+    <>
+      {emailAnswer && <EmailAnswerNotice notice={emailAnswer} cleanPath={cleanPath} />}
+      <EventDetail
+        event={event}
+        isAdmin={isAdmin}
+        creatorName={creatorName}
+        initialEdit={edit === "true"}
+        team={{
+          name: team.name,
+          home_uniform: team.home_uniform,
+          away_uniform: team.away_uniform,
+          home_uniform_color: team.home_uniform_color,
+          away_uniform_color: team.away_uniform_color,
+        }}
+        teamTimeZone={team.timezone ?? null}
+        currentUserId={activeProfileId}
+        availabilityRows={availabilityData}
+        members={membersData}
+      />
+    </>
   );
 }

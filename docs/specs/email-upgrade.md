@@ -1,6 +1,6 @@
 # Email Upgrade
 
-**Status:** Decided (§6). Building in two PRs (D6).
+**Status:** Built. PR 1 (#90), then part 2 (this spec's §4.3, §4.4, §4.7; D7–D11), with BUG-025 (#93) and BUG-026 (#94) first.
 **Roadmap:** #1, Email Upgrade (`docs/roadmap.md`)
 **Scope:** web app server only. Every email is sent from `apps/web`, so the mobile app is unaffected.
 
