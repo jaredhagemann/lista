@@ -42,6 +42,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A tag on a commit that fails the phone's tests or type check never builds.
+      - name: Mobile tests
+        run: pnpm --filter @lista/mobile exec jest --ci
+
+      - name: Mobile type check
+        run: pnpm --filter @lista/mobile exec tsc --noEmit
+
       - name: Set app version from tag
         if: startsWith(github.ref, 'refs/tags/ios-v')
         run: |

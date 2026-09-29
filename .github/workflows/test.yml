@@ -26,6 +26,37 @@ jobs:
       - run: pnpm install
       - run: pnpm vitest run tests/unit tests/rrule.test.ts
 
+  # The web app's own suite (apps/web/tests) ran only on developers' machines
+  # until 2026-09-29: the unit job above covers the root tests alone.
+  web:
+    name: Web app tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter @lista/web exec vitest run
+
+  # The phone's Jest suite and type check, which a TestFlight build also runs
+  # before building (ios-testflight.yml), so a PR finds out first.
+  mobile:
+    name: Mobile tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter @lista/mobile exec jest --ci
+      - run: pnpm --filter @lista/mobile exec tsc --noEmit
+
   rls:
     name: RLS integration tests
     runs-on: ubuntu-latest
