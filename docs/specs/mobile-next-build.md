@@ -1,6 +1,6 @@
 # Mobile: the next build
 
-**Status:** Scope decided 2026-09-29. Release process decisions in §4 are open.
+**Status:** Decided 2026-09-29 (scope §1, release §4).
 **App:** `apps/mobile` (Expo / React Native, iOS). **Last shipped:** `ios-v1.0.12`, 2026-04-14 (commit
 `b3473c71b`).
 **Already in the build** (merged, waiting on it): the fixes in `docs/releases/mobile-next.md`:
@@ -73,9 +73,9 @@ updated, which is why the release notes said 1.0.0.
 - **Nothing stops a tag on a failing commit:** the TestFlight workflow runs no tests of its own.
 - **Stale version:** `docs/releases/mobile-next.md` names 1.0.0 as current.
 
-| # | Question | Options | Recommendation |
-| --- | --- | --- | --- |
-| D1 | How the phone gets the web's rules | (a) Copy the small pure helpers into `apps/mobile/lib`, with the web's tests, as `event-time.ts` already is. (b) Move them into `packages/utils`, empty so far, and share them. That needs Metro and Next workspace configuration, and an EAS build to prove it. | (a) now; (b) as its own task later |
-| D2 | Version | `1.1.0` (new features) or `1.0.13` | `1.1.0` |
-| D3 | Tests in CI | Add the web app's Vitest and the phone's Jest to `test.yml`, and run the phone's tests in the TestFlight workflow before building | Yes, in a PR before the release |
-| D4 | Is 1.0.12 live on the App Store, or TestFlight only? | Decides how many people are on the old build, and how strict §3 must be | (Your answer) |
+| # | Question | Decision (2026-09-29) |
+| --- | --- | --- |
+| D1 | How the phone gets the web's rules | **Copy** the small pure helpers into `apps/mobile/lib`, with the web's own test cases, as `event-time.ts` already is. Moving them into `packages/utils` is a separate, later task. |
+| D2 | Version | **1.1.0**: this build adds features, not only fixes. |
+| D3 | Tests in CI | **Yes, before the release.** Add the web app's Vitest and the phone's Jest to `test.yml`, and run the phone's tests and `tsc` in the TestFlight workflow before it builds. |
+| D4 | Is 1.0.12 live? | **On the App Store.** Real users run it, so §3 is strict: no server change may assume 1.1.0. |
