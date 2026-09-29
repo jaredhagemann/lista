@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderInviteEmail } from "@/emails/invite-email";
-import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
+import { guardianOfName, inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(
@@ -56,9 +56,11 @@ export async function POST(
       .join(" ") || "Your coach";
 
   // Resolve branding and invite URL from the team's org (not the request host)
-  const [brand, baseUrl] = await Promise.all([
+  const [brand, baseUrl, guardianOf] = await Promise.all([
     inviteBranding(teamId),
     inviteBaseUrl(teamId),
+    // A guardian invitation's email names the player (email-upgrade §4.4).
+    guardianOfName(invitation.managed_profile_id),
   ]);
 
   const inviteUrl = `${baseUrl}/invite/${id}`;
@@ -68,7 +70,7 @@ export async function POST(
     await sendEmail({
       to: invitation.email,
       subject: `You've been invited to join ${teamName} on ${brand.name}`,
-      ...(await renderInviteEmail({ teamName, inviterName, role: invitation.role, inviteUrl, brand })),
+      ...(await renderInviteEmail({ teamName, inviterName, role: invitation.role, inviteUrl, brand, guardianOf })),
       brandName: brand.fromName,
     });
     emailSent = true;

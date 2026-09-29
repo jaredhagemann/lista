@@ -12,6 +12,7 @@
 
 import type { FieldChange } from "@/lib/notifications/email";
 import { formatEventTimeRange } from "@/lib/notifications/event-time";
+import { gameTitle } from "@/lib/events/game-display";
 
 export type JobAction = "created" | "updated" | "cancelled" | "restored" | "deleted" | "message";
 
@@ -26,6 +27,11 @@ export type EventSnapshot = {
   is_cancelled: boolean | null;
   /** The event's own zone (BUG-010). Absent from jobs queued before event zones. */
   timezone?: string | null;
+  /** A game's details (email-upgrade part 2). Absent from jobs queued before them. */
+  opponent?: string | null;
+  home_away?: string | null;
+  uniform?: string | null;
+  notes?: string | null;
   /**
    * An updated event as it was before the change (email-upgrade part 2), for
    * what-changed. Absent from jobs queued before it was recorded.
@@ -173,8 +179,18 @@ const ACTION_WORDS: Record<JobAction, string> = {
  * Subject line for a job. A bulk operation says how many events it touched, so
  * one notice can stand for twelve occurrences (D3 batching).
  */
-export function jobSubject(job: NotificationJob): string {
-  return eventNoticeSubject(job.action, job.snapshot.title, job.occurrence_count);
+export function jobSubject(job: NotificationJob, teamName?: string): string {
+  // One game is named as the app names it ("12U Girls @ Rivals FC"); a series keeps its title.
+  const snapshot = job.snapshot;
+  const title =
+    teamName && job.occurrence_count <= 1
+      ? gameTitle(
+          { title: snapshot.title, event_type: snapshot.event_type ?? "", opponent: snapshot.opponent, home_away: snapshot.home_away },
+          teamName,
+          { includeScore: false }
+        )
+      : snapshot.title;
+  return eventNoticeSubject(job.action, title, job.occurrence_count);
 }
 
 /** The subject of a schedule notice: "New: Practice", "Updated: Practice — 12 events". */
@@ -193,10 +209,12 @@ export function reminderSubject(title: string, relativeDay: string | null, dayLa
  * described to families as a cancellation: from their side it is the same news,
  * and the snapshot is all that is left of the event.
  */
-export function templateAction(action: JobAction): "created" | "updated" | "cancelled" {
+export function templateAction(action: JobAction): "created" | "updated" | "restored" | "cancelled" {
   switch (action) {
     case "created":
       return "created";
+    case "restored":
+      return "restored";
     case "cancelled":
     case "deleted":
       return "cancelled";

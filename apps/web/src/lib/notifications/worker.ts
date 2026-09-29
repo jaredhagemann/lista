@@ -14,9 +14,11 @@
 
 import { adminClient } from "@/lib/api-auth";
 import { sendEmail } from "@/lib/notifications/email";
-import { renderEventEmail } from "@/emails/event-email";
+import { renderEventEmail, type AnswerRow } from "@/emails/event-email";
+import { answerRowsFor, loadAnswerContext, type AnswerContext } from "@/lib/notifications/answers";
+import { uniformOf, type TeamUniforms } from "@/lib/events/game-display";
 import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
-import { TEAM_BRAND_COLUMNS, teamEmailBrand, type EmailBrand } from "@/emails/brand";
+import { TEAM_BRAND_COLUMNS, teamEmailBrand } from "@/emails/brand";
 import type { RenderedEmail } from "@/emails/layout";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendExpoPushNotification, isDeadTokenError } from "@/lib/notifications/expo-push";
@@ -77,8 +79,24 @@ async function runJob(db: Db, job: NotificationJob) {
     // The event's own zone, else the team's for events and jobs from before event zones (BUG-010).
     const timeZone = resolveTimeZone(isChat ? team.timezone : job.snapshot.timezone ?? team.timezone);
     const chat = isChat ? (job.snapshot as unknown as ChatSnapshot) : null;
-    const subject = chat ? chat.title : jobSubject(job);
-    const email = chat ? null : await buildJobEmail(job, team.name, timeZone, team.brand);
+    const subject = chat ? chat.title : jobSubject(job, team.name);
+
+    // Each recipient's email carries rows for just their own people, when it
+    // asks for availability (§4.7, D8–D10); the answers are read once per job.
+    const byProfile = new Map(recipients.map((r) => [r.profileId, r]));
+    const answers: AnswerContext | null =
+      !chat && asksForAnswers(job)
+        ? await loadAnswerContext(db, job.event_id!, recipients.flatMap((r) => r.coversProfileIds))
+        : null;
+    const emails = new Map<string, Promise<RenderedEmail>>();
+    const emailFor = (profileId: string) => {
+      if (!emails.has(profileId)) {
+        const recipient = byProfile.get(profileId);
+        const rows = answers && recipient ? answerRowsFor(recipient, answers, eventUrlOf(job)) : undefined;
+        emails.set(profileId, buildJobEmail(job, team, timeZone, rows));
+      }
+      return emails.get(profileId)!;
+    };
     const pushPayload = chat
       ? { title: chat.title, body: chat.body, url: chat.url }
       : {
@@ -96,7 +114,7 @@ async function runJob(db: Db, job: NotificationJob) {
       try {
         if (item.channel === "email") {
           // Chat plans no email, so an email item always has one.
-          await sendEmail({ to: item.target, subject, ...email!, brandName: team.brand.fromName });
+          await sendEmail({ to: item.target, subject, ...(await emailFor(item.profile_id)), brandName: team.brand.fromName });
         } else {
           await sendPush(item.push!, pushPayload);
         }
@@ -161,19 +179,44 @@ function sendPush(target: PushTarget, payload: { title: string; body: string; ur
 }
 
 async function loadTeam(db: Db, teamId: string) {
-  const { data } = await db.from("teams").select(`name, timezone, ${TEAM_BRAND_COLUMNS}`).eq("id", teamId).single();
-  const team = data as { name?: string; timezone?: string | null } | null;
-  // A club team's notices come from the club, in its brand (email-upgrade §4.2).
-  return { name: team?.name ?? "Your team", timezone: team?.timezone ?? null, brand: teamEmailBrand(data) };
+  const { data } = await db
+    .from("teams")
+    .select(`name, timezone, home_uniform, away_uniform, home_uniform_color, away_uniform_color, ${TEAM_BRAND_COLUMNS}`)
+    .eq("id", teamId)
+    .single();
+  const team = data as ({ name?: string; timezone?: string | null } & TeamUniforms) | null;
+  return {
+    name: team?.name ?? "Your team",
+    timezone: team?.timezone ?? null,
+    // A club team's notices come from the club, in its brand (email-upgrade §4.2).
+    brand: teamEmailBrand(data),
+    uniforms: (team ?? {}) as TeamUniforms,
+  };
 }
 
-function buildJobEmail(job: NotificationJob, teamName: string, timeZone: string, brand: EmailBrand): Promise<RenderedEmail> {
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.NEXT_PUBLIC_VERCEL_URL
-      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-      : "http://localhost:3000");
+type Team = Awaited<ReturnType<typeof loadTeam>>;
 
+function appUrl() {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : "http://localhost:3000")
+  );
+}
+
+/**
+ * Whether a job's email asks for availability (D8): one event, new, changed or
+ * back on. Not a cancellation, and not a series summary.
+ */
+function asksForAnswers(job: NotificationJob): boolean {
+  return (
+    job.occurrence_count <= 1 &&
+    job.event_id != null &&
+    (job.action === "created" || job.action === "updated" || job.action === "restored")
+  );
+}
+
+function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answers?: AnswerRow[]): Promise<RenderedEmail> {
+  const { name: teamName, brand } = team;
   // A bulk operation gets one summary for the team rather than one mail per
   // occurrence, so it uses the series template.
   if (job.occurrence_count > 1) {
@@ -182,7 +225,7 @@ function buildJobEmail(job: NotificationJob, teamName: string, timeZone: string,
       teamName,
       occurrences: job.occurrence_count,
       changes: seriesChanges(job.snapshot.previous, job.snapshot, timeZone),
-      scheduleUrl: `${appUrl}/dashboard/schedule`,
+      scheduleUrl: `${appUrl()}/dashboard/schedule`,
       brand,
     });
   }
@@ -197,9 +240,26 @@ function buildJobEmail(job: NotificationJob, teamName: string, timeZone: string,
     teamName,
     action: templateAction(job.action),
     arrivalTime: job.snapshot.arrival_time,
-    eventUrl: job.event_id ? `${appUrl}/dashboard/schedule/${job.event_id}` : `${appUrl}/dashboard/schedule`,
+    eventUrl: eventUrlOf(job),
     timeZone,
+    opponent: job.snapshot.opponent,
+    homeAway: job.snapshot.home_away,
+    uniform: uniformOf(job.snapshot.uniform, team.uniforms),
+    notes: job.snapshot.notes,
+    previous: job.snapshot.previous
+      ? {
+          startTime: job.snapshot.previous.start_time,
+          endTime: job.snapshot.previous.end_time,
+          arrivalTime: job.snapshot.previous.arrival_time,
+          location: job.snapshot.previous.location_name,
+        }
+      : null,
+    answers,
   });
+}
+
+function eventUrlOf(job: NotificationJob) {
+  return job.event_id ? `${appUrl()}/dashboard/schedule/${job.event_id}` : `${appUrl()}/dashboard/schedule`;
 }
 
 function buildPushBody(job: NotificationJob, timeZone: string): string {
