@@ -58,7 +58,7 @@ The refusal is decided by a small function in `lib/`, one case per server reason
 ## Fix as implemented
 
 **Branch:** `fix/028-mobile-delete-account-club-owner`
-**PR:** #PR
+**PR:** #99
 **Migration:** none
 
 - **`apps/mobile/lib/account-deletion.ts`:** `deletionRefusal` turns the server's 409 into a message and a
