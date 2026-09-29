@@ -23,7 +23,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const tenant = getTenantFromHeaders(await headers());
+  const requestHeaders = await headers();
+  const tenant = getTenantFromHeaders(requestHeaders);
 
   const supabase = await createClient();
   const {
@@ -143,13 +144,16 @@ export default async function DashboardLayout({
   // free-team users always land on the main domain.
   // Disabled when SUBDOMAIN_ROUTING_ENABLED=false (e.g. staging on vercel.app URLs) or when
   // TENANT_OVERRIDE_HOSTNAME is set (UI-only simulation — user is not actually on lista.team).
+  // Either way, to the page that was asked for (BUG-027): an email link to an
+  // event of a club team lands on the event on the club's subdomain, not its dashboard.
   if (process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" && !process.env.TENANT_OVERRIDE_HOSTNAME) {
     const currentSubdomain = tenant?.subdomain ?? null;
+    const page = requestedDashboardPath(requestHeaders.get("x-request-path"));
     if (activeOrgSubdomain && currentSubdomain !== activeOrgSubdomain) {
-      redirect(`https://${activeOrgSubdomain}.lista.team/dashboard`);
+      redirect(`https://${activeOrgSubdomain}.lista.team${page}`);
     }
     if (!activeOrgSubdomain && currentSubdomain) {
-      redirect(`https://lista.team/dashboard`);
+      redirect(`https://lista.team${page}`);
     }
   }
 
@@ -212,4 +216,13 @@ export default async function DashboardLayout({
       <Toaster />
     </div>
   );
+}
+
+/**
+ * The page the middleware says was asked for (x-request-path), when it's a
+ * dashboard page on this site; else the dashboard itself.
+ */
+function requestedDashboardPath(path: string | null): string {
+  if (!path || path.startsWith("//") || path.startsWith("/\\")) return "/dashboard";
+  return path === "/dashboard" || path.startsWith("/dashboard/") || path.startsWith("/dashboard?") ? path : "/dashboard";
 }

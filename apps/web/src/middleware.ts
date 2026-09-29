@@ -24,7 +24,7 @@ export async function middleware(request: NextRequest) {
   //   • Free orgs that somehow still have a subdomain set in the DB
   if (isListaSubdomain && (!tenant || !tenant.isWhiteLabel)) {
     return NextResponse.redirect(
-      new URL(request.nextUrl.pathname, `https://${BASE_DOMAIN}`)
+      new URL(request.nextUrl.pathname + request.nextUrl.search, `https://${BASE_DOMAIN}`)
     );
   }
 
@@ -32,6 +32,10 @@ export async function middleware(request: NextRequest) {
   // NextResponse.next({ request: { headers } }) carries them to the downstream
   // handler, where Server Components can read them via headers().
   const requestHeaders = new Headers(request.headers);
+  // The page asked for, so the dashboard layout's host redirects can keep it
+  // (BUG-027): a layout can't read the pathname itself. Always set here, so a
+  // client can't supply its own.
+  requestHeaders.set("x-request-path", request.nextUrl.pathname + request.nextUrl.search);
   if (tenant) {
     requestHeaders.set("x-tenant-id", tenant.organizationId);
     requestHeaders.set("x-tenant-slug", tenant.slug);
