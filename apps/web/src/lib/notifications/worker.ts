@@ -255,8 +255,10 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
           endTime: job.snapshot.previous.end_time,
           arrivalTime: job.snapshot.previous.arrival_time,
           location: job.snapshot.previous.location_name,
-          // Its own zone, else its team's: never the event's new zone (PR #96 re-review).
-          timeZone: job.snapshot.previous.timezone ?? team.timezone,
+          // Its own zone, else its team's, else UTC as it was sent: never the
+          // event's new zone (PR #96 re-review). Resolved here, so the template
+          // can't fall back to the new one.
+          timeZone: resolveTimeZone(job.snapshot.previous.timezone ?? team.timezone),
         }
       : null,
     answers,

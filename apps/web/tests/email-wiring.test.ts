@@ -409,6 +409,17 @@ describe("part 2: what each recipient's email carries", () => {
       expect(text).not.toContain("5:00 PM – 6:30 PM MDT");
     });
 
+    it("with no zone on the event or its team, the previous time is in UTC, as it was sent", async () => {
+      mocks.tables.teams = { ...TEAM, timezone: null };
+      queue({ action: "updated", snapshot: LEGACY_MOVE });
+
+      await drainNotificationJobs();
+
+      const { text } = sentTo("gail@example.com");
+      expect(text).toContain("Was 11:00 PM – 12:30 AM UTC");
+      expect(text).not.toContain("Was 5:00 PM – 6:30 PM MDT");
+    });
+
     it("so does a bulk change to a series of them", async () => {
       queue({ action: "updated", event_id: null, occurrence_count: 3, snapshot: { ...LEGACY_MOVE, event_type: "practice" } });
 
