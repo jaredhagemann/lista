@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { sanitizeNext } from "@/lib/auth/sanitize-next";
 
 /**
  * Refreshes the Supabase session and handles auth redirects.
@@ -69,13 +70,16 @@ export async function updateSession(
   if (!user && !isPublicRoute && request.nextUrl.pathname !== "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // Sign-in returns here: the page and its query, as the only parameter (BUG-025).
+    url.search = "";
+    url.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
     return NextResponse.redirect(url);
   }
 
   // Redirect authenticated users away from auth pages
   if (user && (request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/signup")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    // To the page they were headed for, if it's on this site; else the dashboard.
+    const url = new URL(sanitizeNext(request.nextUrl.searchParams.get("next")), request.nextUrl.origin);
     return NextResponse.redirect(url);
   }
 

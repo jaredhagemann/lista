@@ -83,6 +83,35 @@ describe("updateSession — routing logic", () => {
   });
 });
 
+describe("updateSession — sign-in returns to the page (BUG-025)", () => {
+  it("sends a signed-out visitor to /login with the page and its query as next, and nothing else", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const response = await updateSession(req("/dashboard/schedule/e1?answer=available&for=p1"));
+
+    const location = new URL(locationOf(response)!);
+    expect(location.pathname).toBe("/login");
+    expect([...location.searchParams.keys()]).toEqual(["next"]);
+    expect(location.searchParams.get("next")).toBe("/dashboard/schedule/e1?answer=available&for=p1");
+  });
+
+  it("sends a signed-in visitor on /login to next", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-123" } } });
+    const response = await updateSession(req("/login?next=%2Fdashboard%2Fschedule%2Fe1"));
+
+    const location = new URL(locationOf(response)!);
+    expect(location.pathname + location.search).toBe("/dashboard/schedule/e1");
+  });
+
+  it("never follows a next that leaves the site", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-123" } } });
+    const response = await updateSession(req("/login?next=%2F%2Fevil.example"));
+
+    const location = new URL(locationOf(response)!);
+    expect(location.host).toBe("localhost:3001");
+    expect(location.pathname).toBe("/dashboard");
+  });
+});
+
 describe("middleware matcher — PWA asset exclusion (Bug 3 fix)", () => {
   // The middleware.ts matcher pattern controls which paths reach updateSession.
   // Paths excluded by the pattern are served directly, bypassing middleware.
