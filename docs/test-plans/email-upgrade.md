@@ -13,7 +13,7 @@ pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example
 pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example.com --logo https://<a real club logo>.png
 ```
 
-Until PR 1 is deployed, the lista mark at `https://lista.team/email/lista-mark.png` doesn't exist yet. Either
+Until PR 1 is deployed, the lista mark at `https://www.lista.team/email/lista-mark.png` doesn't exist yet. Either
 pass `--lista-logo https://<vercel preview host>/email/lista-mark.png` (the preview must be publicly reachable),
 or check the lista header again after deploy. The local files from `pnpm email:preview` always show the mark.
 

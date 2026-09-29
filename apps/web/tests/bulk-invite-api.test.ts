@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
 
   // inviteBaseUrl and inviteBranding return simple values
   const mockInviteBaseUrl = vi.fn().mockResolvedValue("https://lista.team");
-  const mockInviteBranding = vi.fn().mockResolvedValue({ name: "Lista", logoUrl: "https://lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null });
+  const mockInviteBranding = vi.fn().mockResolvedValue({ name: "Lista", logoUrl: "https://www.lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null });
 
   return {
     mockResolveRequestUser,
