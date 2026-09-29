@@ -61,7 +61,7 @@ The subdomain redirects in the dashboard layout replace the requested path with 
 ## Fix as implemented
 
 **Branch:** `fix/027-email-link-club-subdomain`
-**PR:** #PR
+**PR:** #98
 **Migration:** none
 
 - **The middleware** (`apps/web/src/middleware.ts`) forwards the requested path and query as
