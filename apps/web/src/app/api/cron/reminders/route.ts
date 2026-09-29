@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { drainNotificationJobs } from "@/lib/notifications/worker";
 import { resolveRecipients } from "@/lib/notifications/recipients";
+import { reminderSubject } from "@/lib/notifications/dispatch";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderEventEmail } from "@/emails/event-email";
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
           try {
             await sendEmail({
               to: email,
-              subject: `Reminder: ${event.title} ${relativeDay ?? `on ${dayLabel}`}`,
+              subject: reminderSubject(event.title, relativeDay, dayLabel),
               ...message,
               brandName: brand.fromName,
             });

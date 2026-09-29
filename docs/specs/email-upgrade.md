@@ -153,7 +153,7 @@ Generated from the same template, so it can't drift from the HTML. Links are wri
 - **Existing tests keep passing:** `tests/unit/email*.test.ts`, `billing-emails`, `reminders-cron`,
   `notification-times` and the invite route tests, updated where the HTML changes.
 - **Previews:** `src/emails/samples.tsx` has sample data for every email, both club and lista versions
-  where an email can carry either. `pnpm email:preview` renders them to `.email-previews/`, and
+  where an email can carry either. `pnpm email:preview` renders them to `.email-previews/`, with a gallery page showing each at phone and desktop width with its plain text, and
   `scripts/email-previews.ts --send <address>` sends them to a real inbox. A test checks there is a sample
   of every email and that each one renders.
 - **Manual:** every email sent to real Gmail, Outlook and Apple Mail inboxes, in light and dark mode and on

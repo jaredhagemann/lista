@@ -7,7 +7,7 @@ Spec: `docs/specs/email-upgrade.md` §5. Every email is checked in real inboxes 
 From `apps/web`, with `RESEND_API_KEY` in `.env.local`:
 
 ```bash
-pnpm email:preview                       # writes .email-previews/ — open index.html in a browser
+pnpm email:preview                       # writes .email-previews/: open index.html, the gallery (nothing is sent)
 pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example.com
 pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example.com --only invite
 pnpm exec tsx --env-file=.env.local scripts/email-previews.ts --send you@example.com --logo https://<a real club logo>.png
@@ -17,10 +17,17 @@ Until PR 1 is deployed, the lista mark at `https://www.lista.team/email/lista-ma
 pass `--lista-logo https://<vercel preview host>/email/lista-mark.png` (the preview must be publicly reachable),
 or check the lista header again after deploy. The local files from `pnpm email:preview` always show the mark.
 
-These are the 19 samples (subjects start with "[Preview]"):
-- **Club and lista versions:** invite, event reminder, event cancelled, series update, confirmation.
-- **Club only:** director invite, ownership offer.
-- **lista only:** team deleted, and the six billing emails.
+The gallery shows every email and its variants, 30 in all, grouped:
+- invitations
+- schedule changes
+- reminders
+- account
+- club
+- team
+- billing
+
+Each is shown at phone and desktop width, with its plain text. Sending all of them uses 30 of Resend's daily
+limit, so for real inboxes send a few with `--only`.
 
 ## What to check in each email
 
