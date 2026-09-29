@@ -58,7 +58,7 @@ The screen's wording and whether it asks who you are come from `lib/invite-accep
 ## Fix as implemented
 
 **Branch:** `fix/029-mobile-director-invitation`
-**PR:** #PR
+**PR:** #100
 **Migration:** none
 
 - **`apps/mobile/lib/invite-accept.ts`:**
