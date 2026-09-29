@@ -1,7 +1,8 @@
 import { LISTA_BRAND, clubEmailBrand, type EmailBrand } from "@/emails/brand";
 import type { RenderedEmail } from "@/emails/layout";
 import { renderInviteEmail } from "@/emails/invite-email";
-import { renderEventEmail } from "@/emails/event-email";
+import { renderEventEmail, type AnswerRow } from "@/emails/event-email";
+import { gameTitle } from "@/lib/events/game-display";
 import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
 import { renderConfirmationEmail } from "@/emails/confirmation-email";
 import { renderClubNoticeEmail } from "@/emails/club-notice-email";
@@ -32,7 +33,7 @@ import {
   paymentFailedSubject,
   trialConvertedSubject,
 } from "@/lib/notifications/email";
-import { bulkChanges, eventNoticeSubject, reminderSubject, type NotificationJob } from "@/lib/notifications/dispatch";
+import { eventNoticeSubject, reminderSubject } from "@/lib/notifications/dispatch";
 
 /**
  * Every email the app sends, in each of its variants, with sample data: the
@@ -79,8 +80,7 @@ export function sampleClub(logoUrl = "https://placehold.co/240x72/C8102E/ffffff/
 const PACIFIC = "America/Los_Angeles";
 const EVENT_URL = `${APP}/dashboard/schedule/sample`;
 
-// A game as coaches store it today: its own title. The richer "12U Girls vs
-// Rivals FC" heading, opponent and uniform are part 2 of the upgrade.
+// An away game with everything filled in, headed "12U Girls @ Rivals FC".
 const GAME = {
   eventTitle: "Saturday game",
   eventType: "game",
@@ -91,7 +91,37 @@ const GAME = {
   arrivalTime: 45,
   eventUrl: EVENT_URL,
   timeZone: PACIFIC,
+  opponent: "Rivals FC",
+  homeAway: "away",
+  uniform: { name: "Navy", color: "#1e3a8a" },
+  notes: "Bring both jerseys. Parking is behind the south field.",
 };
+const GAME_TITLE = gameTitle(
+  { title: GAME.eventTitle, event_type: GAME.eventType, opponent: GAME.opponent, home_away: GAME.homeAway },
+  GAME.teamName,
+  { includeScore: false }
+);
+
+/** Answer rows as the senders build them: links to the event page, per person (spec §4.7). */
+function answerRows(rows: Array<Omit<AnswerRow, "links">>): AnswerRow[] {
+  return rows.map((row) => ({
+    ...row,
+    links: {
+      available: `${EVENT_URL}?answer=available&for=${row.profileId}`,
+      maybe: `${EVENT_URL}?answer=maybe&for=${row.profileId}`,
+      unavailable: `${EVENT_URL}?answer=unavailable&for=${row.profileId}`,
+    },
+  }));
+}
+
+// A guardian of two players: Ava has answered, Zoey hasn't.
+const GUARDIAN = answerRows([
+  { profileId: "ava", name: "Ava", isRecipient: false, status: "available" },
+  { profileId: "zoey", name: "Zoey", isRecipient: false, status: null },
+]);
+// A player (or coach) with their own login, answering for themselves.
+const SELF_MAYBE = answerRows([{ profileId: "me", name: "Sam", isRecipient: true, status: "maybe" }]);
+const SELF_UNANSWERED = answerRows([{ profileId: "me", name: "Sam", isRecipient: true, status: null }]);
 
 const PRACTICE = {
   eventTitle: "Tuesday practice",
@@ -121,7 +151,17 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
   const accepted = ownershipChangedNotice({ clubName: "SLOFC", nextName: "Dana Director", how: "accepted" });
   const recovered = ownershipChangedNotice({ clubName: "SLOFC", nextName: "Dana Director", how: "recovered" });
   const closed = clubClosedNotice({ clubName: "SLOFC", firstName: "Ava" });
-  const series = { occurrence_count: 12, snapshot: { title: "Tuesday practice" } } as unknown as NotificationJob;
+  // What the series editor sends with a move from Tuesdays 4:00 to Wednesdays
+  // 5:00 at a new park: its own summary, as the coach confirmed it (PR #96 review).
+  const seriesMove = [
+    { field: "Location", before: "Islay Park", after: "Sinsheimer Park" },
+    { field: "Time", before: "4:00 PM – 5:30 PM PDT", after: "5:00 PM – 6:30 PM PDT" },
+    {
+      field: "Recurrence",
+      before: "Every week on Tuesday",
+      after: "Every week on Wednesday",
+    },
+  ];
   const billing = `${APP}/dashboard/club/billing`;
   const upgrade = `${APP}/dashboard/club/upgrade`;
 
@@ -157,12 +197,19 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
     {
       group: "Invitations",
       name: "invite-guardian-club",
-      title: "Guardian invitation (known issue: the badge says Manager; fixed in part 2)",
+      title: "Guardian invitation, for a player on the team",
       subject: "You've been invited to join 12U Girls on SLOFC",
       brand: club,
-      // Guardian invitations are stored with the role "manager" (BUG-012).
+      // Stored with the role "manager" (BUG-012); the email says Guardian.
       render: () =>
-        renderInviteEmail({ teamName: "12U Girls", inviterName: "Sam Okafor", role: "manager", inviteUrl: `${APP}/invite/sample`, brand: club }),
+        renderInviteEmail({
+          teamName: "12U Girls",
+          inviterName: "Sam Okafor",
+          role: "manager",
+          guardianOf: "Ava",
+          inviteUrl: `${APP}/invite/sample`,
+          brand: club,
+        }),
     },
     {
       group: "Invitations",
@@ -184,70 +231,121 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
     // ── Schedule changes ────────────────────────────────────────────────────
     {
       group: "Schedule changes",
-      name: "event-created-game-club",
-      title: "New game, club team, with arrival time and location",
-      subject: eventNoticeSubject("created", GAME.eventTitle),
+      name: "event-created-game-guardian",
+      title: "New game, to a guardian of two players: a row each, one answered",
+      subject: eventNoticeSubject("created", GAME_TITLE),
       brand: club,
-      render: () => renderEventEmail({ ...GAME, action: "created", brand: club }),
+      render: () => renderEventEmail({ ...GAME, action: "created", answers: GUARDIAN, brand: club }),
     },
     {
       group: "Schedule changes",
       name: "event-created-practice-lista",
-      title: "New practice, team outside a club, no location or arrival time",
+      title: "New practice, to a player, not answered yet; no location or arrival time",
       subject: eventNoticeSubject("created", PRACTICE.eventTitle),
       brand: LISTA_BRAND,
-      render: () => renderEventEmail({ ...PRACTICE, action: "created", brand: LISTA_BRAND }),
+      render: () => renderEventEmail({ ...PRACTICE, action: "created", answers: SELF_UNANSWERED, brand: LISTA_BRAND }),
     },
     {
       group: "Schedule changes",
-      name: "event-updated-game-club",
-      title: "Game moved (time or place changed)",
-      subject: eventNoticeSubject("updated", GAME.eventTitle),
+      name: "event-updated-game-guardian",
+      title: "Game moved an hour later: old time struck through, and \"still good?\"",
+      subject: eventNoticeSubject("updated", GAME_TITLE),
       brand: club,
-      render: () => renderEventEmail({ ...GAME, action: "updated", brand: club }),
+      render: () =>
+        renderEventEmail({
+          ...GAME,
+          action: "updated",
+          previous: {
+            startTime: "2026-10-03T16:00:00Z",
+            endTime: "2026-10-03T17:30:00Z",
+            arrivalTime: 45,
+            location: "Damon-Garcia Sports Fields",
+          },
+          answers: GUARDIAN,
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "event-updated-game-no-previous",
+      title: "Game updated, from a notice queued before part 2 (no previous values)",
+      subject: eventNoticeSubject("updated", GAME_TITLE),
+      brand: club,
+      render: () => renderEventEmail({ ...GAME, action: "updated", answers: SELF_MAYBE, brand: club }),
     },
     {
       group: "Schedule changes",
       name: "event-restored-practice-lista",
-      title: "Cancelled practice back on",
+      title: "Cancelled practice back on, to a player who'd said Maybe",
       subject: eventNoticeSubject("restored", PRACTICE.eventTitle),
       brand: LISTA_BRAND,
-      render: () => renderEventEmail({ ...PRACTICE, action: "updated", brand: LISTA_BRAND }),
+      render: () => renderEventEmail({ ...PRACTICE, action: "restored", answers: SELF_MAYBE, brand: LISTA_BRAND }),
     },
     {
       group: "Schedule changes",
       name: "event-cancelled-game-club",
-      title: "Game cancelled (or deleted)",
-      subject: eventNoticeSubject("cancelled", GAME.eventTitle),
+      title: "Game cancelled (or deleted): details struck through, no answers",
+      subject: eventNoticeSubject("cancelled", GAME_TITLE),
       brand: club,
-      render: () => renderEventEmail({ ...GAME, action: "cancelled", brand: club }),
+      render: () => renderEventEmail({ ...GAME, action: "cancelled", answers: GUARDIAN, brand: club }),
     },
     {
       group: "Schedule changes",
       name: "series-updated-club",
-      title: "Many events of a series changed at once",
+      title: "A series moved: 12 practices from Tuesdays 4:00 to Wednesdays 5:00, at a new park",
       subject: eventNoticeSubject("updated", "Tuesday practice", 12),
       brand: club,
       render: () =>
-        renderSeriesUpdateEmail({ eventTitle: "Tuesday practice", teamName: "12U Girls", changes: bulkChanges(series), brand: club }),
+        renderSeriesUpdateEmail({
+          eventTitle: "Tuesday practice",
+          teamName: "12U Girls",
+          occurrences: 12,
+          changes: seriesMove,
+          scheduleUrl: `${APP}/dashboard/schedule`,
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "series-updated-no-previous",
+      title: "A series changed, from a notice queued before part 2 (no previous values)",
+      subject: eventNoticeSubject("updated", "Tuesday practice", 12),
+      brand: club,
+      render: () =>
+        renderSeriesUpdateEmail({
+          eventTitle: "Tuesday practice",
+          teamName: "12U Girls",
+          occurrences: 12,
+          changes: [],
+          scheduleUrl: `${APP}/dashboard/schedule`,
+          brand: club,
+        }),
     },
 
     // ── Reminders ───────────────────────────────────────────────────────────
     {
       group: "Reminders",
-      name: "reminder-game-club",
-      title: "Game tomorrow, club team",
-      subject: reminderSubject(GAME.eventTitle, "tomorrow", "Sat, Oct 3"),
+      name: "reminder-game-guardian",
+      title: "Game tomorrow, to a guardian of two players",
+      subject: reminderSubject(GAME_TITLE, "tomorrow", "Sat, Oct 3"),
       brand: club,
-      render: () => renderEventEmail({ ...GAME, action: "reminder", brand: club }),
+      render: () => renderEventEmail({ ...GAME, action: "reminder", answers: GUARDIAN, brand: club }),
+    },
+    {
+      group: "Reminders",
+      name: "reminder-game-coach",
+      title: "Game tomorrow, to a coach answering for themselves",
+      subject: reminderSubject(GAME_TITLE, "tomorrow", "Sat, Oct 3"),
+      brand: club,
+      render: () => renderEventEmail({ ...GAME, action: "reminder", answers: SELF_MAYBE, brand: club }),
     },
     {
       group: "Reminders",
       name: "reminder-practice-lista",
-      title: "Practice today, team outside a club, no location",
+      title: "Practice today, team outside a club, not answered yet",
       subject: reminderSubject(PRACTICE.eventTitle, "today", "Tue, Sep 29"),
       brand: LISTA_BRAND,
-      render: () => renderEventEmail({ ...PRACTICE, action: "reminder", brand: LISTA_BRAND }),
+      render: () => renderEventEmail({ ...PRACTICE, action: "reminder", answers: SELF_UNANSWERED, brand: LISTA_BRAND }),
     },
 
     // ── Account ─────────────────────────────────────────────────────────────

@@ -58,3 +58,15 @@ export async function orgInviteBranding(orgId: string | null): Promise<EmailBran
     .single();
   return clubEmailBrand(org);
 }
+
+/**
+ * The player's first name for a guardian invitation (one with a managed
+ * profile), so its email can say "as Ava's guardian" rather than the "manager"
+ * role guardian invitations are stored with (email-upgrade §4.4). Null for any
+ * other invitation.
+ */
+export async function guardianOfName(managedProfileId: string | null | undefined): Promise<string | null> {
+  if (!managedProfileId) return null;
+  const { data } = await adminClient().from("profiles").select("first_name").eq("id", managedProfileId).maybeSingle();
+  return data?.first_name?.trim() || null;
+}

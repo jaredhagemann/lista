@@ -2,7 +2,10 @@ import { EmailButton, EmailHeading, EmailLayout, EmailText, FallbackLink, Status
 import type { EmailBrand } from "@/emails/brand";
 import { displayLabel } from "@/lib/labels";
 
-/** A team invitation, or for a director (BUG-013) a club invitation. */
+/**
+ * A team invitation; a guardian's, for a player on the team; or a director's,
+ * to help run a club (BUG-013). Spec: docs/specs/email-upgrade.md §4.4.
+ */
 export function InviteEmail({
   teamName,
   inviterName,
@@ -10,6 +13,7 @@ export function InviteEmail({
   inviteUrl,
   brand,
   kind = "team",
+  guardianOf,
 }: {
   /** The team, or for a club invitation the club. */
   teamName: string;
@@ -18,11 +22,21 @@ export function InviteEmail({
   inviteUrl: string;
   brand: EmailBrand;
   kind?: "team" | "club";
+  /**
+   * The player's first name, for a guardian invitation. Guardian invitations
+   * are stored with the role "manager" (BUG-012), which isn't what they are.
+   */
+  guardianOf?: string | null;
 }) {
   const club = kind === "club";
+  const heading = club ? `Help run ${teamName} on ${brand.name}` : `Join ${teamName} on ${brand.name}`;
+  const badge = guardianOf ? "Guardian" : displayLabel(role);
+  const as = club ? " as a director" : guardianOf ? ` as ${guardianOf}'s guardian` : "";
   const features = club
-    ? ["🗂️\u00a0 Create and manage the club's teams", "📅\u00a0 See every team's schedule", "👥\u00a0 Invite coaches and players"]
-    : ["📅\u00a0 View the team schedule", "✅\u00a0 Share your availability", "💬\u00a0 Stay in touch with your team"];
+    ? ["Create and manage the club's teams", "See every team's schedule", "Invite coaches and players"]
+    : guardianOf
+      ? [`See ${guardianOf}'s schedule`, `Answer availability for ${guardianOf}`, "Stay in touch with the team"]
+      : ["See the team schedule", "Share your availability", "Stay in touch with your team"];
 
   return (
     <EmailLayout
@@ -36,19 +50,19 @@ export function InviteEmail({
         </>
       }
     >
-      <EmailHeading>{`You've been invited to join a ${club ? "club" : "team"} on ${brand.name}!`}</EmailHeading>
-      <StatusBadge label={displayLabel(role)} tone="indigo" />
+      <EmailHeading>{heading}</EmailHeading>
+      <StatusBadge label={badge} tone="indigo" />
       <EmailText>
         <strong>{inviterName}</strong>
         {` has invited you to ${club ? "help run" : "join"} `}
         <strong>{teamName}</strong>
-        {`${club ? " as a director" : ""}. Accept your invite and activate your account to do things like:`}
+        {`${as}. Accept to:`}
       </EmailText>
       <EmailText>
         {features.map((feature, i) => (
           <span key={feature}>
             {i > 0 && <br />}
-            {feature}
+            {`•  ${feature}`}
           </span>
         ))}
       </EmailText>

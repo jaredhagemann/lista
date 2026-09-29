@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
   const mockSendEmail = vi.fn();
   const mockInviteBaseUrl = vi.fn().mockResolvedValue("https://lista.team");
   const mockInviteBranding = vi.fn().mockResolvedValue({ name: "Lista", logoUrl: "https://www.lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null });
+  const mockGuardianOfName = vi.fn().mockResolvedValue(null);
   const mockUpdate = vi.fn();
 
   return {
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => {
     mockSendEmail,
     mockInviteBaseUrl,
     mockInviteBranding,
+    mockGuardianOfName,
     mockUpdate,
   };
 });
@@ -49,6 +51,7 @@ vi.mock("@/lib/notifications/email", () => ({
 vi.mock("@/lib/invitations/invite-base-url", () => ({
   inviteBaseUrl: mocks.mockInviteBaseUrl,
   inviteBranding: mocks.mockInviteBranding,
+  guardianOfName: mocks.mockGuardianOfName,
 }));
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";

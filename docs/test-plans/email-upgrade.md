@@ -57,3 +57,42 @@ Mark each ✅, or note what's wrong.
 | Outlook, desktop (Windows) | | | |
 | Apple Mail, macOS | | | |
 | Apple Mail, iOS | | | |
+
+## Part 2: event content, answering from an email
+
+**Previews first.** `pnpm email:preview` includes:
+- a guardian's copy with two players (Ava answered, Zoey not)
+- a coach's own row
+- a game moved an hour later
+- a series moved to Wednesdays
+- a practice back on
+- a cancelled game
+- the guardian invitation
+
+**On staging, after deploy** (the migration runs there automatically), with a test team that has a guardian of
+two players and a coach:
+
+1. **Create a game** with an opponent, uniform and notes. The guardian's email:
+   - is headed "[team] @/vs [opponent]"
+   - shows home/away, uniform and notes
+   - has a row each for both players
+2. **Move the game an hour.** The old time is struck through under the new one, and the answer rows are still
+   there.
+3. **Tap "Available" for one player while signed out.** You sign in, land on the event, and see
+   "[Player] is marked Available". The address no longer carries `?answer=`.
+4. **Tap an answer for a team that isn't your active one.** The app switches to that team and records it.
+5. **Tap an answer after the event has started.** Nothing is recorded, and the page says why.
+6. **Edit a whole series** to another day and time. One email arrives, not a cancellation, and it lists Recurrence and Time, before and after.
+7. **Cancel the game.** The details are struck through, and there are no answer buttons.
+8. **Send a guardian invitation.** It says "Guardian" and "as [player]'s guardian".
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| 1. New game | | |
+| 2. Moved game | | |
+| 3. Answer, signed out | | |
+| 4. Answer, other team | | |
+| 5. Answer, started event | | |
+| 6. Series change | | |
+| 7. Cancelled | | |
+| 8. Guardian invitation | | |

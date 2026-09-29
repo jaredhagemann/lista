@@ -32,7 +32,13 @@ export async function renderEmail(email: ReactNode): Promise<RenderedEmail> {
     // Headings keep their case in plain text (the converter shouts them by default).
     render(email, {
       plainText: true,
-      htmlToTextOptions: { selectors: [{ selector: "h1", options: { uppercase: false } }] },
+      htmlToTextOptions: {
+        selectors: [
+          { selector: "h1", options: { uppercase: false } },
+          // Label/value tables read as columns, not run together ("DateSaturday…").
+          { selector: "table.email-data", format: "dataTable", options: { uppercaseHeaderCells: false } },
+        ],
+      },
     }),
   ]);
   return { html, text };
@@ -69,7 +75,7 @@ export function EmailLayout({
             style={{
               backgroundColor: "#ffffff",
               borderRadius: "12px",
-              padding: "40px 40px 32px",
+              padding: "32px 24px 28px",
               boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
             }}
           >
@@ -188,7 +194,7 @@ export function StatusBadge({ label, tone }: { label: string; tone: BadgeTone })
 export function DetailTable({ rows }: { rows: Array<[label: string, value: ReactNode]> }) {
   const cell = { padding: "8px 0", fontSize: "14px", borderBottom: "1px solid #f3f4f6" };
   return (
-    <table width="100%" cellPadding={0} cellSpacing={0} role="presentation">
+    <table className="email-data" width="100%" cellPadding={0} cellSpacing={0} role="presentation">
       <tbody>
         {rows.map(([label, value]) => (
           <tr key={label}>
@@ -216,6 +222,7 @@ export function ChangeTable({ changes }: { changes: Array<{ field: string; befor
   const cell = { padding: "10px 12px", fontSize: "14px", borderBottom: "1px solid #f3f4f6" };
   return (
     <table
+      className="email-data"
       width="100%"
       cellPadding={0}
       cellSpacing={0}

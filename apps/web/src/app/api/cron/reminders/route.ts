@@ -7,6 +7,8 @@ import { createServerClient } from "@supabase/ssr";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderEventEmail } from "@/emails/event-email";
 import { TEAM_BRAND_COLUMNS, teamEmailBrand, type BrandedTeam } from "@/emails/brand";
+import { answerRowsFor, loadAnswerContext } from "@/lib/notifications/answers";
+import { gameTitle, uniformOf, type TeamUniforms } from "@/lib/events/game-display";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
 import {
@@ -18,7 +20,7 @@ import {
 import type { Database } from "@/types/database";
 
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
-  teams: ({ name: string; timezone: string | null } & BrandedTeam) | null;
+  teams: ({ name: string; timezone: string | null } & BrandedTeam & TeamUniforms) | null;
   locations: { name: string } | null;
 };
 
@@ -41,7 +43,9 @@ export async function GET(request: Request) {
   // Find events in the next 24 hours that aren't cancelled
   const { data: rawEvents, error } = await supabase
     .from("events")
-    .select(`*, teams(name, timezone, ${TEAM_BRAND_COLUMNS}), locations(name)`)
+    .select(
+      `*, teams(name, timezone, home_uniform, away_uniform, home_uniform_color, away_uniform_color, ${TEAM_BRAND_COLUMNS}), locations(name)`
+    )
     .eq("is_cancelled", false)
     .gte("start_time", now.toISOString())
     .lte("start_time", in24h.toISOString());
@@ -81,33 +85,51 @@ export async function GET(request: Request) {
 
     // A club team's reminder comes from the club, in its brand (email-upgrade §4.2).
     const brand = teamEmailBrand(event.teams);
-    const message = await renderEventEmail({
-      eventTitle: event.title,
-      eventType: event.event_type,
-      startTime: event.start_time,
-      endTime: event.end_time,
-      location: event.locations?.name ?? null,
-      teamName,
-      action: "reminder",
-      brand,
-      arrivalTime: event.arrival_time,
-      eventUrl: `${appUrl}/dashboard/schedule/${event.id}`,
-      timeZone,
-    });
+    // "12U Girls @ Rivals FC" for a game, as the app names it (email-upgrade §4.3).
+    const title = gameTitle(event, teamName, { includeScore: false });
+    const eventUrl = `${appUrl}/dashboard/schedule/${event.id}`;
+
+    // Each person's current answer, read once for the event; every recipient's
+    // email then carries rows for just their own people (§4.7, D9–D10).
+    const answers = await loadAnswerContext(
+      supabase,
+      event.id,
+      recipients.flatMap((r) => r.coversProfileIds)
+    );
+    const emailFor = (recipient: (typeof recipients)[number]) =>
+      renderEventEmail({
+        eventTitle: event.title,
+        eventType: event.event_type,
+        startTime: event.start_time,
+        endTime: event.end_time,
+        location: event.locations?.name ?? null,
+        teamName,
+        action: "reminder",
+        brand,
+        arrivalTime: event.arrival_time,
+        eventUrl,
+        timeZone,
+        opponent: event.opponent,
+        homeAway: event.home_away,
+        uniform: uniformOf(event.uniform, event.teams ?? {}),
+        notes: event.notes,
+        answers: answerRowsFor(recipient, answers, eventUrl),
+      });
 
     const reminderPayload = {
-      title: `Reminder: ${event.title}`,
+      title: `Reminder: ${title}`,
       body: `${dayLabel.charAt(0).toUpperCase()}${dayLabel.slice(1)} at ${formatEventTime(event.start_time, timeZone)}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
       url: `/dashboard/schedule/${event.id}`,
     };
 
     for (const recipient of recipients) {
-      if (recipient.emailEnabled) {
+      if (recipient.emailEnabled && recipient.emails.length > 0) {
+        const message = await emailFor(recipient);
         for (const email of recipient.emails) {
           try {
             await sendEmail({
               to: email,
-              subject: reminderSubject(event.title, relativeDay, dayLabel),
+              subject: reminderSubject(title, relativeDay, dayLabel),
               ...message,
               brandName: brand.fromName,
             });

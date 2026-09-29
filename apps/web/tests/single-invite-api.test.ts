@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
   const mockSendEmail = vi.fn();
   const mockInviteBaseUrl = vi.fn().mockResolvedValue("https://lista.team");
   const mockInviteBranding = vi.fn().mockResolvedValue({ name: "Lista", logoUrl: "https://www.lista.team/email/lista-mark.png", color: "#01D7F4", fromName: null });
+  const mockGuardianOfName = vi.fn().mockResolvedValue(null);
 
   return {
     mockResolveRequestUser,
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
     mockSendEmail,
     mockInviteBaseUrl,
     mockInviteBranding,
+    mockGuardianOfName,
   };
 });
 
@@ -46,6 +48,7 @@ vi.mock("@/lib/notifications/email", () => ({
 vi.mock("@/lib/invitations/invite-base-url", () => ({
   inviteBaseUrl: mocks.mockInviteBaseUrl,
   inviteBranding: mocks.mockInviteBranding,
+  guardianOfName: mocks.mockGuardianOfName,
 }));
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
@@ -320,6 +323,19 @@ describe("POST /api/invitations/send — guardian invitations (BUG-002)", () => 
     const res = await POST(makeRequest(GUARDIAN_BODY));
 
     expect(res.status).not.toBe(403);
+  });
+
+  it("the email says Guardian and names the player, not Manager (email-upgrade §4.4)", async () => {
+    mocks.mockGuardianOfName.mockResolvedValueOnce("Ava");
+    setupFromRouting({ teamMembersResponses: [{ id: "tm-child" }], profileResponses: [[], { first_name: "Coach", last_name: "User" }] });
+
+    await POST(makeRequest(GUARDIAN_BODY));
+
+    expect(mocks.mockGuardianOfName).toHaveBeenCalledWith("child-1");
+    const [message] = mocks.mockSendEmail.mock.calls[0] as unknown as [{ html: string; text: string }];
+    expect(message.html).toContain(">Guardian<");
+    expect(message.html).not.toContain(">Manager<");
+    expect(message.text).toContain("as Ava's guardian");
   });
 
   it("allows an existing guardian who is not a team admin to invite for their child", async () => {

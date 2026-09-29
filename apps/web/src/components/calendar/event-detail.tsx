@@ -601,6 +601,7 @@ export function EventDetail({
   team,
   teamTimeZone,
   currentUserId,
+  answeringFor,
   availabilityRows,
   members,
 }: {
@@ -613,6 +614,8 @@ export function EventDetail({
   /** Names games and their uniforms (spec: game-display-and-uniform-colors). */
   team: TeamDisplay;
   currentUserId: string;
+  /** Names the picker when it answers for another of the viewer's players (an email answer). */
+  answeringFor?: string | null;
   availabilityRows: { profileId: string; status: "available" | "maybe" | "unavailable" }[];
   members: { profileId: string; name: string; role?: string | null }[];
 }) {
@@ -1015,6 +1018,7 @@ export function EventDetail({
               availabilityRows={availabilityRows}
               isAdmin={isAdmin}
               currentUserId={currentUserId}
+              answeringFor={answeringFor}
             />
           </CardContent>
         </Card>
