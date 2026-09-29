@@ -226,7 +226,8 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
       teamName,
       occurrences: job.occurrence_count,
       // A series edit says what it changed; a bulk update of rows is compared row by row.
-      changes: job.snapshot.series_changes ?? seriesChanges(job.snapshot.previous, job.snapshot, timeZone),
+      // An event with no zone of its own goes by its team's, before and after (PR #96 re-review).
+      changes: job.snapshot.series_changes ?? seriesChanges(job.snapshot.previous, job.snapshot, resolveTimeZone(team.timezone)),
       scheduleUrl: `${appUrl()}/dashboard/schedule`,
       brand,
     });
@@ -254,7 +255,8 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
           endTime: job.snapshot.previous.end_time,
           arrivalTime: job.snapshot.previous.arrival_time,
           location: job.snapshot.previous.location_name,
-          timeZone: job.snapshot.previous.timezone,
+          // Its own zone, else its team's: never the event's new zone (PR #96 re-review).
+          timeZone: job.snapshot.previous.timezone ?? team.timezone,
         }
       : null,
     answers,

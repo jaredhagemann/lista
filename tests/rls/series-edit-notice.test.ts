@@ -185,3 +185,51 @@ describe("a series edit's notice", () => {
     expect(error).not.toBeNull();
   });
 });
+
+describe("a series edit's notice, when events end up in the past (PR #96 re-review)", () => {
+  it("moving the last upcoming occurrence to a time that has already ended still notifies", async () => {
+    const coach = await createTestUser();
+    const { teamId } = await createTestTeam(coach.user.id);
+    // Two past occurrences and one later today.
+    const now = Date.now();
+    const starts = [now - 14 * DAY_MS, now - 7 * DAY_MS, now + 2 * 60 * 60 * 1000];
+    const headId = crypto.randomUUID();
+    const rows = starts.map((start, i) => ({
+      id: i === 0 ? headId : crypto.randomUUID(),
+      team_id: teamId,
+      title: "Practice",
+      event_type: "practice",
+      start_time: new Date(start).toISOString(),
+      end_time: new Date(start + 90 * 60 * 1000).toISOString(),
+      recurrence_rule: i === 0 ? "RRULE:FREQ=WEEKLY;INTERVAL=1" : null,
+      parent_event_id: i === 0 ? null : headId,
+      created_by: coach.user.id,
+    }));
+    for (const row of rows) {
+      const { error } = await adminClient.from("events").insert(row);
+      if (error) throw new Error(error.message);
+    }
+
+    // The last occurrence moves to earlier today, already over.
+    const moved = { start_time: new Date(now - 3 * 60 * 60 * 1000).toISOString(), end_time: new Date(now - 90 * 60 * 1000).toISOString() };
+    const p = {
+      seriesHeadId: headId,
+      newHeadId: headId,
+      newHeadRule: "RRULE:FREQ=WEEKLY;INTERVAL=1",
+      truncateRule: null,
+      updates: [{ id: rows[2].id, ...moved, fields: {} }],
+      cancels: [],
+      inserts: [],
+      reparent: [],
+      preview: { updated: [], cancelled: [], added: [], unchanged: [] },
+      summary: [{ field: "Time", before: "later today", after: "earlier today" }],
+    } as SeriesEditPlan;
+
+    expect((await apply(coach, p)).error).toBeNull();
+
+    const jobs = await jobsFor(teamId);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].action).toBe("updated");
+    expect(jobs[0].occurrence_count).toBe(1);
+  });
+});

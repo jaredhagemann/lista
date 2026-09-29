@@ -388,6 +388,35 @@ describe("part 2: what each recipient's email carries", () => {
       expect(html).not.toContain("answer=");
     });
 
+    // An event from before event zones has none and goes by its team's (Pacific).
+    // Moved to Mountain at the same wall-clock time, 4:00 PM (PR #96 re-review).
+    const LEGACY_MOVE = {
+      ...GAME_SNAPSHOT,
+      start_time: "2026-09-17T22:00:00.000Z",
+      end_time: "2026-09-17T23:30:00.000Z",
+      timezone: "America/Denver",
+      previous: { ...GAME_SNAPSHOT, timezone: null, start_time: "2026-09-17T23:00:00.000Z", end_time: "2026-09-18T00:30:00.000Z" },
+    };
+
+    it("an event with no zone of its own shows its previous time in its team's zone", async () => {
+      queue({ action: "updated", snapshot: LEGACY_MOVE });
+
+      await drainNotificationJobs();
+
+      const { text } = sentTo("gail@example.com");
+      expect(text).toContain("4:00 PM – 5:30 PM MDT");
+      expect(text).toContain("Was 4:00 PM – 5:30 PM PDT");
+      expect(text).not.toContain("5:00 PM – 6:30 PM MDT");
+    });
+
+    it("so does a bulk change to a series of them", async () => {
+      queue({ action: "updated", event_id: null, occurrence_count: 3, snapshot: { ...LEGACY_MOVE, event_type: "practice" } });
+
+      await drainNotificationJobs();
+
+      expect(sentTo("gail@example.com").text).toMatch(/Time\s+4:00 PM – 5:30 PM PDT\s+4:00 PM – 5:30 PM MDT/);
+    });
+
     it("a cancellation offers no answers", async () => {
       queue({ action: "cancelled", snapshot: { ...GAME_SNAPSHOT, is_cancelled: true } });
 
