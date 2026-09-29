@@ -16,10 +16,11 @@ export default async function EventDetailPage({
   searchParams,
 }: {
   params: Promise<{ eventId: string }>;
-  searchParams: Promise<{ edit?: string }>;
+  searchParams: Promise<{ edit?: string; switched?: string } & Record<string, string | string[] | undefined>>;
 }) {
   const { eventId } = await params;
-  const { edit } = await searchParams;
+  const query = await searchParams;
+  const { edit } = query;
   const supabase = await createClient();
   const {
     data: { user },
@@ -45,9 +46,19 @@ export default async function EventDetailPage({
 
   const event = rawEvent as Event;
 
-  // Verify the active membership is for the same team as this event.
+  // An event of another team: RLS has let the viewer read it, so they (or a
+  // player they manage) are likely on it. Switch to that team and come back here
+  // (BUG-026); the switch route checks membership, and anyone not on the team
+  // ends up on the dashboard. switched=1 marks the return, so a switch that
+  // didn't take can't loop.
   if (!activeMembership || activeMembership.team_id !== event.team_id) {
-    redirect("/dashboard");
+    if (query.switched || !event.team_id) redirect("/dashboard");
+    const here = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (typeof value === "string" && key !== "switched") here.set(key, value);
+    }
+    const next = here.size > 0 ? `/dashboard/schedule/${eventId}?${here}` : `/dashboard/schedule/${eventId}`;
+    redirect(`/dashboard/switch-team?${new URLSearchParams({ team: event.team_id, next })}`);
   }
 
   // The profile we act as for RSVP must be the one whose membership grants
