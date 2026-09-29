@@ -5,7 +5,7 @@
  * a parent accepting their child's player invitation became the player.
  */
 
-import { buildAcceptBody } from "../lib/invite-accept";
+import { buildAcceptBody, inviteCopy } from "../lib/invite-accept";
 
 const base = { isManagerInvite: false, identity: null, relationship: "" } as const;
 
@@ -64,5 +64,48 @@ describe("buildAcceptBody", () => {
     });
 
     expect(result.ok && "managedProfileId" in result.body).toBe(false);
+  });
+});
+
+// ── A club director invitation (BUG-029) ──────────────────────────────────────
+
+
+describe("a director invitation", () => {
+  const DIRECTOR = { role: "director", teamName: "SLOFC", isManagerInvite: false };
+
+  it("accepts as the signed-in person, with nothing to answer", () => {
+    const result = buildAcceptBody({ ...base, isDirectorInvite: true });
+
+    expect(result).toEqual({ ok: true, body: { type: "self" } });
+  });
+
+  it("says it's to help run the club as a director, without team wording or an identity question", () => {
+    const copy = inviteCopy(DIRECTOR);
+
+    expect(copy.invitedAs).toBe("You've been invited to help run SLOFC as a director");
+    expect(copy.roleLine).toBe("Help run SLOFC as a director");
+    expect(copy.acceptLabel).toBe("Accept & join club");
+    expect(copy.joined).toBe("You're now a director of SLOFC.");
+    expect(copy.asksWhoYouAre).toBe(false);
+  });
+});
+
+describe("other invitations keep their wording", () => {
+  it("a team role, capitalized, and the identity question", () => {
+    const copy = inviteCopy({ role: "player", teamName: "12U Girls", isManagerInvite: false });
+
+    expect(copy.invitedAs).toBe("You've been invited as Player");
+    expect(copy.roleLine).toBe("Role: Player");
+    expect(copy.acceptLabel).toBe("Accept & join team");
+    expect(copy.joined).toBe("You've joined 12U Girls.");
+    expect(copy.asksWhoYouAre).toBe(true);
+  });
+
+  it("a guardian invitation: manage a player, no identity question", () => {
+    const copy = inviteCopy({ role: "manager", teamName: "12U Girls", isManagerInvite: true });
+
+    expect(copy.roleLine).toBe("You've been invited to manage a player on this team");
+    expect(copy.acceptLabel).toBe("Accept & join team");
+    expect(copy.asksWhoYouAre).toBe(false);
   });
 });
