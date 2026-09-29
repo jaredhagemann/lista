@@ -27,7 +27,7 @@ import {
   summarizeDeliveries,
   jobSubject,
   templateAction,
-  bulkChanges,
+  seriesChanges,
   type ChatSnapshot,
   type DeliveryOutcome,
   type NotificationJob,
@@ -180,7 +180,9 @@ function buildJobEmail(job: NotificationJob, teamName: string, timeZone: string,
     return renderSeriesUpdateEmail({
       eventTitle: job.snapshot.title,
       teamName,
-      changes: bulkChanges(job),
+      occurrences: job.occurrence_count,
+      changes: seriesChanges(job.snapshot.previous, job.snapshot, timeZone),
+      scheduleUrl: `${appUrl}/dashboard/schedule`,
       brand,
     });
   }

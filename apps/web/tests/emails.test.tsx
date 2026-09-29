@@ -169,6 +169,7 @@ const EVERY_EMAIL: Array<[string, () => Promise<{ html: string; text: string }>,
     "series update",
     () =>
       renderSeriesUpdateEmail({
+        occurrences: 12,
         eventTitle: "Practice",
         teamName: "U12 Blue",
         changes: [{ field: "Time", before: "4:00 PM", after: "5:00 PM" }],
@@ -253,6 +254,7 @@ describe("user text is escaped, never rendered as markup", () => {
 
   it("series changes", async () => {
     const { html } = await renderSeriesUpdateEmail({
+        occurrences: 12,
       eventTitle: HOSTILE,
       teamName: "U12 Blue",
       changes: [{ field: "Location", before: HOSTILE, after: HOSTILE }],
@@ -345,6 +347,7 @@ describe("event", () => {
 describe("series update", () => {
   it("lists each change before and after", async () => {
     const { html } = await renderSeriesUpdateEmail({
+        occurrences: 12,
       eventTitle: "Practice",
       teamName: "U12 Blue",
       changes: [{ field: "Time", before: "4:00 PM", after: "5:00 PM" }],
@@ -355,9 +358,9 @@ describe("series update", () => {
     expect(html).toContain("5:00 PM");
   });
 
-  it("says the schedule changed when there are no field changes", async () => {
-    const { html } = await renderSeriesUpdateEmail({ eventTitle: "Practice", teamName: "U12 Blue", changes: [], brand: LISTA_BRAND });
-    expect(html).toContain("The recurring schedule for this event has been updated.");
+  it("says how many events changed when there are no field changes", async () => {
+    const { html } = await renderSeriesUpdateEmail({ eventTitle: "Practice", teamName: "U12 Blue", occurrences: 12, changes: [], brand: LISTA_BRAND });
+    expect(html).toContain("12 events in this series changed.");
   });
 });
 

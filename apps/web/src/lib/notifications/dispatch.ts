@@ -11,6 +11,7 @@
  */
 
 import type { FieldChange } from "@/lib/notifications/email";
+import { formatEventTimeRange } from "@/lib/notifications/event-time";
 
 export type JobAction = "created" | "updated" | "cancelled" | "restored" | "deleted" | "message";
 
@@ -25,6 +26,11 @@ export type EventSnapshot = {
   is_cancelled: boolean | null;
   /** The event's own zone (BUG-010). Absent from jobs queued before event zones. */
   timezone?: string | null;
+  /**
+   * An updated event as it was before the change (email-upgrade part 2), for
+   * what-changed. Absent from jobs queued before it was recorded.
+   */
+  previous?: EventSnapshot | null;
 };
 
 export type NotificationJob = {
@@ -199,13 +205,36 @@ export function templateAction(action: JobAction): "created" | "updated" | "canc
   }
 }
 
-/** Changes to list in a bulk notice, when the job covers more than one event. */
-export function bulkChanges(job: NotificationJob): FieldChange[] {
-  return [
-    {
-      field: "Events affected",
-      before: "",
-      after: `${job.occurrence_count} occurrences of ${job.snapshot.title}`,
-    },
-  ];
+/**
+ * What changed across a series, in terms that fit a recurring event
+ * (2026-09-28): the day of the week ("Tuesdays → Wednesdays"), the time of day
+ * with its length, the arrival time and the location. The date itself differs
+ * from one occurrence to the next, so it's never listed. Empty without the
+ * previous version, which jobs queued before it was recorded don't carry.
+ */
+export function seriesChanges(
+  previous: EventSnapshot | undefined | null,
+  current: EventSnapshot,
+  timeZone: string
+): FieldChange[] {
+  if (!previous) return [];
+  const changes: FieldChange[] = [];
+  const add = (field: string, before: string, after: string) => {
+    if (before !== after) changes.push({ field, before, after });
+  };
+
+  const day = (instant: string) =>
+    `${new Date(instant).toLocaleDateString("en-US", { weekday: "long", timeZone })}s`;
+  const arrive = (minutes: number | null) => (minutes != null ? `${minutes} min early` : "None");
+
+  add("Day", day(previous.start_time), day(current.start_time));
+  add(
+    "Time",
+    formatEventTimeRange(previous.start_time, previous.end_time, timeZone),
+    formatEventTimeRange(current.start_time, current.end_time, timeZone)
+  );
+  add("Arrive", arrive(previous.arrival_time), arrive(current.arrival_time));
+  add("Location", previous.location_name ?? "None", current.location_name ?? "None");
+  return changes;
 }
+

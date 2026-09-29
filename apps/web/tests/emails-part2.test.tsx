@@ -178,19 +178,9 @@ describe("answering from the email", () => {
     expect(text).not.toContain("For ");
   });
 
-  it("asks again after a change: still good?", async () => {
-    const updated = await renderEventEmail({ ...GAME, action: "updated", answers: GUARDIAN_ROWS });
-    const restored = await renderEventEmail({ ...GAME, action: "restored", answers: GUARDIAN_ROWS });
-    const reminder = await renderEventEmail({ ...GAME, action: "reminder", answers: GUARDIAN_ROWS });
-
-    expect(updated.text).toMatch(/still good\?/i);
-    expect(restored.text).toMatch(/still good\?/i);
-    expect(reminder.text).toMatch(/can you make it\?/i);
-  });
-
   it("without answer rows, there is no availability section", async () => {
     const { text } = await renderEventEmail({ ...GAME, action: "reminder" });
-    expect(text).not.toMatch(/can you make it|No answer yet/i);
+    expect(text).not.toMatch(/Availability|No answer yet/);
   });
 });
 
@@ -217,5 +207,106 @@ describe("an invitation", () => {
   it("a director invitation asks you to help run the club", async () => {
     const { html } = await renderInviteEmail({ ...INVITE, teamName: "SLOFC", role: "director", kind: "club", brand: CLUB });
     expect(html).toContain("Help run SLOFC");
+  });
+});
+
+// ── Wording: one section title (2026-09-28) ───────────────────────────────────
+
+describe("the availability section's title", () => {
+  it("is 'Availability' on every event email that has one", async () => {
+    for (const action of ["created", "updated", "restored", "reminder"] as const) {
+      const { text } = await renderEventEmail({ ...GAME, action, answers: GUARDIAN_ROWS });
+      expect(text, action).toContain("Availability");
+      expect(text, action).not.toMatch(/still good|can you make it/i);
+    }
+  });
+});
+
+// ── A series changed: what changed (2026-09-28) ──────────────────────────────
+
+import { seriesChanges, type EventSnapshot } from "@/lib/notifications/dispatch";
+import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
+
+const PACIFIC = "America/Los_Angeles";
+// Tuesday 4:00–5:30 PM Pacific at Islay Park, arrive 30 min early.
+const TUESDAY: EventSnapshot = {
+  title: "Tuesday practice",
+  event_type: "practice",
+  start_time: "2026-09-29T23:00:00Z",
+  end_time: "2026-09-30T00:30:00Z",
+  arrival_time: 30,
+  location_id: "loc-islay",
+  location_name: "Islay Park",
+  is_cancelled: false,
+  timezone: PACIFIC,
+};
+
+describe("seriesChanges", () => {
+  it("names a new day of the week, as a recurring day", () => {
+    const wednesday = { ...TUESDAY, start_time: "2026-09-30T23:00:00Z", end_time: "2026-10-01T00:30:00Z" };
+    expect(seriesChanges(TUESDAY, wednesday, PACIFIC)).toEqual([{ field: "Day", before: "Tuesdays", after: "Wednesdays" }]);
+  });
+
+  it("shows a new time or length as the time of day, with the zone", () => {
+    const later = { ...TUESDAY, start_time: "2026-09-30T00:00:00Z", end_time: "2026-09-30T01:30:00Z" };
+    const longer = { ...TUESDAY, end_time: "2026-09-30T01:00:00Z" };
+
+    expect(seriesChanges(TUESDAY, later, PACIFIC)).toEqual([
+      { field: "Time", before: "4:00 PM – 5:30 PM PDT", after: "5:00 PM – 6:30 PM PDT" },
+    ]);
+    expect(seriesChanges(TUESDAY, longer, PACIFIC)).toEqual([
+      { field: "Time", before: "4:00 PM – 5:30 PM PDT", after: "4:00 PM – 6:00 PM PDT" },
+    ]);
+  });
+
+  it("shows a new location and arrival time", () => {
+    const moved = { ...TUESDAY, location_id: "loc-sinsheimer", location_name: "Sinsheimer Park", arrival_time: 45 };
+    expect(seriesChanges(TUESDAY, moved, PACIFIC)).toEqual([
+      { field: "Arrive", before: "30 min early", after: "45 min early" },
+      { field: "Location", before: "Islay Park", after: "Sinsheimer Park" },
+    ]);
+  });
+
+  it("says 'None' where there was or is nothing", () => {
+    const noPlace = { ...TUESDAY, location_id: null, location_name: null, arrival_time: null };
+    expect(seriesChanges(TUESDAY, noPlace, PACIFIC)).toEqual([
+      { field: "Arrive", before: "30 min early", after: "None" },
+      { field: "Location", before: "Islay Park", after: "None" },
+    ]);
+  });
+
+  it("is empty when nothing it describes changed, or there's no previous version", () => {
+    expect(seriesChanges(TUESDAY, { ...TUESDAY, title: "Renamed" }, PACIFIC)).toEqual([]);
+    expect(seriesChanges(undefined, TUESDAY, PACIFIC)).toEqual([]);
+  });
+});
+
+describe("the series email", () => {
+  it("says how many events changed, lists each change, and links to the schedule", async () => {
+    const { html, text } = await renderSeriesUpdateEmail({
+      eventTitle: "Tuesday practice",
+      teamName: "12U Girls",
+      occurrences: 12,
+      changes: [{ field: "Day", before: "Tuesdays", after: "Wednesdays" }],
+      scheduleUrl: "https://lista.team/dashboard/schedule",
+      brand: CLUB,
+    });
+
+    expect(text).toContain("12 events in this series changed");
+    expect(text).toMatch(/Day\s+Tuesdays\s+Wednesdays/);
+    expect(html).toContain('href="https://lista.team/dashboard/schedule"');
+  });
+
+  it("without the details, still says how many events changed", async () => {
+    const { text } = await renderSeriesUpdateEmail({
+      eventTitle: "Tuesday practice",
+      teamName: "12U Girls",
+      occurrences: 12,
+      changes: [],
+      brand: CLUB,
+    });
+
+    expect(text).toContain("12 events in this series changed");
+    expect(text).not.toMatch(/Before\s+After/);
   });
 });

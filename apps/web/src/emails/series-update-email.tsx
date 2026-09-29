@@ -1,4 +1,4 @@
-import { ChangeTable, EmailHeading, EmailLayout, EmailText, StatusBadge, renderEmail } from "@/emails/layout";
+import { ChangeTable, EmailButton, EmailHeading, EmailLayout, EmailText, StatusBadge, renderEmail } from "@/emails/layout";
 import type { EmailBrand } from "@/emails/brand";
 
 export interface FieldChange {
@@ -7,16 +7,24 @@ export interface FieldChange {
   after: string;
 }
 
-/** One summary for a change to many occurrences of a series. */
+/**
+ * One summary for a change to many occurrences of a series: how many, and what
+ * changed in recurring terms (day, time, arrival, location; seriesChanges).
+ */
 export function SeriesUpdateEmail({
   eventTitle,
   teamName,
+  occurrences,
   changes,
+  scheduleUrl,
   brand,
 }: {
   eventTitle: string;
   teamName: string;
+  occurrences: number;
+  /** Empty for a notice queued before the previous version was recorded. */
   changes: FieldChange[];
+  scheduleUrl?: string;
   brand: EmailBrand;
 }) {
   return (
@@ -34,10 +42,12 @@ export function SeriesUpdateEmail({
       <StatusBadge label="Schedule Updated" tone="amber" />
       <EmailHeading spaced={false}>{eventTitle}</EmailHeading>
       <EmailText muted>{teamName}</EmailText>
-      {changes.length > 0 ? (
-        <ChangeTable changes={changes} />
-      ) : (
-        <EmailText>The recurring schedule for this event has been updated.</EmailText>
+      <EmailText>{`${occurrences} events in this series changed${changes.length > 0 ? ":" : "."}`}</EmailText>
+      {changes.length > 0 && <ChangeTable changes={changes} />}
+      {scheduleUrl && (
+        <EmailButton href={scheduleUrl} brand={brand}>
+          View schedule
+        </EmailButton>
       )}
     </EmailLayout>
   );

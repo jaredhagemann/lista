@@ -170,7 +170,7 @@ export function EventEmail({
       <EmailHeading spaced={players.length === 0}>{heading}</EmailHeading>
       {players.length > 0 && <EmailText muted>{`For ${joinNames(players)}`}</EmailText>}
       <DetailTable rows={rows} />
-      {showAnswers && <Answers action={action} answers={answers!} />}
+      {showAnswers && <Answers answers={answers!} />}
       {eventUrl && (
         <EmailButton href={eventUrl} brand={brand}>
           View event
@@ -203,13 +203,9 @@ function UniformValue({ uniform }: { uniform: Uniform }) {
 }
 
 /** The availability section: a row per person, their answer, and the three links. */
-function Answers({ action, answers }: { action: EventEmailAction; answers: AnswerRow[] }) {
-  const prompt =
-    action === "updated"
-      ? "This event changed. Still good?"
-      : action === "restored"
-        ? "This event is back on. Still good?"
-        : "Can you make it?";
+function Answers({ answers }: { answers: AnswerRow[] }) {
+  // One title on every email, so it's plain what's being asked (2026-09-28).
+  const prompt = "Availability";
 
   // Blocks, not a table: each person reads as its own paragraph in plain text,
   // and the links wrap under the name on a phone.

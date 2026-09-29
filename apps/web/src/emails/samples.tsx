@@ -33,7 +33,7 @@ import {
   paymentFailedSubject,
   trialConvertedSubject,
 } from "@/lib/notifications/email";
-import { bulkChanges, eventNoticeSubject, reminderSubject, type NotificationJob } from "@/lib/notifications/dispatch";
+import { eventNoticeSubject, reminderSubject, seriesChanges, type EventSnapshot } from "@/lib/notifications/dispatch";
 
 /**
  * Every email the app sends, in each of its variants, with sample data: the
@@ -151,7 +151,24 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
   const accepted = ownershipChangedNotice({ clubName: "SLOFC", nextName: "Dana Director", how: "accepted" });
   const recovered = ownershipChangedNotice({ clubName: "SLOFC", nextName: "Dana Director", how: "recovered" });
   const closed = clubClosedNotice({ clubName: "SLOFC", firstName: "Ava" });
-  const series = { occurrence_count: 12, snapshot: { title: "Tuesday practice" } } as unknown as NotificationJob;
+  const tuesdays: EventSnapshot = {
+    title: "Tuesday practice",
+    event_type: "practice",
+    start_time: "2026-09-29T23:00:00Z",
+    end_time: "2026-09-30T00:30:00Z",
+    arrival_time: 15,
+    location_id: "islay",
+    location_name: "Islay Park",
+    is_cancelled: false,
+    timezone: PACIFIC,
+  };
+  const wednesdays: EventSnapshot = {
+    ...tuesdays,
+    start_time: "2026-10-01T00:00:00Z",
+    end_time: "2026-10-01T01:30:00Z",
+    location_id: "sinsheimer",
+    location_name: "Sinsheimer Park",
+  };
   const billing = `${APP}/dashboard/club/billing`;
   const upgrade = `${APP}/dashboard/club/upgrade`;
 
@@ -282,11 +299,34 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
     {
       group: "Schedule changes",
       name: "series-updated-club",
-      title: "Many events of a series changed at once",
+      title: "A series moved: 12 practices from Tuesdays 4:00 to Wednesdays 5:00, at a new park",
       subject: eventNoticeSubject("updated", "Tuesday practice", 12),
       brand: club,
       render: () =>
-        renderSeriesUpdateEmail({ eventTitle: "Tuesday practice", teamName: "12U Girls", changes: bulkChanges(series), brand: club }),
+        renderSeriesUpdateEmail({
+          eventTitle: "Tuesday practice",
+          teamName: "12U Girls",
+          occurrences: 12,
+          changes: seriesChanges(tuesdays, wednesdays, PACIFIC),
+          scheduleUrl: `${APP}/dashboard/schedule`,
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "series-updated-no-previous",
+      title: "A series changed, from a notice queued before part 2 (no previous values)",
+      subject: eventNoticeSubject("updated", "Tuesday practice", 12),
+      brand: club,
+      render: () =>
+        renderSeriesUpdateEmail({
+          eventTitle: "Tuesday practice",
+          teamName: "12U Girls",
+          occurrences: 12,
+          changes: [],
+          scheduleUrl: `${APP}/dashboard/schedule`,
+          brand: club,
+        }),
     },
 
     // ── Reminders ───────────────────────────────────────────────────────────
