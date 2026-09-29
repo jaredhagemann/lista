@@ -366,6 +366,28 @@ describe("part 2: what each recipient's email carries", () => {
       expect(html).not.toContain("answer=");
     });
 
+    it("a series edit lists the editor's summary: a move to another day reads as the recurrence", async () => {
+      queue({
+        action: "updated",
+        event_id: "evt-1",
+        occurrence_count: 3,
+        snapshot: {
+          ...GAME_SNAPSHOT,
+          title: "Tuesday practice",
+          event_type: "practice",
+          series_changes: [{ field: "Recurrence", before: "Every week on Tuesday", after: "Every week on Wednesday" }],
+        },
+      });
+
+      await drainNotificationJobs();
+
+      const { subject, text, html } = sentTo("gail@example.com");
+      expect(subject).toBe("Updated: Tuesday practice — 3 events");
+      expect(text).toContain("3 events in this series changed");
+      expect(text).toMatch(/Recurrence\s+Every week on Tuesday\s+Every week on Wednesday/);
+      expect(html).not.toContain("answer=");
+    });
+
     it("a cancellation offers no answers", async () => {
       queue({ action: "cancelled", snapshot: { ...GAME_SNAPSHOT, is_cancelled: true } });
 

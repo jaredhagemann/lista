@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => {
       upsertError = e;
     },
     membership: null as unknown,
+    eventDetailProps: null as Record<string, unknown> | null,
     replace: vi.fn(),
     client: { from, auth: { getUser: async () => ({ data: { user: { id: "gail" } } }) } },
   };
@@ -61,9 +62,17 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mocks.replace, refresh: vi.fn(), push: vi.fn() }),
   usePathname: () => "/dashboard/schedule/evt-1",
 }));
-vi.mock("@/components/calendar/event-detail", () => ({ EventDetail: () => null }));
+vi.mock("@/components/calendar/event-detail", () => ({
+  EventDetail: (props: Record<string, unknown>) => {
+    mocks.eventDetailProps = props;
+    return null;
+  },
+}));
+vi.mock("@/lib/supabase/client", () => ({ createClient: () => ({}) }));
+vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import EventDetailPage from "@/app/dashboard/schedule/[eventId]/page";
+import { RsvpButtons } from "@/components/availability/rsvp-buttons";
 
 const NOW = new Date("2026-10-01T12:00:00Z");
 const EVENT = {
@@ -82,6 +91,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const key of Object.keys(mocks.tables)) delete mocks.tables[key];
   mocks.log.length = 0;
+  mocks.eventDetailProps = null;
+  window.history.replaceState(null, "", "/dashboard/schedule/evt-1");
   mocks.upserts.length = 0;
   mocks.setUpsertError(null);
   // A guardian viewing as themselves, on the team through their players.
@@ -119,10 +130,15 @@ describe("an answer link", () => {
     expect(screen.getByRole("status").textContent).toContain("You're marked Maybe");
   });
 
-  it("then takes the answer out of the address, keeping anything else", async () => {
+  it("then takes the answer out of the address, keeping anything else, without navigating away from the notice", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+
     await open({ answer: "unavailable", for: "ava", switched: "1", edit: "true" });
 
-    expect(mocks.replace).toHaveBeenCalledWith("/dashboard/schedule/evt-1?edit=true");
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/dashboard/schedule/evt-1?edit=true");
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toContain("Ava is marked Unavailable");
+    replaceState.mockRestore();
   });
 
   it("records nothing for an event that has started", async () => {
@@ -156,5 +172,38 @@ describe("an answer link", () => {
 
     expect(mocks.upserts).toEqual([]);
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+// ── The picker follows the answer (PR #96 review, P2) ─────────────────────────
+
+describe("after answering for another of your players", () => {
+  beforeEach(() => {
+    // The guardian is viewing as Ava; the email answer was for Zoey.
+    mocks.membership = { team_id: "team-1", role: "player", profile_id: "ava", teams: { id: "team-1", name: "12U Girls" } };
+    mocks.tables.profiles = { first_name: "Zoey" };
+  });
+
+  it("the page's picker answers for that player, and says whose it is", async () => {
+    await open({ answer: "maybe", for: "zoey" });
+
+    expect(mocks.eventDetailProps?.currentUserId).toBe("zoey");
+    expect(mocks.eventDetailProps?.answeringFor).toBe("Zoey");
+  });
+
+  it("stays on whoever the viewer is answering as when the answer wasn't recorded", async () => {
+    mocks.setUpsertError({ message: "row-level security" });
+
+    await open({ answer: "maybe", for: "zoey" });
+
+    expect(mocks.eventDetailProps?.currentUserId).toBe("ava");
+    expect(mocks.eventDetailProps?.answeringFor ?? null).toBeNull();
+  });
+
+  it("the picker is labelled with that player's name", () => {
+    render(<RsvpButtons eventId="evt-1" profileId="zoey" initialStatus="maybe" answeringFor="Zoey" />);
+
+    expect(screen.getByText("Zoey's availability")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Zoey's availability" })).toBeTruthy();
   });
 });

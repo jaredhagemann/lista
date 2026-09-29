@@ -18,6 +18,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { getRecurrenceDescription, parseRRule } from "@/lib/utils/rrule";
+import { SERIES_FIELD_LABELS, seriesEditSummary } from "@/lib/events/series-summary";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import { formatEventTime, formatShortEventDate, formatZoneName } from "@/lib/notifications/event-time";
 import { TimeZoneSelect } from "./time-zone-select";
@@ -252,6 +253,17 @@ export function SeriesEditForm({
     }
 
     const changes = describeChanges(fields, timeChanged, zoneChanged, changedPattern ? plan.newHeadRule : null);
+    // The same review as text, so the edit's one notice can list what changed (PR #96 review).
+    plan.summary = seriesEditSummary({
+      plan,
+      fields,
+      anchor,
+      describe: (key, value) => describeSeriesValue(key, value, { team, locations, newLocationName }),
+      seriesZone,
+      newZone: zoneChanged ? timeZone : undefined,
+      oldRule: head.recurrence_rule!,
+      patternChanged: changedPattern,
+    });
 
     // Show what will happen before cancelling or adding occurrences (D4).
     if (plan.cancels.length > 0 || plan.inserts.length > 0) {
@@ -269,16 +281,7 @@ export function SeriesEditForm({
     zoneChanged: boolean,
     newRule: string | null
   ): FieldChange[] {
-    const labels: Record<string, string> = {
-      title: "Title",
-      event_type: "Type",
-      location_id: "Location",
-      notes: "Notes",
-      arrival_time: "Arrival time",
-      opponent: "Opponent",
-      home_away: "Home / away",
-      uniform: "Uniform",
-    };
+    const labels = SERIES_FIELD_LABELS;
     // A uniform shows as it does on the schedule; anything else by name (spec:
     // game-display-and-uniform-colors), never the stored "home" / "away".
     const show = (key: string, value: unknown): React.ReactNode => {

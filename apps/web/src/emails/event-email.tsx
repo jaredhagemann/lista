@@ -12,6 +12,7 @@ import {
 } from "@/emails/layout";
 import type { EmailBrand } from "@/emails/brand";
 import { displayLabel } from "@/lib/labels";
+import { AVAILABILITY, type AvailabilityStatus } from "@/lib/availability/status";
 import { gameTitle, homeAwayLabel, type Uniform } from "@/lib/events/game-display";
 import { formatEventDate, formatEventTime, formatEventTimeRange, resolveTimeZone } from "@/lib/notifications/event-time";
 
@@ -25,13 +26,13 @@ const ACTIONS: Record<EventEmailAction, { label: string; tone: BadgeTone }> = {
   reminder: { label: "Event Reminder", tone: "blue" },
 };
 
-export type AvailabilityStatus = "available" | "maybe" | "unavailable";
+export type { AvailabilityStatus };
 
-/** The app's own words and colors for an answer (components/availability/availability-picker). */
+/** The app's own words for an answer, in email-safe colors matching its green, amber and red. */
 const ANSWERS: Record<AvailabilityStatus, { label: string; symbol: string; color: string; border: string; text: string }> = {
-  available: { label: "Available", symbol: "✓", color: "#16a34a", border: "#86efac", text: "#15803d" },
-  maybe: { label: "Maybe", symbol: "?", color: "#f59e0b", border: "#fcd34d", text: "#b45309" },
-  unavailable: { label: "Unavailable", symbol: "✗", color: "#dc2626", border: "#fca5a5", text: "#b91c1c" },
+  available: { ...AVAILABILITY.available, color: "#16a34a", border: "#86efac", text: "#15803d" },
+  maybe: { ...AVAILABILITY.maybe, color: "#f59e0b", border: "#fcd34d", text: "#b45309" },
+  unavailable: { ...AVAILABILITY.unavailable, color: "#dc2626", border: "#fca5a5", text: "#b91c1c" },
 };
 
 /**
@@ -54,6 +55,8 @@ export type PreviousEvent = {
   endTime: string;
   arrivalTime: number | null;
   location: string | null;
+  /** The zone the event was in: previous times read as recipients were told them (PR #96 review). */
+  timeZone?: string | null;
 };
 
 const NOTES_LIMIT = 280;
@@ -106,21 +109,23 @@ export function EventEmail({
   });
   const cancelled = action === "cancelled";
 
-  const arriveBy = (start: string, minutes: number | null | undefined) =>
-    minutes != null ? formatEventTime(new Date(new Date(start).getTime() - minutes * 60 * 1000), zone) : null;
+  const arriveBy = (start: string, minutes: number | null | undefined, inZone: string) =>
+    minutes != null ? formatEventTime(new Date(new Date(start).getTime() - minutes * 60 * 1000), inZone) : null;
 
   // Each row's value now, and before the change when there was one.
   const now = {
     date: formatEventDate(startTime, zone),
     time: formatEventTimeRange(startTime, endTime, zone),
-    arrive: arriveBy(startTime, arrivalTime),
+    arrive: arriveBy(startTime, arrivalTime, zone),
     location: location ?? null,
   };
+  // In the zone it was in, so a move from Pacific to Mountain reads as it was told.
+  const beforeZone = resolveTimeZone(previous?.timeZone ?? timeZone);
   const before = previous
     ? {
-        date: formatEventDate(previous.startTime, zone),
-        time: formatEventTimeRange(previous.startTime, previous.endTime, zone),
-        arrive: arriveBy(previous.startTime, previous.arrivalTime),
+        date: formatEventDate(previous.startTime, beforeZone),
+        time: formatEventTimeRange(previous.startTime, previous.endTime, beforeZone),
+        arrive: arriveBy(previous.startTime, previous.arrivalTime, beforeZone),
         location: previous.location ?? null,
       }
     : null;
@@ -133,6 +138,8 @@ export function EventEmail({
         <>
           <strong>{shown}</strong>
           <br />
+          {/* "Was" is words, not just a strikethrough, so plain text keeps the difference. */}
+          <span style={{ color: "#9ca3af" }}>Was </span>
           <span style={{ textDecoration: "line-through", color: "#9ca3af" }}>{old ?? "—"}</span>
         </>
       );

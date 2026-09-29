@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { saveAvailability, AVAILABILITY, type AvailabilityStatus } from "@/components/availability/availability-picker";
+import { saveAvailability, AVAILABILITY, type AvailabilityStatus } from "@/lib/availability/status";
 
 /**
  * An answer given from an email link (spec: docs/specs/email-upgrade.md §4.7,

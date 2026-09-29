@@ -19,6 +19,7 @@ export function EventAvailability({
   availabilityRows,
   isAdmin,
   currentUserId,
+  answeringFor,
 }: {
   eventId: string;
   isPast: boolean;
@@ -27,6 +28,8 @@ export function EventAvailability({
   isAdmin: boolean;
   /** Whoever the viewer is answering as: themselves, or the child they are viewing as. */
   currentUserId: string;
+  /** That player's first name, when it's another of the viewer's players than the one they're viewing as. */
+  answeringFor?: string | null;
 }) {
   const [ownStatus, setOwnStatus] = useState<AvailabilityStatus | null>(
     () => availabilityRows.find((r) => r.profileId === currentUserId)?.status ?? null
@@ -40,6 +43,7 @@ export function EventAvailability({
           profileId={currentUserId}
           initialStatus={ownStatus}
           onStatusChange={setOwnStatus}
+          answeringFor={answeringFor}
         />
       )}
       {isPast && (

@@ -310,3 +310,51 @@ describe("the series email", () => {
     expect(text).not.toMatch(/Before\s+After/);
   });
 });
+
+// ── Previous values: their own zone, and labelled (PR #96 review) ─────────────
+
+describe("an update's previous values", () => {
+  // Moved from Pacific to Mountain at the same wall-clock time, 4:00 PM.
+  const MOVED = {
+    ...GAME,
+    startTime: "2026-10-03T22:00:00Z",
+    endTime: "2026-10-03T23:30:00Z",
+    timeZone: "America/Denver",
+    action: "updated" as const,
+    previous: {
+      startTime: "2026-10-03T23:00:00Z",
+      endTime: "2026-10-04T00:30:00Z",
+      arrivalTime: 45,
+      location: "Damon-Garcia Sports Fields",
+      timeZone: "America/Los_Angeles",
+    },
+  };
+
+  it("are shown in the zone they were given in", async () => {
+    const { text } = await renderEventEmail(MOVED);
+
+    expect(text).toContain("4:00 PM – 5:30 PM MDT");
+    expect(text).toContain("Was 4:00 PM – 5:30 PM PDT");
+    expect(text).not.toContain("5:00 PM – 6:30 PM MDT");
+  });
+
+  it("read as previous in plain text, not as a second current value", async () => {
+    const { text } = await renderEventEmail({
+      ...GAME,
+      action: "updated",
+      previous: { startTime: "2026-10-03T16:00:00Z", endTime: "2026-10-03T17:30:00Z", arrivalTime: 45, location: "Islay Park" },
+    });
+
+    expect(text).toContain("Was 9:00 AM – 10:30 AM PDT");
+    expect(text).toContain("Was Islay Park");
+  });
+
+  it("in a series, each side is in its own zone", () => {
+    const pacific = { ...TUESDAY };
+    const mountain = { ...TUESDAY, start_time: "2026-09-29T22:00:00Z", end_time: "2026-09-29T23:30:00Z", timezone: "America/Denver" };
+
+    expect(seriesChanges(pacific, mountain, "America/Denver")).toEqual([
+      { field: "Time", before: "4:00 PM – 5:30 PM PDT", after: "4:00 PM – 5:30 PM MDT" },
+    ]);
+  });
+});

@@ -1,21 +1,20 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { CheckCircle2, Info } from "lucide-react";
 import { describeEmailAnswer, type EmailAnswerNotice as Notice } from "@/lib/availability/email-answer";
 
 /**
  * What happened to an answer given from an email link (spec: email-upgrade
  * §4.7, D7). Once shown, the answer comes out of the address, so a reload
- * can't overwrite a change made on the page since.
+ * can't overwrite a change made on the page since. It's replaced in the
+ * browser's history, not navigated to: a navigation would render the page
+ * again without the answer, and this notice with it (PR #96 review).
  */
 export function EmailAnswerNotice({ notice, cleanPath }: { notice: Notice; cleanPath: string }) {
-  const router = useRouter();
-
   useEffect(() => {
-    router.replace(cleanPath);
-  }, [router, cleanPath]);
+    window.history.replaceState(null, "", cleanPath);
+  }, [cleanPath]);
 
   const recorded = notice.kind === "recorded";
   const Icon = recorded ? CheckCircle2 : Info;

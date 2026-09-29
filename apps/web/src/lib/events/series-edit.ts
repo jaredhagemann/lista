@@ -94,6 +94,11 @@ export interface SeriesEditPlan {
   reparent: string[];
   /** Start times (ISO) for a confirmation preview. */
   preview: { updated: string[]; cancelled: string[]; added: string[]; unchanged: string[] };
+  /**
+   * What changed, as text (seriesEditSummary): the one notice for the edit lists
+   * it (PR #96 review). Set by the editor after planning.
+   */
+  summary?: Array<{ field: string; before: string; after: string }>;
 }
 
 export class SeriesEditError extends Error {}

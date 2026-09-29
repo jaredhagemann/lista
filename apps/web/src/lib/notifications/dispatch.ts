@@ -37,6 +37,11 @@ export type EventSnapshot = {
    * what-changed. Absent from jobs queued before it was recorded.
    */
   previous?: EventSnapshot | null;
+  /**
+   * A series edit's own summary of what changed (apply_series_edit, PR #96
+   * review): the recurrence, time, zone and fields, as the coach confirmed them.
+   */
+  series_changes?: FieldChange[] | null;
 };
 
 export type NotificationJob = {
@@ -241,15 +246,18 @@ export function seriesChanges(
     if (before !== after) changes.push({ field, before, after });
   };
 
-  const day = (instant: string) =>
-    `${new Date(instant).toLocaleDateString("en-US", { weekday: "long", timeZone })}s`;
+  // Each side in its own zone, so the before reads as recipients were told it (PR #96 review).
+  const beforeZone = previous.timezone ?? timeZone;
+  const afterZone = current.timezone ?? timeZone;
+  const day = (instant: string, zone: string) =>
+    `${new Date(instant).toLocaleDateString("en-US", { weekday: "long", timeZone: zone })}s`;
   const arrive = (minutes: number | null) => (minutes != null ? `${minutes} min early` : "None");
 
-  add("Day", day(previous.start_time), day(current.start_time));
+  add("Day", day(previous.start_time, beforeZone), day(current.start_time, afterZone));
   add(
     "Time",
-    formatEventTimeRange(previous.start_time, previous.end_time, timeZone),
-    formatEventTimeRange(current.start_time, current.end_time, timeZone)
+    formatEventTimeRange(previous.start_time, previous.end_time, beforeZone),
+    formatEventTimeRange(current.start_time, current.end_time, afterZone)
   );
   add("Arrive", arrive(previous.arrival_time), arrive(current.arrival_time));
   add("Location", previous.location_name ?? "None", current.location_name ?? "None");

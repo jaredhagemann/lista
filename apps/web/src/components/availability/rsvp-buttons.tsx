@@ -15,9 +15,16 @@ export function RsvpButtons({
   profileId,
   initialStatus,
   onStatusChange,
+  answeringFor,
 }: {
   eventId: string;
   profileId: string;
+  /**
+   * A player's first name when the picker answers for someone other than
+   * whoever the viewer is answering as: after an email answer for another of
+   * their players (PR #96 review). Labels it "Zoey's availability".
+   */
+  answeringFor?: string | null;
   initialStatus: AvailabilityStatus | null;
   /** Told of every change, including a failed save being put back, so the page can show the answer elsewhere. */
   onStatusChange?: (status: AvailabilityStatus | null) => void;
@@ -43,10 +50,12 @@ export function RsvpButtons({
     setLoading(false);
   }
 
+  const label = answeringFor ? `${answeringFor}'s availability` : "Your availability";
+
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium">Your availability</p>
-      <AvailabilityPicker label="Your availability" status={status} disabled={loading} onChoose={handleClick} />
+      <p className="text-sm font-medium">{label}</p>
+      <AvailabilityPicker label={label} status={status} disabled={loading} onChoose={handleClick} />
       <p className="text-xs text-muted-foreground">
         ✓ Available &nbsp;·&nbsp; ? Maybe &nbsp;·&nbsp; ✗ Unavailable
         {status && " · tap again to clear"}

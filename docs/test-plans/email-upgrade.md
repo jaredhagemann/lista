@@ -82,7 +82,7 @@ two players and a coach:
    "[Player] is marked Available". The address no longer carries `?answer=`.
 4. **Tap an answer for a team that isn't your active one.** The app switches to that team and records it.
 5. **Tap an answer after the event has started.** Nothing is recorded, and the page says why.
-6. **Edit a whole series** to another day and time. The email lists Day and Time, before and after.
+6. **Edit a whole series** to another day and time. One email arrives, not a cancellation, and it lists Recurrence and Time, before and after.
 7. **Cancel the game.** The details are struck through, and there are no answer buttons.
 8. **Send a guardian invitation.** It says "Guardian" and "as [player]'s guardian".
 

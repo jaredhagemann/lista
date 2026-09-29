@@ -210,6 +210,7 @@ function appUrl() {
 function asksForAnswers(job: NotificationJob): boolean {
   return (
     job.occurrence_count <= 1 &&
+    !job.snapshot.series_changes &&
     job.event_id != null &&
     (job.action === "created" || job.action === "updated" || job.action === "restored")
   );
@@ -219,12 +220,13 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
   const { name: teamName, brand } = team;
   // A bulk operation gets one summary for the team rather than one mail per
   // occurrence, so it uses the series template.
-  if (job.occurrence_count > 1) {
+  if (job.occurrence_count > 1 || job.snapshot.series_changes) {
     return renderSeriesUpdateEmail({
       eventTitle: job.snapshot.title,
       teamName,
       occurrences: job.occurrence_count,
-      changes: seriesChanges(job.snapshot.previous, job.snapshot, timeZone),
+      // A series edit says what it changed; a bulk update of rows is compared row by row.
+      changes: job.snapshot.series_changes ?? seriesChanges(job.snapshot.previous, job.snapshot, timeZone),
       scheduleUrl: `${appUrl()}/dashboard/schedule`,
       brand,
     });
@@ -252,6 +254,7 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
           endTime: job.snapshot.previous.end_time,
           arrivalTime: job.snapshot.previous.arrival_time,
           location: job.snapshot.previous.location_name,
+          timeZone: job.snapshot.previous.timezone,
         }
       : null,
     answers,

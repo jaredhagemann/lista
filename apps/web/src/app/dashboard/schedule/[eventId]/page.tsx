@@ -86,14 +86,17 @@ export default async function EventDetailPage({
   // back so the page already shows it (email-upgrade §4.7, D7). Without a
   // `for`, it's for whoever the viewer is answering as here.
   const answer = query.answer;
+  const answerFor = typeof query.for === "string" && query.for ? query.for : activeProfileId;
   const emailAnswer = isAnswer(answer)
-    ? await recordEmailAnswer(supabase, {
-        event,
-        answer,
-        forProfileId: typeof query.for === "string" && query.for ? query.for : activeProfileId,
-        userId: user.id,
-      })
+    ? await recordEmailAnswer(supabase, { event, answer, forProfileId: answerFor, userId: user.id })
     : null;
+  // Recorded for another of the viewer's players than the one they're viewing
+  // as: the page's picker answers for that player, and says so, or the viewer
+  // would go on to change the wrong child's answer (PR #96 review). Recorded
+  // means the database let them answer for that player.
+  const answeredOther = emailAnswer?.kind === "recorded" && answerFor !== activeProfileId;
+  const pickerProfileId = answeredOther ? answerFor : activeProfileId;
+  const answeringFor = answeredOther && answerFor !== user.id ? emailAnswer.who : null;
   // The same address without the answer, for the notice to put back once shown.
   const kept = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -150,7 +153,8 @@ export default async function EventDetailPage({
           away_uniform_color: team.away_uniform_color,
         }}
         teamTimeZone={team.timezone ?? null}
-        currentUserId={activeProfileId}
+        currentUserId={pickerProfileId}
+        answeringFor={answeringFor}
         availabilityRows={availabilityData}
         members={membersData}
       />

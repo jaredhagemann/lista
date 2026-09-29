@@ -33,7 +33,7 @@ import {
   paymentFailedSubject,
   trialConvertedSubject,
 } from "@/lib/notifications/email";
-import { eventNoticeSubject, reminderSubject, seriesChanges, type EventSnapshot } from "@/lib/notifications/dispatch";
+import { eventNoticeSubject, reminderSubject } from "@/lib/notifications/dispatch";
 
 /**
  * Every email the app sends, in each of its variants, with sample data: the
@@ -151,24 +151,17 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
   const accepted = ownershipChangedNotice({ clubName: "SLOFC", nextName: "Dana Director", how: "accepted" });
   const recovered = ownershipChangedNotice({ clubName: "SLOFC", nextName: "Dana Director", how: "recovered" });
   const closed = clubClosedNotice({ clubName: "SLOFC", firstName: "Ava" });
-  const tuesdays: EventSnapshot = {
-    title: "Tuesday practice",
-    event_type: "practice",
-    start_time: "2026-09-29T23:00:00Z",
-    end_time: "2026-09-30T00:30:00Z",
-    arrival_time: 15,
-    location_id: "islay",
-    location_name: "Islay Park",
-    is_cancelled: false,
-    timezone: PACIFIC,
-  };
-  const wednesdays: EventSnapshot = {
-    ...tuesdays,
-    start_time: "2026-10-01T00:00:00Z",
-    end_time: "2026-10-01T01:30:00Z",
-    location_id: "sinsheimer",
-    location_name: "Sinsheimer Park",
-  };
+  // What the series editor sends with a move from Tuesdays 4:00 to Wednesdays
+  // 5:00 at a new park: its own summary, as the coach confirmed it (PR #96 review).
+  const seriesMove = [
+    { field: "Location", before: "Islay Park", after: "Sinsheimer Park" },
+    { field: "Time", before: "4:00 PM – 5:30 PM PDT", after: "5:00 PM – 6:30 PM PDT" },
+    {
+      field: "Recurrence",
+      before: "Every week on Tuesday",
+      after: "Every week on Wednesday",
+    },
+  ];
   const billing = `${APP}/dashboard/club/billing`;
   const upgrade = `${APP}/dashboard/club/upgrade`;
 
@@ -307,7 +300,7 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
           eventTitle: "Tuesday practice",
           teamName: "12U Girls",
           occurrences: 12,
-          changes: seriesChanges(tuesdays, wednesdays, PACIFIC),
+          changes: seriesMove,
           scheduleUrl: `${APP}/dashboard/schedule`,
           brand: club,
         }),
