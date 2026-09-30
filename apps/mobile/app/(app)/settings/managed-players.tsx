@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { useAppContext } from "../../../contexts/AppContext";
 import { useSession } from "../../_layout";
+import { displayLabel } from "../../../lib/labels";
 
 type ManagedPlayer = {
   id: string;
@@ -136,7 +137,7 @@ export default function ManagedPlayersScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.playerName}>{name}</Text>
                       {p.relationship ? (
-                        <Text style={styles.playerSub}>{p.relationship}</Text>
+                        <Text style={styles.playerSub}>{displayLabel(p.relationship)}</Text>
                       ) : null}
                       {p.birthday ? (
                         <Text style={styles.playerSub}>Born {p.birthday}</Text>
@@ -270,7 +271,7 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontSize: 13, fontWeight: "700", color: "#374151" },
   playerName: { fontSize: 15, fontWeight: "600", color: "#111827" },
-  playerSub: { fontSize: 12, color: "#9ca3af", marginTop: 1, textTransform: "capitalize" },
+  playerSub: { fontSize: 12, color: "#9ca3af", marginTop: 1 },
   separator: { height: 1, backgroundColor: "#f9fafb", marginLeft: 16 },
   formTitle: {
     fontSize: 15,

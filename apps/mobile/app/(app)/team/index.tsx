@@ -15,6 +15,7 @@ import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { useAppContext } from "../../../contexts/AppContext";
+import { displayLabel } from "../../../lib/labels";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -316,7 +317,7 @@ export default function TeamScreen() {
                 ) : (
                   <View style={styles.roleBadge}>
                     <Text style={styles.roleBadgeText} numberOfLines={1}>
-                      {item.role}
+                      {displayLabel(item.role)}
                     </Text>
                   </View>
                 )}
@@ -424,7 +425,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: "#374151",
-    textTransform: "capitalize",
   },
   ownerBadge: {
     borderWidth: 1,
@@ -437,7 +437,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: "#d97706",
-    textTransform: "capitalize",
   },
   invitedBadge: {
     flexDirection: "row",

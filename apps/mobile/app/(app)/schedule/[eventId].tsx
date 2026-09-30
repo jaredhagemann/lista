@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { arrivalInstant, eventZone, formatEventClock, formatEventDateTime } from "../../../lib/event-time";
 import { useAppContext } from "../../../contexts/AppContext";
+import { displayLabel } from "../../../lib/labels";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 
@@ -234,10 +235,9 @@ export default function EventDetailScreen() {
                   color: event.event_type === "game" ? "#15803d" : event.event_type === "practice" ? "#1d4ed8" : "#7e22ce",
                   fontSize: 12,
                   fontWeight: "600",
-                  textTransform: "capitalize",
                 }}
               >
-                {event.event_type}
+                {displayLabel(event.event_type)}
               </Text>
             </View>
             {event.is_cancelled ? (

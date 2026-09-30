@@ -20,6 +20,7 @@ import * as Crypto from "expo-crypto";
 import { useAppContext } from "../../../contexts/AppContext";
 import { useSession } from "../../_layout";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { displayLabel } from "../../../lib/labels";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -218,7 +219,7 @@ function NewDmSheet({
                             {mgr.firstName} {mgr.lastName}
                           </Text>
                           {mgr.relationship && (
-                            <Text style={styles.managerHint}>{mgr.relationship}</Text>
+                            <Text style={styles.managerHint}>{displayLabel(mgr.relationship)}</Text>
                           )}
                           {loading === mgr.profileId && (
                             <ActivityIndicator size="small" color="#0f172a" />
@@ -392,7 +393,7 @@ function NewGroupSheet({
                               {mgr.firstName} {mgr.lastName}
                             </Text>
                             {mgr.relationship && (
-                              <Text style={styles.managerHint}>{mgr.relationship}</Text>
+                              <Text style={styles.managerHint}>{displayLabel(mgr.relationship)}</Text>
                             )}
                             <Ionicons
                               name={isSel ? "checkmark-circle" : "ellipse-outline"}
@@ -937,7 +938,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   createButtonText: { color: "#fff", fontSize: 15, fontWeight: "600" },
-  managerHint: { fontSize: 11, color: "#9ca3af", textTransform: "capitalize" },
+  managerHint: { fontSize: 11, color: "#9ca3af" },
   subList: {
     marginLeft: 52,
     marginBottom: 4,

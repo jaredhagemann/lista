@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext, type TeamMemberRow } from "../contexts/AppContext";
+import { displayLabel } from "../lib/labels";
+import { teamBranding } from "../lib/team-branding";
 
 function teamInitials(name: string) {
   return name
@@ -150,16 +152,17 @@ export function SwitcherSheet({
               ) : (
                 teamRows.map(([teamId, { team, profileCount, role }]) => {
                   const isActive = teamId === membership?.teamId;
+                  const brand = teamBranding(team);
                   return (
                     <TouchableOpacity
                       key={teamId}
                       style={[styles.row, isActive && styles.rowActive]}
                       onPress={() => handleTeamPress(teamId)}
                     >
-                      <TeamAvatar name={team.name} logoUrl={team.logo_url} />
+                      <TeamAvatar name={team.name} logoUrl={brand.logoUrl} />
                       <View style={styles.rowText}>
                         <Text style={styles.rowTitle} numberOfLines={1}>
-                          {team.name}
+                          {brand.displayName}
                         </Text>
                         <Text style={styles.rowSub}>
                           {team.season
@@ -167,7 +170,7 @@ export function SwitcherSheet({
                             : ""}
                           {profileCount > 1
                             ? `${profileCount} profiles`
-                            : role}
+                            : displayLabel(role)}
                         </Text>
                       </View>
                       {isActive && (
@@ -232,7 +235,7 @@ export function SwitcherSheet({
                             {name}
                           </Text>
                           <Text style={styles.rowSub}>
-                            {m.role} · {label}
+                            {displayLabel(m.role)} · {displayLabel(label)}
                           </Text>
                         </View>
                         {isActiveProfile && (
@@ -333,7 +336,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     marginTop: 1,
-    textTransform: "capitalize",
   },
   profileAvatar: {
     width: 36,

@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { eventZone, formatEventClock, formatEventDay } from "../../../lib/event-time";
 import { useAppContext } from "../../../contexts/AppContext";
+import { displayLabel } from "../../../lib/labels";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -303,7 +304,7 @@ export default function ScheduleScreen() {
                 <View style={styles.rightCol}>
                   <View style={[styles.typePill, { backgroundColor: badge.bg }]}>
                     <Text style={[styles.typePillText, { color: badge.text }]}>
-                      {event.event_type}
+                      {displayLabel(event.event_type)}
                     </Text>
                   </View>
 
@@ -417,7 +418,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 99,
   },
-  typePillText: { fontSize: 11, fontWeight: "600", textTransform: "capitalize" },
+  typePillText: { fontSize: 11, fontWeight: "600" },
   cancelledPill: {
     backgroundColor: "#fee2e2",
     paddingHorizontal: 8,

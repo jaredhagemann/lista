@@ -61,7 +61,7 @@ export function TeamProfileStrip() {
             <View style={styles.skeletonTitle} />
           ) : (
             <Text style={styles.teamName} numberOfLines={1}>
-              {membership?.teamName ?? "No team"}
+              {membership?.displayName ?? "No team"}
             </Text>
           )}
           {!loading && isViewingManaged ? (

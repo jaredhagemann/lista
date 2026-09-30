@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../lib/supabase";
 import { eventZone, formatEventClock, formatEventDay } from "../../lib/event-time";
 import { useAppContext } from "../../contexts/AppContext";
+import { displayLabel } from "../../lib/labels";
 
 type Event = {
   id: string;
@@ -213,9 +214,9 @@ export default function HomeScreen() {
                       >
                         <Text
                           style={{ color: badge.text, fontSize: 12 }}
-                          className="font-medium capitalize"
+                          className="font-medium"
                         >
-                          {event.event_type}
+                          {displayLabel(event.event_type)}
                         </Text>
                       </View>
                     </View>

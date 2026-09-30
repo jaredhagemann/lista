@@ -15,6 +15,7 @@ import { useLocalSearchParams, useNavigation, useRouter, useFocusEffect } from "
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { useAppContext } from "../../../contexts/AppContext";
+import { displayLabel } from "../../../lib/labels";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -225,7 +226,7 @@ export default function MemberDetailScreen() {
           )}
           <Text style={styles.name}>{fullName}</Text>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{member.role}</Text>
+            <Text style={styles.roleBadgeText}>{displayLabel(member.role)}</Text>
           </View>
         </View>
 
@@ -290,7 +291,7 @@ export default function MemberDetailScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.managerName}>{mgrName}</Text>
                     {mgr.relationship ? (
-                      <Text style={styles.managerRelationship}>{mgr.relationship}</Text>
+                      <Text style={styles.managerRelationship}>{displayLabel(mgr.relationship)}</Text>
                     ) : null}
                     {mgr.profiles.email ? (
                       <Text style={styles.managerEmail}>{mgr.profiles.email}</Text>
@@ -309,7 +310,7 @@ export default function MemberDetailScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.managerEmail}>{inv.email}</Text>
                   {inv.relationship ? (
-                    <Text style={styles.managerRelationship}>{inv.relationship}</Text>
+                    <Text style={styles.managerRelationship}>{displayLabel(inv.relationship)}</Text>
                   ) : null}
                 </View>
                 <TouchableOpacity
@@ -342,7 +343,7 @@ export default function MemberDetailScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.managerName}>{mgrName}</Text>
-                    <Text style={styles.managerRelationship}>{mgr.relationship}</Text>
+                    <Text style={styles.managerRelationship}>{displayLabel(mgr.relationship)}</Text>
                     {mgr.profiles.email ? (
                       <Text style={styles.managerEmail}>{mgr.profiles.email}</Text>
                     ) : null}
@@ -398,7 +399,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#374151",
-    textTransform: "capitalize",
   },
   card: {
     backgroundColor: "#ffffff",
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
   },
   managerAvatarText: { fontSize: 12, fontWeight: "700", color: "#374151" },
   managerName: { fontSize: 14, fontWeight: "600", color: "#111827" },
-  managerRelationship: { fontSize: 12, color: "#9ca3af", textTransform: "capitalize" },
+  managerRelationship: { fontSize: 12, color: "#9ca3af" },
   managerEmail: { fontSize: 12, color: "#6b7280", marginTop: 1 },
   managerRowPending: { opacity: 0.7 },
   cardHeader: {
