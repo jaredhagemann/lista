@@ -156,6 +156,23 @@ Files: `lib/game-display.ts`, `components/UniformLabel.tsx`, `app/(app)/index.ts
 `app/(app)/schedule/index.tsx`, `app/(app)/schedule/[eventId].tsx`, `__tests__/game-display.test.ts`,
 `__tests__/GameDisplayScreens.test.tsx`.
 
+### Availability on the event screen, as on the web (trimmed) — [spec §1](../specs/mobile-next-build.md)
+
+**Installed build:** the response list counts everyone who answered, coaches included, in one list, and your
+own row doesn't move when you answer. The roster is the team the app has open, so an event opened from
+another team's notification lists the wrong people. A failed save is undone without a word. The third
+answer reads "Can't go".
+
+**New build:** players are grouped by answer (Available, Maybe, Unavailable, No response) and only they count
+in the summary ("3 available · 1 maybe"). Coaches, managers, parents and directors are listed apart under
+"Coaches & staff" with their answer and role. The roster is the event's own team. Answering moves your row
+at once, tapping the answer again clears it, and a failed save is undone with a message. The answers read
+Available, Maybe, Unavailable, as on the web (`lib/availability.ts`, the web's rules). Coaches answering for
+players stays on the web for now (spec §1).
+
+Files: `lib/availability.ts`, `app/(app)/schedule/[eventId].tsx`, `__tests__/availability.test.ts`,
+`__tests__/AvailabilityScreen.test.tsx`.
+
 ---
 
 ## Before shipping
@@ -189,6 +206,10 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   screen, the schedule and the event screen's heading, and the event screen's Game details show a white pill
   with a visible border. With a long opponent and uniform name, and iOS text size set large, the values wrap
   inside the card.
+- **Availability:** as a player (or viewing as one), on an event with a coach, answer Available: your name moves to Available and
+  the summary counts it; tap again and it returns to No response. The coach is listed under "Coaches & staff"
+  and isn't counted. Open an event of a team the app doesn't have open (from a notification): the roster is
+  that team's.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
