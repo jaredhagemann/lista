@@ -12,7 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSession } from "../_layout";
 import { storePendingInvite } from "../_layout";
 import { supabase } from "../../lib/supabase";
-import { buildAcceptBody, type Identity } from "../../lib/invite-accept";
+import { buildAcceptBody, inviteCopy, type Identity } from "../../lib/invite-accept";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -84,6 +84,7 @@ export default function InviteScreen() {
 
     const built = buildAcceptBody({
       isManagerInvite: invite.isManagerInvite,
+      isDirectorInvite: invite.role === "director",
       identity,
       relationship,
       existingChildId,
@@ -146,12 +147,15 @@ export default function InviteScreen() {
     );
   }
 
+  // What this invitation says: a club directorship reads as one (BUG-029).
+  const copy = inviteCopy(invite);
+
   // ── Accepted ────────────────────────────────────────────────────────────
   if (accepted) {
     return (
       <SafeAreaView style={styles.center}>
         <Text style={styles.successTitle}>You're in!</Text>
-        <Text style={styles.successBody}>You've joined {invite.teamName}.</Text>
+        <Text style={styles.successBody}>{copy.joined}</Text>
         <TouchableOpacity
           style={styles.button}
           onPress={() => router.replace("/(app)")}
@@ -168,7 +172,7 @@ export default function InviteScreen() {
       <SafeAreaView style={styles.center}>
         <View style={styles.card}>
           <Text style={styles.teamName}>{invite.teamName}</Text>
-          <Text style={styles.roleLabel}>You've been invited as {invite.role}</Text>
+          <Text style={styles.roleLabel}>{copy.invitedAs}</Text>
           <Text style={styles.signInPrompt}>
             Sign in or create an account to accept this invitation.
           </Text>
@@ -201,12 +205,8 @@ export default function InviteScreen() {
       <View style={styles.card}>
         <Text style={styles.inviteHeading}>You're invited!</Text>
         <Text style={styles.teamName}>{invite.teamName}</Text>
-        <Text style={styles.roleLabel}>
-          {invite.isManagerInvite
-            ? "You've been invited to manage a player on this team"
-            : `Role: ${invite.role}`}
-        </Text>
-        {!invite.isManagerInvite && (
+        <Text style={styles.roleLabel}>{copy.roleLine}</Text>
+        {copy.asksWhoYouAre && (
           <View style={styles.choiceBlock}>
             <Text style={styles.choiceHeading}>
               {invite.playerName ? `Are you ${invite.playerName}?` : "Who is joining?"}
@@ -300,7 +300,7 @@ export default function InviteScreen() {
           {accepting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>Accept & join team</Text>
+            <Text style={styles.buttonText}>{copy.acceptLabel}</Text>
           )}
         </TouchableOpacity>
         <TouchableOpacity

@@ -96,6 +96,16 @@ long before this build. The installed app ignores the new field.
 
 Files: `lib/account-deletion.ts`, `app/(app)/settings/index.tsx`, `__tests__/account-deletion.test.ts`.
 
+### A club director invitation reads as one — [BUG-029](../bugs/fixed/029-mobile-director-invitation.md)
+
+**Installed build:** a director invitation shows as a team invitation: "Role: director", then "Who is
+joining?" with player and guardian choices.
+
+**New build:** "Help run SLOFC as a director", no identity question, accepted as the signed-in person. Team
+roles read capitalized ("Role: Player").
+
+Files: `lib/invite-accept.ts`, `app/invite/[id].tsx`, `__tests__/invite-accept.test.ts`.
+
 ---
 
 ## Before shipping
@@ -119,6 +129,8 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   device — the Jest run uses Node's `Intl`, not Hermes.
 - **BUG-028:** as a club owner whose browser last had another club's team (or a non-club team) open, tap
   Delete Account: the message names the club, and the button opens *that* club's settings on the web.
+- **BUG-029:** open a director invitation in the app: it reads as helping run the club, asks nothing about
+  players, and accepting makes you a director.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
