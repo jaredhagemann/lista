@@ -170,6 +170,12 @@ at once, tapping the answer again clears it, and a failed save is undone with a 
 Available, Maybe, Unavailable, as on the web (`lib/availability.ts`, the web's rules). Coaches answering for
 players stays on the web for now (spec §1).
 
+**Who answers:** the picker answers for a profile of yours on the event's team, which may not be the one being
+viewed: a parent viewing Ava who opens Bea's event (another team) answers for Bea, and the heading says so
+("Availability for Bea Diaz"). When several of yours are on the team (siblings), it asks which, and the picker
+waits until one is chosen. When none are, it says there's nothing to answer. The installed build always
+answers as the profile being viewed, which the database refuses for another team's event.
+
 Files: `lib/availability.ts`, `app/(app)/schedule/[eventId].tsx`, `__tests__/availability.test.ts`,
 `__tests__/AvailabilityScreen.test.tsx`.
 
@@ -209,7 +215,8 @@ Each of these is the check recorded on its ticket, and none of them can be run b
 - **Availability:** as a player (or viewing as one), on an event with a coach, answer Available: your name moves to Available and
   the summary counts it; tap again and it returns to No response. The coach is listed under "Coaches & staff"
   and isn't counted. Open an event of a team the app doesn't have open (from a notification): the roster is
-  that team's.
+  that team's. As a parent viewing one player, open a sibling's event on another team: the picker reads
+  "Availability for [sibling]" and the answer saves.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.

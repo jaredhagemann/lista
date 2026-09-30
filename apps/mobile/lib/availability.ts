@@ -62,3 +62,39 @@ export function groupResponses(roster: RosterMember[], answers: ReadonlyMap<stri
 
   return { groups, staff, summary, playerCount: players.length };
 }
+
+export type Answerer = { profileId: string; name: string };
+
+type MembershipLike = {
+  team_id: string;
+  profile_id: string;
+  profiles: { first_name: string | null; last_name: string | null } | null;
+};
+
+/**
+ * Who the event screen answers for (review of #105). An answer must be for a
+ * profile on the event's team, or the database refuses it. The screen can open
+ * any team's event (from a notification), so the profile being viewed may not
+ * be on it.
+ *
+ * `choices` are your profiles (your own and the players you manage) on the
+ * team. `answeringAs` is the one being viewed when it's among them, else the
+ * only one, else null: several (siblings) means asking, none means no answer.
+ */
+export function answerersFor(
+  teamId: string,
+  memberships: MembershipLike[],
+  viewingProfileId: string | null | undefined
+): { answeringAs: string | null; choices: Answerer[] } {
+  const choices: Answerer[] = [];
+  for (const m of memberships) {
+    if (m.team_id !== teamId || choices.some((c) => c.profileId === m.profile_id)) continue;
+    const name = [m.profiles?.first_name, m.profiles?.last_name].filter(Boolean).join(" ") || "Unknown";
+    choices.push({ profileId: m.profile_id, name });
+  }
+  choices.sort((a, b) => a.name.localeCompare(b.name));
+
+  const viewing = choices.find((c) => c.profileId === viewingProfileId);
+  const answeringAs = viewing?.profileId ?? (choices.length === 1 ? choices[0].profileId : null);
+  return { answeringAs, choices };
+}

@@ -58,6 +58,14 @@ jest.mock("react-native-safe-area-context", () => {
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Ionicons" }));
 
 // The viewer is on another team right now: the roster must still be the event's.
+const person = (first: string, last: string) => ({ first_name: first, last_name: last });
+const mine = (teamId: string, profileId: string, first: string, last: string) => ({
+  team_id: teamId,
+  profile_id: profileId,
+  profiles: person(first, last),
+});
+// Ava is a player on the event's team, and has the app open on another team.
+const AVA_MEMBERSHIPS = [mine("t-active", "p-ava", "Ava", "Chen"), mine("t-event", "p-ava", "Ava", "Chen")];
 const mockCtx = {
   membership: {
     profileId: "p-ava",
@@ -70,6 +78,8 @@ const mockCtx = {
     homeUniform: null,
     awayUniform: null,
   },
+  ownProfile: { id: "p-ava" },
+  allMemberships: AVA_MEMBERSHIPS as unknown[],
   loading: false,
   refresh: jest.fn(),
 };
@@ -77,12 +87,14 @@ jest.mock("../contexts/AppContext", () => ({ useAppContext: () => mockCtx }));
 
 import EventDetailScreen from "../app/(app)/schedule/[eventId]";
 
-const person = (first: string, last: string) => ({ first_name: first, last_name: last });
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockCalls.length = 0;
   mockWriteError.current = null;
+  mockCtx.membership.profileId = "p-ava";
+  mockCtx.ownProfile = { id: "p-ava" };
+  mockCtx.allMemberships = AVA_MEMBERSHIPS;
   mockTables.events = [
     {
       id: "e-1",
@@ -172,5 +184,59 @@ describe("the event screen's responses", () => {
     await waitFor(() => expect(alert).toHaveBeenCalled());
     expect(alert.mock.calls[0][0]).toMatch(/couldn't save/i);
     expect(within(group(/^No response \(1\)/)).getByText("Ava Chen")).toBeTruthy();
+  });
+});
+
+describe("who answers (review of #105)", () => {
+  // A parent (own profile "me", on no team) who manages Ava and Bea, viewing Ava.
+  function parentViewingAva(memberships: unknown[]) {
+    mockCtx.membership.profileId = "p-ava";
+    mockCtx.ownProfile = { id: "me" };
+    mockCtx.allMemberships = memberships;
+  }
+
+  it("answers for your player who is on the event's team, not the one being viewed", async () => {
+    parentViewingAva([mine("t-active", "p-ava", "Ava", "Chen"), mine("t-event", "p-bea", "Bea", "Diaz")]);
+    render(<EventDetailScreen />);
+    await screen.findByText("Bea Diaz");
+
+    const answering = screen.getByLabelText("Availability for Bea Diaz");
+    fireEvent.press(within(answering).getByLabelText("Available"));
+
+    await waitFor(() => expect(mockCalls.find((c) => c.op === "upsert")).toBeTruthy());
+    expect(mockCalls.find((c) => c.op === "upsert")?.args[0]).toMatchObject({ profile_id: "p-bea", status: "available" });
+    expect(within(group(/^Available \(1\)/)).getByText("Bea Diaz")).toBeTruthy();
+  });
+
+  it("asks which player when several of yours are on the team, and waits until one is chosen", async () => {
+    parentViewingAva([
+      mine("t-active", "p-ava", "Ava", "Chen"),
+      mine("t-event", "p-bea", "Bea", "Diaz"),
+      mine("t-event", "p-cam", "Cam", "Diaz"),
+    ]);
+    mockTables.team_members = [
+      { profile_id: "p-bea", role: "player", profiles: person("Bea", "Diaz") },
+      { profile_id: "p-cam", role: "player", profiles: person("Cam", "Diaz") },
+    ];
+    render(<EventDetailScreen />);
+    await screen.findByLabelText("Answer for Bea Diaz");
+
+    const buttons = within(screen.getByLabelText("Availability")).getAllByRole("button", { name: /Available|Maybe|Unavailable/ });
+    expect(buttons.every((b) => b.props.accessibilityState?.disabled)).toBe(true);
+
+    fireEvent.press(screen.getByRole("button", { name: "Answer for Cam Diaz" }));
+    fireEvent.press(within(screen.getByLabelText("Availability for Cam Diaz")).getByLabelText("Maybe"));
+
+    await waitFor(() => expect(mockCalls.find((c) => c.op === "upsert")).toBeTruthy());
+    expect(mockCalls.find((c) => c.op === "upsert")?.args[0]).toMatchObject({ profile_id: "p-cam", status: "maybe" });
+  });
+
+  it("offers no answer when none of your profiles is on the team", async () => {
+    parentViewingAva([mine("t-active", "p-ava", "Ava", "Chen")]);
+    render(<EventDetailScreen />);
+    await screen.findByText("Bea Diaz");
+
+    expect(screen.queryByRole("button", { name: "Available" })).toBeNull();
+    expect(screen.getByText(/none of your players or your own profile is on this team/i)).toBeTruthy();
   });
 });

@@ -17,7 +17,14 @@ import { useAppContext } from "../../../contexts/AppContext";
 import { displayLabel } from "../../../lib/labels";
 import { gameTitle, homeAwayLabel, scoreLine, uniformOf, type TeamUniforms } from "../../../lib/game-display";
 import { UniformLabel } from "../../../components/UniformLabel";
-import { groupResponses, nextAvailability, type AvailabilityStatus, type RosterMember } from "../../../lib/availability";
+import {
+  answerersFor,
+  groupResponses,
+  nextAvailability,
+  type Answerer,
+  type AvailabilityStatus,
+  type RosterMember,
+} from "../../../lib/availability";
 
 type EventDetail = {
   team_id: string;
@@ -248,7 +255,7 @@ function RsvpButton({
 export default function EventDetailScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const navigation = useNavigation();
-  const { membership } = useAppContext();
+  const { membership, ownProfile, allMemberships } = useAppContext();
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   // Everyone's answer, yours included: one source, so answering moves your row.
@@ -258,7 +265,21 @@ export default function EventDetailScreen() {
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const myStatus = membership ? answers.get(membership.profileId) ?? null : null;
+  // Who answers: a profile of yours on the event's team, which may not be the
+  // one being viewed (review of #105). `chosen` is a pick among several.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const who = event
+    ? answerersFor(event.team_id, allMemberships, membership?.profileId)
+    : { answeringAs: null, choices: [] as Answerer[] };
+  const answeringAs = who.choices.some((c) => c.profileId === chosen) ? chosen : who.answeringAs;
+  const answeringName = who.choices.find((c) => c.profileId === answeringAs)?.name;
+  const pickerTitle =
+    answeringAs && answeringAs === ownProfile?.id
+      ? "Your availability"
+      : answeringName
+        ? `Availability for ${answeringName}`
+        : "Availability";
+  const myStatus = answeringAs ? answers.get(answeringAs) ?? null : null;
 
   async function fetchData() {
     if (!eventId || !membership?.profileId) return;
@@ -320,8 +341,8 @@ export default function EventDetailScreen() {
   }
 
   async function handleRsvp(clicked: AvailabilityStatus) {
-    if (!membership?.profileId || !eventId) return;
-    const profileId = membership.profileId;
+    if (!answeringAs || !eventId) return;
+    const profileId = answeringAs;
     setRsvpLoading(true);
     const previous = myStatus;
     const next = nextAvailability(previous, clicked);
@@ -465,43 +486,77 @@ export default function EventDetailScreen() {
         {/* RSVP */}
         {!event.is_cancelled ? (
           <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
-            <Text className="font-semibold text-gray-900 mb-3">
-              Your availability
-            </Text>
-            <View accessibilityLabel="Your availability" className="flex-row gap-2">
-              <RsvpButton
-                label="Available"
-                icon="✓"
-                status="available"
-                current={myStatus}
-                activeColor="#16a34a"
-                onPress={() => handleRsvp("available")}
-                disabled={rsvpLoading}
-              />
-              <RsvpButton
-                label="Maybe"
-                icon="?"
-                status="maybe"
-                current={myStatus}
-                activeColor="#d97706"
-                onPress={() => handleRsvp("maybe")}
-                disabled={rsvpLoading}
-              />
-              <RsvpButton
-                label="Unavailable"
-                icon="✗"
-                status="unavailable"
-                current={myStatus}
-                activeColor="#dc2626"
-                onPress={() => handleRsvp("unavailable")}
-                disabled={rsvpLoading}
-              />
-            </View>
-            {myStatus ? (
-              <Text className="text-xs text-gray-400 text-center mt-2">
-                Tap again to clear your response
+            <Text className="font-semibold text-gray-900 mb-3">{pickerTitle}</Text>
+            {who.choices.length === 0 ? (
+              <Text className="text-sm text-gray-500">
+                None of your players or your own profile is on this team, so there's nothing to answer here.
               </Text>
-            ) : null}
+            ) : (
+              <>
+                {who.choices.length > 1 ? (
+                  <View className="flex-row flex-wrap gap-2 mb-3">
+                    {who.choices.map((c) => {
+                      const selected = c.profileId === answeringAs;
+                      return (
+                        <TouchableOpacity
+                          key={c.profileId}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Answer for ${c.name}`}
+                          accessibilityState={{ selected }}
+                          onPress={() => setChosen(c.profileId)}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 6,
+                            borderRadius: 99,
+                            borderWidth: 1,
+                            borderColor: selected ? "#0f172a" : "#e5e7eb",
+                            backgroundColor: selected ? "#0f172a" : "#ffffff",
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: "500", color: selected ? "#ffffff" : "#374151" }}>
+                            {c.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                <View accessibilityLabel={pickerTitle} className="flex-row gap-2">
+                  <RsvpButton
+                    label="Available"
+                    icon="✓"
+                    status="available"
+                    current={myStatus}
+                    activeColor="#16a34a"
+                    onPress={() => handleRsvp("available")}
+                    disabled={rsvpLoading || !answeringAs}
+                  />
+                  <RsvpButton
+                    label="Maybe"
+                    icon="?"
+                    status="maybe"
+                    current={myStatus}
+                    activeColor="#d97706"
+                    onPress={() => handleRsvp("maybe")}
+                    disabled={rsvpLoading || !answeringAs}
+                  />
+                  <RsvpButton
+                    label="Unavailable"
+                    icon="✗"
+                    status="unavailable"
+                    current={myStatus}
+                    activeColor="#dc2626"
+                    onPress={() => handleRsvp("unavailable")}
+                    disabled={rsvpLoading || !answeringAs}
+                  />
+                </View>
+                {!answeringAs ? (
+                  <Text className="text-xs text-gray-400 text-center mt-2">Choose who you're answering for</Text>
+                ) : myStatus ? (
+                  <Text className="text-xs text-gray-400 text-center mt-2">Tap again to clear the response</Text>
+                ) : null}
+              </>
+            )}
           </View>
         ) : null}
 

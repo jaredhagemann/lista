@@ -9,7 +9,7 @@
  * current answer again clears it.
  */
 
-import { groupResponses, nextAvailability, type RosterMember } from "../lib/availability";
+import { answerersFor, groupResponses, nextAvailability, type RosterMember } from "../lib/availability";
 
 describe("nextAvailability", () => {
   it("chooses the tapped answer, and clears it when tapped again", () => {
@@ -75,5 +75,44 @@ describe("groupResponses", () => {
 
   it("has no summary before anyone answers", () => {
     expect(groupResponses(roster, new Map()).summary).toBe("");
+  });
+});
+
+describe("answerersFor", () => {
+  const row = (teamId: string, profileId: string, first: string) => ({
+    team_id: teamId,
+    profile_id: profileId,
+    profiles: { first_name: first, last_name: "Chen" },
+  });
+  // A parent (own profile "me") who manages Ava and Bea.
+  const memberships = [
+    row("t-ava", "p-ava", "Ava"),
+    row("t-bea", "p-bea", "Bea"),
+    row("t-both", "p-ava", "Ava"),
+    row("t-both", "p-bea", "Bea"),
+    row("t-coach", "me", "Dana"),
+  ];
+
+  it("answers as the profile being viewed when it's on the event's team", () => {
+    expect(answerersFor("t-ava", memberships, "p-ava").answeringAs).toBe("p-ava");
+    expect(answerersFor("t-both", memberships, "p-bea").answeringAs).toBe("p-bea");
+  });
+
+  it("answers as your one profile on the event's team when the one being viewed isn't on it (review of #105)", () => {
+    const { answeringAs, choices } = answerersFor("t-bea", memberships, "p-ava");
+
+    expect(answeringAs).toBe("p-bea");
+    expect(choices).toEqual([{ profileId: "p-bea", name: "Bea Chen" }]);
+  });
+
+  it("asks which one when several of your profiles are on the team and the viewed one isn't", () => {
+    const { answeringAs, choices } = answerersFor("t-both", memberships, "me");
+
+    expect(answeringAs).toBeNull();
+    expect(choices.map((c) => c.name)).toEqual(["Ava Chen", "Bea Chen"]);
+  });
+
+  it("offers no one when none of your profiles is on the team", () => {
+    expect(answerersFor("t-other", memberships, "p-ava")).toEqual({ answeringAs: null, choices: [] });
   });
 });
