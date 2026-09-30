@@ -103,7 +103,7 @@ One PR per part. Each is test-first, and adds its entry and on-device check to `
 | 1 | Labels and club branding, this spec, SVG logos | #102 | Merged |
 | 2 | Game display: titles on the home, schedule and event screens; the event screen's Game details | #103 | Merged |
 | — | Version 1.1.0 in `app.json`, so checkpoint TestFlight builds run from the Actions tab | #104 | Merged; first checkpoint build started 2026-09-30 |
-| 3 | Availability, trimmed: the ✓ ? ✗ picker with tap-again-to-clear, Players vs Coaches & staff, your own row updating | this PR | In review |
+| 3 | Availability, trimmed: the ✓ ? ✗ picker with tap-again-to-clear, Players vs Coaches & staff, your own row updating | #105 | In review |
 | 4 | Dashboard cards: Team card, Record card (reads `brand_color_secondary`) | — | Next |
 | 5 | Release prep: the §3 compatibility review, and the release notes' final pass | — | To do |
 
