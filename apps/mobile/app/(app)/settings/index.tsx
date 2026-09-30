@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useNavigation } from "expo-router";
@@ -15,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { unregisterForPushNotifications } from "../../../lib/notifications";
+import { deletionRefusal } from "../../../lib/account-deletion";
 import { useAppContext } from "../../../contexts/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
@@ -104,33 +106,22 @@ export default function SettingsHubScreen() {
     setCheckingDelete(false);
 
     if (res.status === 409) {
-      const data = await res.json().catch(() => ({}));
-      if (data.error === "sole_guardian") {
-        // A player with no login of their own must keep a guardian who can sign in.
-        const players: string[] = data.players ?? [];
-        Alert.alert(
-          "Cannot Delete Account",
-          `You are the only guardian who can sign in for ${players.join(", ")}. Invite another guardian before deleting your account.`,
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Managed Players",
-              onPress: () => router.push("/(app)/settings/managed-players" as any),
-            },
-          ]
-        );
-        return;
-      }
+      // Each refusal says what's in the way and how to clear it (BUG-028): a
+      // club owner, a team owner, the only guardian who can sign in.
+      const refusal = deletionRefusal(await res.json().catch(() => ({})), API_BASE);
       Alert.alert(
-        "Cannot Delete Account",
-        "You are the owner of one or more teams. Transfer or delete your team(s) before deleting your account.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Team Settings",
-            onPress: () => router.push("/(app)/settings/team"),
-          },
-        ]
+        refusal.title,
+        refusal.message,
+        refusal.actions.length > 0
+          ? [
+              { text: "Cancel", style: "cancel" },
+              ...refusal.actions.map((action) => ({
+                text: action.label,
+                onPress: () =>
+                  "url" in action ? Linking.openURL(action.url) : router.push(action.route as never),
+              })),
+            ]
+          : [{ text: "OK" }]
       );
       return;
     }

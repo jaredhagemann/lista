@@ -141,8 +141,9 @@ function DeleteAccountSection() {
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [ownedTeams, setOwnedTeams] = useState<string[] | null>(null);
   // Open clubs this account owns: ownership must be handed over, or the club
-  // closed, first (BUG-013).
-  const [ownedClubs, setOwnedClubs] = useState<string[] | null>(null);
+  // closed, first (BUG-013). Each links to its own settings: club settings
+  // otherwise open the active team's club (BUG-028 review).
+  const [ownedClubs, setOwnedClubs] = useState<Array<{ id: string; name: string }> | null>(null);
   // Players with no login of their own for whom this account is the only
   // guardian who can sign in. Deletion is refused until they have another.
   const [dependentPlayers, setDependentPlayers] = useState<string[] | null>(null);
@@ -159,7 +160,7 @@ function DeleteAccountSection() {
     if (data.error === "sole_guardian") {
       setDependentPlayers(data.players ?? []);
     } else if (data.error === "owns_club") {
-      setOwnedClubs(data.clubs ?? []);
+      setOwnedClubs(data.ownedClubs ?? []);
     } else {
       setOwnedTeams(data.teams ?? []);
     }
@@ -256,18 +257,26 @@ function DeleteAccountSection() {
           {ownedClubs && (
             <div className="space-y-2">
               <p className="text-sm text-destructive">
-                You are the owner of <strong>{ownedClubs.join(", ")}</strong>. Hand the club over to one of its
-                directors, or close it, before deleting your account.
+                You are the owner of <strong>{ownedClubs.map((c) => c.name).join(", ")}</strong>. Hand the club
+                over to one of its directors, or close it, before deleting your account.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pendingHref !== null}
-                onClick={() => navigate("/dashboard/club/settings")}
-              >
-                {pendingHref === "/dashboard/club/settings" && <Loader2 aria-hidden className="size-4 animate-spin" />}
-                Go to Club Settings
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {ownedClubs.map((club) => {
+                  const href = `/dashboard/club/open?org=${encodeURIComponent(club.id)}`;
+                  return (
+                    <Button
+                      key={club.id}
+                      variant="outline"
+                      size="sm"
+                      disabled={pendingHref !== null}
+                      onClick={() => navigate(href)}
+                    >
+                      {pendingHref === href && <Loader2 aria-hidden className="size-4 animate-spin" />}
+                      {ownedClubs.length === 1 ? "Go to Club Settings" : `${club.name} settings`}
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
