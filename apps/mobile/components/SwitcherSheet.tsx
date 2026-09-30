@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Image,
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
@@ -12,50 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppContext, type TeamMemberRow } from "../contexts/AppContext";
 import { displayLabel } from "../lib/labels";
 import { teamBranding } from "../lib/team-branding";
-
-function teamInitials(name: string) {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-}
-
-function TeamAvatar({
-  name,
-  logoUrl,
-  size = 36,
-}: {
-  name: string;
-  logoUrl: string | null;
-  size?: number;
-}) {
-  if (logoUrl) {
-    return (
-      <Image
-        source={{ uri: logoUrl }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-      />
-    );
-  }
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: "#0f172a",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Text style={{ color: "#fff", fontSize: size * 0.35, fontWeight: "700" }}>
-        {teamInitials(name)}
-      </Text>
-    </View>
-  );
-}
+import { RemoteLogo } from "./RemoteLogo";
 
 export function SwitcherSheet({
   visible,
@@ -159,7 +115,7 @@ export function SwitcherSheet({
                       style={[styles.row, isActive && styles.rowActive]}
                       onPress={() => handleTeamPress(teamId)}
                     >
-                      <TeamAvatar name={team.name} logoUrl={brand.logoUrl} />
+                      <RemoteLogo uri={brand.logoUrl} name={team.name} size={36} />
                       <View style={styles.rowText}>
                         <Text style={styles.rowTitle} numberOfLines={1}>
                           {brand.displayName}

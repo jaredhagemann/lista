@@ -11,8 +11,12 @@ import { render, screen } from "@testing-library/react-native";
 
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Ionicons" }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("react-native-svg", () => {
+  const { View } = require("react-native");
+  return { SvgUri: (props: Record<string, unknown>) => <View testID="svg-logo" {...props} /> };
+});
 
-const CLUB_LOGO = "https://x.supabase.co/storage/v1/object/public/org-logos/slofc.png";
+const CLUB_LOGO = "https://x.supabase.co/storage/v1/object/public/org-images/org-1/logo?t=1";
 const SLOFC = { name: "San Luis Obispo FC", org_name_public: "SLOFC", logo_url: CLUB_LOGO, plan: "club_small" };
 const FREE = { name: "Rec Soccer", org_name_public: null, logo_url: null, plan: "free" };
 
@@ -71,12 +75,25 @@ jest.mock("../contexts/AppContext", () => ({ useAppContext: () => mockCtx }));
 import { SwitcherSheet } from "../components/SwitcherSheet";
 import { TeamProfileStrip } from "../components/TeamProfileStrip";
 
+// The club's logo is an SVG, as the web's uploader allows: the screens must draw
+// it, not hand it to Image (review of #102).
+const originalFetch = globalThis.fetch;
+beforeEach(() => {
+  globalThis.fetch = jest.fn(async () => ({
+    ok: true,
+    headers: { get: (name: string) => (name.toLowerCase() === "content-type" ? "image/svg+xml" : null) },
+  })) as never;
+});
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
 describe("the top strip", () => {
-  it("names the club team with its club and shows the club's logo", () => {
+  it("names the club team with its club and draws the club's SVG logo", async () => {
     render(<TeamProfileStrip />);
 
     expect(screen.getByText("SLOFC - 12U Girls")).toBeTruthy();
-    expect(screen.UNSAFE_getAllByType(require("react-native").Image)[0].props.source).toEqual({ uri: CLUB_LOGO });
+    expect((await screen.findByTestId("svg-logo")).props.uri).toBe(CLUB_LOGO);
   });
 });
 
@@ -85,14 +102,15 @@ describe("the team picker", () => {
     render(<SwitcherSheet visible onClose={jest.fn()} onCreateTeam={jest.fn()} />);
   }
 
-  it("names a club team with its club, a free team plainly, and shows the club's logo", () => {
+  it("names a club team with its club, a free team plainly, and draws the club's SVG logo", async () => {
     open();
 
     expect(screen.getByText("SLOFC - 12U Girls")).toBeTruthy();
     expect(screen.getByText("Rec Soccer")).toBeTruthy();
     expect(screen.queryByText(/ - Rec Soccer/)).toBeNull();
-    const logos = screen.UNSAFE_getAllByType(require("react-native").Image).map((i) => i.props.source?.uri);
-    expect(logos).toContain(CLUB_LOGO);
+    const logos = await screen.findAllByTestId("svg-logo");
+    expect(logos.map((l) => l.props.uri)).toEqual([CLUB_LOGO]);
+    expect(screen.getByText("RS")).toBeTruthy(); // the free team, without a logo: initials
   });
 
   it("shows roles and relationships capitalized", () => {
