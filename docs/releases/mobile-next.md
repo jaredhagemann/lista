@@ -122,7 +122,7 @@ inherited. `components/RemoteLogo.tsx` asks Storage for the file's type (one `HE
 `react-native-svg` and anything else with `Image`, and shows the team's initials when there's no logo or it
 fails to load.
 
-**New native dependency:** `react-native-svg` (15.15.3, the version `expo install` pins for SDK 55). It
+**New native dependency (#102):** `react-native-svg` (15.15.3, the version `expo install` pins for SDK 55). It
 ships only in a full build, and this is one.
 
 **Data:** the membership query also reads the team's club (`organizations(name, org_name_public, logo_url,
@@ -132,6 +132,26 @@ Files: `lib/labels.ts`, `lib/team-branding.ts`, `lib/membership.ts`, `contexts/A
 `components/TeamProfileStrip.tsx`, `components/SwitcherSheet.tsx`, `components/RemoteLogo.tsx`,
 `lib/logo-kind.ts`, nine screens under `app/(app)/`, `__tests__/labels.test.ts`,
 `__tests__/team-branding.test.ts`, `__tests__/TeamBrandingScreens.test.tsx`, `__tests__/RemoteLogo.test.tsx`.
+
+### Games named and described, as on the web — [spec §1](../specs/mobile-next-build.md)
+
+**Installed build:** a game shows its stored title ("Saturday game"), with no opponent, side, uniform or score
+anywhere in the app.
+
+**New build:** on the home screen, the schedule and the event screen, a game with an opponent is "U10 Girls vs
+Rivals FC" at home (or unset) and "U10 Girls @ Rivals FC" away, plus " · 3–1" once both scores are entered
+(`lib/game-display.ts`, the web's rule). The team is the event's own, so an event opened from another team's
+notification is named for that team. The event screen adds **Game details**: the opponent, home or away, the
+uniform by the team's name for it on a pill in its color (black or white text, and a border when the color
+would vanish into the white card), and the result with the score.
+
+**Data:** the event queries also read `opponent`, `home_away`, `uniform`, `score_for`, `score_against`,
+`game_result`, and the team's name, uniform names and colors. All are existing columns; the uniform colors
+arrived after 1.0.12, which never reads them. No server change.
+
+Files: `lib/game-display.ts`, `components/UniformLabel.tsx`, `app/(app)/index.tsx`,
+`app/(app)/schedule/index.tsx`, `app/(app)/schedule/[eventId].tsx`, `__tests__/game-display.test.ts`,
+`__tests__/GameDisplayScreens.test.tsx`.
 
 ---
 
@@ -162,6 +182,9 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   [team]" and the club's logo; a free team shows its plain name. Do this with an **SVG** club logo and a
   PNG one: both draw (confirms `react-native-svg` on device; Jest mocks it). The roster, a member's page and an event
   read "Coach", "Mom", "Game".
+- **Games:** a scored away game with a white away uniform reads "[Team] @ [opponent] · 3–1" on the home
+  screen, the schedule and the event screen's heading, and the event screen's Game details show a white pill
+  with a visible border.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
