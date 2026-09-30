@@ -2,7 +2,10 @@
 
 **Status:** unreleased. Everything below is merged to `main` and live on the web, but **only reaches phones
 when a new build ships**.
-**Current shipped version:** 1.0.0 (`apps/mobile/app.json`)
+**Current shipped version:** 1.0.12 (tag `ios-v1.0.12`, 2026-04-14; on the App Store).
+**Next version:** 1.1.0, set in `apps/mobile/app.json`. Checkpoint builds for testing run from the Actions tab
+("iOS TestFlight", Run workflow), which builds `main` at this version. The release is the `ios-v1.1.0` tag.
+Build numbers increment remotely, so any number of 1.1.0 builds can reach TestFlight before 1.1.0 is released.
 **Decision, 2026-09-18 (user):** hold the build until the open bug list is worked through, and ship these
 together.
 
@@ -140,7 +143,7 @@ Files: `lib/labels.ts`, `lib/team-branding.ts`, `lib/membership.ts`, `contexts/A
 1. `cd apps/mobile && npx jest` — the suites run and pass (they were thought broken until 2026-09-17; see
    [BUG-018](../bugs/fixed/018-mobile-jest-suites-fail-to-start.md)).
 2. `cd apps/mobile && npx tsc --noEmit`.
-3. Bump `version` in `apps/mobile/app.json`.
+3. `version` in `apps/mobile/app.json` is the version being released (1.1.0). The `ios-v1.1.0` tag must match it.
 4. Check that no schema change since the last build assumes behaviour only this build has.
 
 ## After shipping
