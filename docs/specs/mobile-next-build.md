@@ -101,7 +101,7 @@ One PR per part. Each is test-first, and adds its entry and on-device check to `
 | — | Tests in CI (D3) | #101 | Merged |
 | — | BUG-028 club owner deletion, BUG-029 director invitation | #99, #100 | Merged |
 | 1 | Labels and club branding, this spec, SVG logos | #102 | Merged |
-| 2 | Game display: titles on the home, schedule and event screens; the event screen's Game details | this PR | In review |
+| 2 | Game display: titles on the home, schedule and event screens; the event screen's Game details | #103 | In review |
 | 3 | Availability, trimmed: the ✓ ? ✗ picker with tap-again-to-clear, Players vs Coaches & staff, your own row updating | — | Next |
 | 4 | Dashboard cards: Team card, Record card (reads `brand_color_secondary`) | — | To do |
 | 5 | Release prep: the §3 compatibility review, version 1.1.0, release notes' current version | — | To do |
