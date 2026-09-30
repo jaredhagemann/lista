@@ -184,7 +184,8 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   read "Coach", "Mom", "Game".
 - **Games:** a scored away game with a white away uniform reads "[Team] @ [opponent] · 3–1" on the home
   screen, the schedule and the event screen's heading, and the event screen's Game details show a white pill
-  with a visible border.
+  with a visible border. With a long opponent and uniform name, and iOS text size set large, the values wrap
+  inside the card.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.

@@ -187,6 +187,42 @@ describe("the event screen", () => {
     expect(screen.queryByText("Win")).toBeNull();
   });
 
+  it("wraps long values within the card instead of pushing past it (review of #103)", async () => {
+    // Jest doesn't lay out, so this pins the constraints that make values wrap:
+    // each value sits in a container that takes the row's remaining width (and
+    // may shrink below its content), and the uniform pill is capped to it.
+    const LONG = "Santa Barbara Soccer Club Premier Academy Under-10 Girls Blue";
+    mockTables.events = [
+      event("e-long", {
+        opponent: LONG,
+        home_away: "home",
+        uniform: "home",
+        teams: { ...TEAM, home_uniform: "Heritage navy with gold trim and white shorts" },
+      }),
+    ];
+    render(<EventDetailScreen />);
+
+    type Node = { type: unknown; props: { style?: unknown }; parent: Node | null };
+    const flat = (el: Node) => Object.assign({}, ...[el.props.style].flat());
+    /** The nearest native View around an element (skipping component wrappers). */
+    const hostViewAround = (el: Node) => {
+      let node = el.parent;
+      while (node && node.type !== "View") node = node.parent;
+      return node!;
+    };
+    const constrained = (el: Node) => {
+      const s = flat(el);
+      return s.flex === 1 && s.minWidth === 0;
+    };
+
+    const opponent = (await screen.findByText(LONG)) as unknown as Node;
+    expect(constrained(hostViewAround(opponent))).toBe(true);
+
+    const pill = screen.getByLabelText("Uniform: Heritage navy with gold trim and white shorts") as unknown as Node;
+    expect(flat(pill).maxWidth).toBe("100%");
+    expect(constrained(hostViewAround(pill))).toBe(true);
+  });
+
   it("shows no game details for a practice", async () => {
     mockTables.events = [PRACTICE];
     render(<EventDetailScreen />);

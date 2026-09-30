@@ -23,6 +23,8 @@ export function UniformLabel({ uniform }: { uniform: Uniform | null }) {
       accessibilityLabel={`Uniform: ${uniform.name}`}
       style={{
         alignSelf: "flex-start",
+        // Never wider than where it's placed: a long name wraps inside the pill.
+        maxWidth: "100%",
         backgroundColor: uniform.color,
         borderRadius: 99,
         paddingHorizontal: 8,

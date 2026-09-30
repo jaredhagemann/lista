@@ -48,6 +48,20 @@ const RESULT_STYLE: Record<string, { bg: string; text: string }> = {
 };
 
 /**
+ * A label and its value. The value takes the rest of the row and may shrink
+ * below its content (React Native doesn't shrink by default), so a long name,
+ * or large accessibility text, wraps inside the card instead of running off it.
+ */
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+      <Text className="text-sm text-gray-400">{label}</Text>
+      <View style={{ flex: 1, minWidth: 0, alignItems: "flex-start" }}>{children}</View>
+    </View>
+  );
+}
+
+/**
  * Opponent, home or away, uniform and result, as on the web's event page.
  * Nothing for a game with none of them, or for any other event.
  */
@@ -65,33 +79,31 @@ function GameDetails({ event }: { event: EventDetail }) {
     >
       <Text className="font-semibold text-gray-900 mb-1">Game details</Text>
       {event.opponent ? (
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm text-gray-400">Opponent</Text>
+        <DetailRow label="Opponent">
           <Text className="text-sm text-gray-700">{event.opponent}</Text>
-        </View>
+        </DetailRow>
       ) : null}
       {event.home_away ? (
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm text-gray-400">Playing</Text>
+        <DetailRow label="Playing">
           <Text className="text-sm text-gray-700">{homeAwayLabel(event.home_away)}</Text>
-        </View>
+        </DetailRow>
       ) : null}
       {uniform ? (
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm text-gray-400">Uniform</Text>
+        <DetailRow label="Uniform">
           <UniformLabel uniform={uniform} />
-        </View>
+        </DetailRow>
       ) : null}
       {result && event.game_result ? (
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm text-gray-400">Result</Text>
-          <View style={{ backgroundColor: result.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 }}>
-            <Text style={{ color: result.text, fontSize: 12, fontWeight: "600" }}>
-              {displayLabel(event.game_result)}
-            </Text>
+        <DetailRow label="Result">
+          <View className="flex-row flex-wrap items-center gap-2">
+            <View style={{ backgroundColor: result.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 }}>
+              <Text style={{ color: result.text, fontSize: 12, fontWeight: "600" }}>
+                {displayLabel(event.game_result)}
+              </Text>
+            </View>
+            {score ? <Text className="text-sm text-gray-700">{score}</Text> : null}
           </View>
-          {score ? <Text className="text-sm text-gray-700">{score}</Text> : null}
-        </View>
+        </DetailRow>
       ) : null}
     </View>
   );
