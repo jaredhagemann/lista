@@ -15,6 +15,7 @@ import { supabase } from "../../lib/supabase";
 import { eventZone, formatEventClock, formatEventDay } from "../../lib/event-time";
 import { useAppContext } from "../../contexts/AppContext";
 import { displayLabel } from "../../lib/labels";
+import { gameTitle } from "../../lib/game-display";
 
 type Event = {
   id: string;
@@ -22,7 +23,12 @@ type Event = {
   event_type: string;
   start_time: string;
   timezone: string | null;
-  teams: { timezone: string | null } | null;
+  opponent: string | null;
+  home_away: string | null;
+  score_for: number | null;
+  score_against: number | null;
+  /** The event's own team: its zone, and its name for game titles. */
+  teams: { timezone: string | null; name: string } | null;
   locations: { name: string } | null;
 };
 
@@ -62,7 +68,9 @@ export default function HomeScreen() {
     const [eventsResult, countResult] = await Promise.all([
       supabase
         .from("events")
-        .select("id, title, event_type, start_time, timezone, teams(timezone), locations(name)")
+        .select(
+          "id, title, event_type, start_time, timezone, opponent, home_away, score_for, score_against, teams(timezone, name), locations(name)"
+        )
         .eq("team_id", membership.teamId)
         .eq("is_cancelled", false)
         .gte("start_time", new Date().toISOString())
@@ -202,7 +210,7 @@ export default function HomeScreen() {
                         className="font-medium text-gray-900 flex-1 mr-2"
                         numberOfLines={1}
                       >
-                        {event.title}
+                        {gameTitle(event, event.teams?.name)}
                       </Text>
                       <View
                         style={{

@@ -14,6 +14,8 @@ import { supabase } from "../../../lib/supabase";
 import { arrivalInstant, eventZone, formatEventClock, formatEventDateTime } from "../../../lib/event-time";
 import { useAppContext } from "../../../contexts/AppContext";
 import { displayLabel } from "../../../lib/labels";
+import { gameTitle, homeAwayLabel, scoreLine, uniformOf, type TeamUniforms } from "../../../lib/game-display";
+import { UniformLabel } from "../../../components/UniformLabel";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 
@@ -28,9 +30,84 @@ type EventDetail = {
   /** Minutes before the start. */
   arrival_time: number | null;
   timezone: string | null;
-  teams: { timezone: string | null } | null;
+  opponent: string | null;
+  home_away: string | null;
+  uniform: string | null;
+  score_for: number | null;
+  score_against: number | null;
+  game_result: string | null;
+  /** The event's own team: its zone, name and uniforms. */
+  teams: ({ timezone: string | null; name: string } & TeamUniforms) | null;
   locations: { name: string; address: string | null } | null;
 };
+
+const RESULT_STYLE: Record<string, { bg: string; text: string }> = {
+  win: { bg: "#dcfce7", text: "#15803d" },
+  loss: { bg: "#fee2e2", text: "#b91c1c" },
+  tie: { bg: "#f3f4f6", text: "#374151" },
+};
+
+/**
+ * A label and its value. The value takes the rest of the row and may shrink
+ * below its content (React Native doesn't shrink by default), so a long name,
+ * or large accessibility text, wraps inside the card instead of running off it.
+ */
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+      <Text className="text-sm text-gray-400">{label}</Text>
+      <View style={{ flex: 1, minWidth: 0, alignItems: "flex-start" }}>{children}</View>
+    </View>
+  );
+}
+
+/**
+ * Opponent, home or away, uniform and result, as on the web's event page.
+ * Nothing for a game with none of them, or for any other event.
+ */
+function GameDetails({ event }: { event: EventDetail }) {
+  const uniform = uniformOf(event.uniform, event.teams);
+  if (event.event_type !== "game" || !(event.opponent || event.home_away || uniform || event.game_result)) {
+    return null;
+  }
+  const result = event.game_result ? RESULT_STYLE[event.game_result] ?? RESULT_STYLE.tie : null;
+  const score = scoreLine(event);
+  return (
+    <View
+      accessibilityLabel="Game details"
+      className="bg-white rounded-2xl border border-gray-100 px-4 py-4 gap-2"
+    >
+      <Text className="font-semibold text-gray-900 mb-1">Game details</Text>
+      {event.opponent ? (
+        <DetailRow label="Opponent">
+          <Text className="text-sm text-gray-700">{event.opponent}</Text>
+        </DetailRow>
+      ) : null}
+      {event.home_away ? (
+        <DetailRow label="Playing">
+          <Text className="text-sm text-gray-700">{homeAwayLabel(event.home_away)}</Text>
+        </DetailRow>
+      ) : null}
+      {uniform ? (
+        <DetailRow label="Uniform">
+          <UniformLabel uniform={uniform} />
+        </DetailRow>
+      ) : null}
+      {result && event.game_result ? (
+        <DetailRow label="Result">
+          <View className="flex-row flex-wrap items-center gap-2">
+            <View style={{ backgroundColor: result.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 }}>
+              <Text style={{ color: result.text, fontSize: 12, fontWeight: "600" }}>
+                {displayLabel(event.game_result)}
+              </Text>
+            </View>
+            {score ? <Text className="text-sm text-gray-700">{score}</Text> : null}
+          </View>
+        </DetailRow>
+      ) : null}
+    </View>
+  );
+}
 
 type AvailabilityRow = {
   profile_id: string;
@@ -110,7 +187,7 @@ export default function EventDetailScreen() {
       supabase
         .from("events")
         .select(
-          "id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, teams(timezone), locations(name, address)"
+          "id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, opponent, home_away, uniform, score_for, score_against, game_result, teams(timezone, name, home_uniform, away_uniform, home_uniform_color, away_uniform_color), locations(name, address)"
         )
         .eq("id", eventId)
         .single(),
@@ -125,8 +202,9 @@ export default function EventDetailScreen() {
     ]);
 
     if (eventResult.data) {
-      setEvent(eventResult.data as unknown as EventDetail);
-      navigation.setOptions({ title: eventResult.data.title });
+      const detail = eventResult.data as unknown as EventDetail;
+      setEvent(detail);
+      navigation.setOptions({ title: gameTitle(detail, detail.teams?.name) });
     }
 
     const rows = (availResult.data ?? []) as unknown as AvailabilityRow[];
@@ -259,7 +337,7 @@ export default function EventDetailScreen() {
           <Text
             className={`text-xl font-bold mb-3 ${event.is_cancelled ? "line-through text-gray-400" : "text-gray-900"}`}
           >
-            {event.title}
+            {gameTitle(event, event.teams?.name)}
           </Text>
 
           <View className="gap-2">
@@ -306,6 +384,8 @@ export default function EventDetailScreen() {
             </View>
           ) : null}
         </View>
+
+        <GameDetails event={event} />
 
         {/* RSVP */}
         {!event.is_cancelled ? (

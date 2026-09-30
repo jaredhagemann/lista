@@ -1,6 +1,7 @@
 # Mobile: the next build
 
-**Status:** Decided 2026-09-29 (scope §1, release §4).
+**Status:** Decided 2026-09-29 (scope §1, release §4). In progress. See §5 for the PR plan and where each part
+stands.
 **App:** `apps/mobile` (Expo / React Native, iOS). **Last shipped:** `ios-v1.0.12`, 2026-04-14 (commit
 `b3473c71b`).
 **Already in the build** (merged, waiting on it): the fixes in `docs/releases/mobile-next.md`:
@@ -15,7 +16,7 @@ The web has moved on since April. This build brings the phone in line with it wh
 | # | Web improvement | On the phone | Decision |
 | --- | --- | --- | --- |
 | 1 | Consistent labels (`docs/specs/team-branding-and-labels.md` §1) | Roles, relationships and event types capitalized as words ("Coach", "Mom", "Game"). Some screens capitalize with styles, others print raw values. | **Include** |
-| 2 | Club branding (same spec §2–3) | Club teams inherit the club's logo, and the team switcher reads "SLOFC - 12U Girls". | **Include** |
+| 2 | Club branding (same spec §2–3) | In the top strip and the team picker (the web's header and picker), club teams inherit the club's logo and read "SLOFC - 12U Girls". Logos draw in any uploaded format, SVG included. | **Include** |
 | 3 | Game display (`docs/specs/game-display-and-uniform-colors.md`) | "12U Girls @ Rivals FC" titles on the home, schedule and event screens; home/away and the uniform with its color on the event screen; the score once a result is entered. | **Include** |
 | 4 | Availability on the event page | Trimmed: the ✓ ? ✗ picker (tap again to clear), the response list split into Players and Coaches & staff, and your own row updating when you answer. Coaches answering for players comes later. | **Include, trimmed** |
 | 5 | Dashboard cards (`team-branding-and-labels.md` §4) | On the home screen: the Team card (logo or initials, name, club · season, members by name and role) and the Record card (W–L–T with the bar, last game as a scoreline), shown once a game has a result. | **Include** |
@@ -30,11 +31,20 @@ The web has moved on since April. This build brings the phone in line with it wh
 - **Same rules as the web.** Labels, branding, game titles, uniforms and the record follow the web's rules
   exactly: capitalization, club plans only, `org_name_public` else the club's name, the team's own logo first,
   "@" away and "vs" home, the record over games with a result. See §4, D1 for how the code is shared.
+  - **One deliberate difference:** the web's `displayLabel` matches lowercase letters with `\p{Ll}`. The
+    phone's copy upper-cases the first character of each word instead, because a regex Hermes can't parse
+    fails when the app starts. It gives the same results on the web's test cases.
+  - **Logos:** the web accepts SVG uploads, and React Native's `Image` can't draw them. `RemoteLogo` asks
+    Storage for the file's type and draws SVG with `react-native-svg` (#102).
 - **Data:** the screens select what they don't yet read:
   - on events: `opponent`, `home_away`, `uniform`, `score_for`, `score_against`, `game_result`
   - on teams: uniform names and colors, and the club (`organizations(name, org_name_public, logo_url, plan,
     brand_color_secondary)`)
-  - in the membership query in `contexts/AppContext.tsx`: the same club fields
+  - in the membership query in `contexts/AppContext.tsx`: the same club fields. #102 added all but
+    `brand_color_secondary`, which the Record card adds (part 4).
+
+  Games read the event's own team (`events → teams`), not the active one, as the web does, so an event opened
+  from another team's notification is named for that team.
 
   All of these are existing columns. Nothing on the server changes for this build.
 - **Record bar colors:** as on the web. Wins in the club's secondary color (else lista blue `#01D7F4`),
@@ -67,11 +77,13 @@ This build adds no server change.
 Release to the App Store is then done by hand in App Store Connect. `app.json`'s `version` (1.0.0) is never
 updated, which is why the release notes said 1.0.0.
 
-**Gaps:**
-- **CI doesn't run the mobile tests, or the web app's.** `test.yml` runs only the root unit tests and the
-  database suites. The web's 1,268 tests and the phone's Jest suite run only locally.
-- **Nothing stops a tag on a failing commit:** the TestFlight workflow runs no tests of its own.
-- **Stale version:** `docs/releases/mobile-next.md` names 1.0.0 as current.
+**Gaps found on 2026-09-29:**
+- **CI didn't run the mobile tests, or the web app's.** Fixed in #101: `test.yml` now runs the web app's
+  Vitest and the phone's Jest and `tsc`.
+- **Nothing stopped a tag on a failing commit.** Fixed in #101: the TestFlight workflow runs the phone's tests
+  and `tsc` before it builds.
+- **Stale version:** `docs/releases/mobile-next.md` names 1.0.0 as current. The release prep (part 5) fixes
+  it.
 
 | # | Question | Decision (2026-09-29) |
 | --- | --- | --- |
@@ -79,3 +91,26 @@ updated, which is why the release notes said 1.0.0.
 | D2 | Version | **1.1.0**: this build adds features, not only fixes. |
 | D3 | Tests in CI | **Yes, before the release.** Add the web app's Vitest and the phone's Jest to `test.yml`, and run the phone's tests and `tsc` in the TestFlight workflow before it builds. |
 | D4 | Is 1.0.12 live? | **On the App Store.** Real users run it, so §3 is strict: no server change may assume 1.1.0. |
+
+## 5. Plan and progress
+
+One PR per part. Each is test-first, and adds its entry and on-device check to `docs/releases/mobile-next.md`.
+
+| Part | What | PR | Status |
+| --- | --- | --- | --- |
+| — | Tests in CI (D3) | #101 | Merged |
+| — | BUG-028 club owner deletion, BUG-029 director invitation | #99, #100 | Merged |
+| 1 | Labels and club branding, this spec, SVG logos | #102 | Merged |
+| 2 | Game display: titles on the home, schedule and event screens; the event screen's Game details | #103 | In review |
+| 3 | Availability, trimmed: the ✓ ? ✗ picker with tap-again-to-clear, Players vs Coaches & staff, your own row updating | — | Next |
+| 4 | Dashboard cards: Team card, Record card (reads `brand_color_secondary`) | — | To do |
+| 5 | Release prep: the §3 compatibility review, version 1.1.0, release notes' current version | — | To do |
+
+Then the release (§4): push the `ios-v1.1.0` tag, run the release notes' on-device checks on the TestFlight
+build, and submit in App Store Connect.
+
+**Noted for part 3:** the event screen lists team members from the **active** team, not the event's own.
+Opened from another team's notification, its response list would show the wrong roster.
+
+**Possible follow-up, not in scope:** the web also shows the uniform on schedule rows and the dashboard's
+upcoming events. The phone shows it on the event screen only, as decided in §1.
