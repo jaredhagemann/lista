@@ -24,7 +24,13 @@ async function deletionBlocker(userId: string): Promise<NextResponse | null> {
   }
   if (ownedClubs.length > 0) {
     return NextResponse.json(
-      { error: "owns_club", clubs: ownedClubs.map((c) => c.name) },
+      {
+        error: "owns_club",
+        clubs: ownedClubs.map((c) => c.name),
+        // Ids for a link to each club's settings (/dashboard/club/open); `clubs`
+        // stays names only for apps already released.
+        ownedClubs: ownedClubs.map((c) => ({ id: c.id, name: c.name })),
+      },
       { status: 409 }
     );
   }

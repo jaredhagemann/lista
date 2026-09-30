@@ -70,12 +70,39 @@ The refusal is decided by a small function in `lib/`, one case per server reason
 - **The Settings screen** (`app/(app)/settings/index.tsx`) shows it. A web link opens in the browser; an
   in-app one navigates.
 
-**Reaches phones with the next mobile build:** see `docs/releases/mobile-next.md`.
+**Review fix: the club link names the club.** `/dashboard/club/settings` picks the club from the browser's
+active team. When that team was in another club, the link opened that club instead. When it wasn't in a club,
+the link went to the dashboard.
+- **`/api/account/delete`** adds `ownedClubs: [{ id, name }]` to the `owns_club` refusal. `clubs` stays
+  names only, for the installed app.
+- **`/dashboard/club/open?org=<id>`** (new route, like `/dashboard/switch-team`):
+  - `findClubTeam` (`src/lib/club/open.ts`) runs as the viewer and checks they are an owner or director of
+    the club. It finds an unarchived team of the club they're on; the club adds its directors to every team.
+  - The route switches to that team through `setActiveTeam`, then opens club settings.
+  - Anything else goes to the dashboard. The dashboard layout moves the page to the club's subdomain
+    (BUG-027).
+- **The app** links each club to its own route, one button per club. It shows no link when the server sends
+  no id.
+- **The web's own deletion card** (`account-settings.tsx`) had the same plain link. It now uses the route too,
+  with one button per club.
+
+**Reaches phones with the next mobile build:** see `docs/releases/mobile-next.md`. The server and web parts
+ship when this merges.
 
 ## Verification
 
 **Test:** `apps/mobile/__tests__/account-deletion.test.ts`. The module didn't exist before, and the screen's
 old fallback gave the team message for every reason but `sole_guardian`.
 
-**After the next mobile build ships:** as a club owner, tap Delete Account in the app. The message names the
-club, and the button opens Club Settings in the browser.
+**Review fix tests.** Each failed against the plain link:
+- `apps/web/tests/club-open-route.test.ts`: the route switches a director of the club, and refuses anyone else,
+  a bad id, or a director on none of its teams.
+- `tests/rls/club-open.test.ts`: `findClubTeam` against real RLS. An owner of two clubs gets each club's own
+  team, archived teams are skipped, and a player on the team gets nothing.
+- `apps/web/tests/account-delete-route.test.ts`: the refusal carries `ownedClubs`.
+- `apps/web/tests/account-deletion-club-owner.test.tsx`: the web card links `/dashboard/club/open?org=…`, with
+  one button per club.
+- The app tests: each club gets its own escaped link, and there's no link without an id.
+
+**After the next mobile build ships:** as a club owner whose browser last had another team open, tap Delete
+Account in the app. The message names the club, and the button opens that club's settings in the browser.

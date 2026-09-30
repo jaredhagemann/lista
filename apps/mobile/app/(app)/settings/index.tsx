@@ -109,18 +109,17 @@ export default function SettingsHubScreen() {
       // Each refusal says what's in the way and how to clear it (BUG-028): a
       // club owner, a team owner, the only guardian who can sign in.
       const refusal = deletionRefusal(await res.json().catch(() => ({})), API_BASE);
-      const action = refusal.action;
       Alert.alert(
         refusal.title,
         refusal.message,
-        action
+        refusal.actions.length > 0
           ? [
               { text: "Cancel", style: "cancel" },
-              {
+              ...refusal.actions.map((action) => ({
                 text: action.label,
                 onPress: () =>
                   "url" in action ? Linking.openURL(action.url) : router.push(action.route as never),
-              },
+              })),
             ]
           : [{ text: "OK" }]
       );

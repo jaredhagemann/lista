@@ -118,7 +118,11 @@ describe("account deletion — club ownership (BUG-013)", () => {
     const res = await DELETE(request("DELETE"));
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "owns_club", clubs: ["Westside FC"] });
+    expect(await res.json()).toEqual({
+      error: "owns_club",
+      clubs: ["Westside FC"],
+      ownedClubs: [{ id: "org-1", name: "Westside FC" }],
+    });
     expect(mocks.rpc).toHaveBeenCalledWith("owned_open_clubs", { p_profile_id: USER.id });
     expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
@@ -129,7 +133,11 @@ describe("account deletion — club ownership (BUG-013)", () => {
     const res = await GET(request("GET"));
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "owns_club", clubs: ["Westside FC"] });
+    expect(await res.json()).toEqual({
+      error: "owns_club",
+      clubs: ["Westside FC"],
+      ownedClubs: [{ id: "org-1", name: "Westside FC" }],
+    });
   });
 
   it("fails closed when the club check errors", async () => {

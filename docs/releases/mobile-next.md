@@ -87,8 +87,12 @@ Files: `lib/event-time.ts`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx
 
 **Installed build:** a club owner is told they own *teams* and offered Team Settings, which can't help.
 
-**New build:** the message names the club and links to Club Settings on the web, where ownership is handed
-over or the club closed. Each refusal (club, teams, only guardian) has its own message.
+**New build:** the message names the club and links to that club's settings on the web, where ownership is
+handed over or the club closed. The link names the club, so the browser opens that club whatever team it last
+had open, with one button per club. Each refusal (club, teams, only guardian) has its own message.
+
+**Server dependency:** the club's id in the refusal and `/dashboard/club/open` ship with the web deploy of #99,
+long before this build. The installed app ignores the new field.
 
 Files: `lib/account-deletion.ts`, `app/(app)/settings/index.tsx`, `__tests__/account-deletion.test.ts`.
 
@@ -113,8 +117,8 @@ Each of these is the check recorded on its ticket, and none of them can be run b
 - **BUG-010:** on a phone set to a different zone from the team, open an event: the time matches the web,
   carries a zone label (e.g. "PDT"), and "Arrive by" shows a time. Confirms Hermes formats named zones on
   device — the Jest run uses Node's `Intl`, not Hermes.
-- **BUG-028:** as a club owner, tap Delete Account: the message names the club and opens Club Settings on the
-  web.
+- **BUG-028:** as a club owner whose browser last had another club's team (or a non-club team) open, tap
+  Delete Account: the message names the club, and the button opens *that* club's settings on the web.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
