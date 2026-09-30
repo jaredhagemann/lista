@@ -106,6 +106,33 @@ roles read capitalized ("Role: Player").
 
 Files: `lib/invite-accept.ts`, `app/invite/[id].tsx`, `__tests__/invite-accept.test.ts`.
 
+### Labels and club branding, as on the web — [spec §1](../specs/mobile-next-build.md)
+
+**Installed build:** stored values print raw or are capitalized by a style, so a relationship reads "mom" on
+one screen and "Mom" on another. A club team shows only its own name, and no logo if it has none of its own.
+
+**New build:** roles, relationships and event types read "Coach", "Step Parent", "Game" everywhere, through the
+web's rule (`lib/labels.ts`). In the top strip and the team picker, a club team is "SLOFC - 12U Girls" with
+the club's logo when it has none of its own (`lib/team-branding.ts`, the web's rule). Free teams are
+unchanged. A scan test fails if a screen prints one of these values raw or capitalizes with a style.
+
+**Logos in any format:** the web's uploaders accept SVG and keep the original. React Native's `Image` can't
+draw SVG, so on the installed build an SVG team logo is a blank circle, and a club's would have been too once
+inherited. `components/RemoteLogo.tsx` asks Storage for the file's type (one `HEAD` per logo), draws SVG with
+`react-native-svg` and anything else with `Image`, and shows the team's initials when there's no logo or it
+fails to load.
+
+**New native dependency:** `react-native-svg` (15.15.3, the version `expo install` pins for SDK 55). It
+ships only in a full build, and this is one.
+
+**Data:** the membership query also reads the team's club (`organizations(name, org_name_public, logo_url,
+plan)`), which are existing columns the web's dashboard already reads the same way. No server change.
+
+Files: `lib/labels.ts`, `lib/team-branding.ts`, `lib/membership.ts`, `contexts/AppContext.tsx`,
+`components/TeamProfileStrip.tsx`, `components/SwitcherSheet.tsx`, `components/RemoteLogo.tsx`,
+`lib/logo-kind.ts`, nine screens under `app/(app)/`, `__tests__/labels.test.ts`,
+`__tests__/team-branding.test.ts`, `__tests__/TeamBrandingScreens.test.tsx`, `__tests__/RemoteLogo.test.tsx`.
+
 ---
 
 ## Before shipping
@@ -131,6 +158,10 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   Delete Account: the message names the club, and the button opens *that* club's settings on the web.
 - **BUG-029:** open a director invitation in the app: it reads as helping run the club, asks nothing about
   players, and accepting makes you a director.
+- **Labels and branding:** on a club team without its own logo, the top strip and team picker show "[club] -
+  [team]" and the club's logo; a free team shows its plain name. Do this with an **SVG** club logo and a
+  PNG one: both draw (confirms `react-native-svg` on device; Jest mocks it). The roster, a member's page and an event
+  read "Coach", "Mom", "Game".
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.

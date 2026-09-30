@@ -11,6 +11,8 @@
  * one?
  */
 
+import { displayLabel } from "./labels";
+
 export type Identity = "self" | "guardian";
 
 export type AcceptBody =
@@ -81,11 +83,6 @@ export type InviteCopy = {
   asksWhoYouAre: boolean;
 };
 
-/** A stored role as people read it: "player" → "Player". */
-function roleLabel(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1);
-}
-
 /**
  * The invitation screen's words. A director invitation is to a club, whose name
  * the server sends as teamName (BUG-013): it's to help run it, and there's no
@@ -111,8 +108,8 @@ export function inviteCopy(invite: InviteSummary): InviteCopy {
     };
   }
   return {
-    invitedAs: `You've been invited as ${roleLabel(invite.role)}`,
-    roleLine: `Role: ${roleLabel(invite.role)}`,
+    invitedAs: `You've been invited as ${displayLabel(invite.role)}`,
+    roleLine: `Role: ${displayLabel(invite.role)}`,
     acceptLabel: "Accept & join team",
     joined: `You've joined ${invite.teamName}.`,
     asksWhoYouAre: true,

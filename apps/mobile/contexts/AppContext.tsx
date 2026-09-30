@@ -9,6 +9,8 @@ import {
 import * as SecureStore from "expo-secure-store";
 import { supabase } from "../lib/supabase";
 import { useSession } from "../app/_layout";
+import { rowToMembership } from "../lib/membership";
+import type { OrgBranding } from "../lib/team-branding";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,8 @@ export type Team = {
   logo_url: string | null;
   home_uniform: string | null;
   away_uniform: string | null;
+  /** The club, for its branding (lib/team-branding). */
+  organizations?: OrgBranding | null;
 };
 
 export type TeamMemberRow = {
@@ -50,8 +54,12 @@ export type ManagedProfileRow = {
 export type ActiveMembership = {
   profileId: string;
   teamId: string;
+  /** The team's own name. */
   teamName: string;
+  /** "[club] - [team]" for a club team, else the team's name. */
+  displayName: string;
   season: string | null;
+  /** The team's logo, else its club's. */
   logoUrl: string | null;
   role: string;
   homeUniform: string | null;
@@ -127,7 +135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { data: membershipsData } = await supabase
       .from("team_members")
       .select(
-        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
+        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform, organizations(name, org_name_public, logo_url, plan)), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
       )
       .in("profile_id", allProfileIds)
       .order("created_at");
@@ -264,19 +272,4 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {children}
     </AppContext.Provider>
   );
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function rowToMembership(m: TeamMemberRow): ActiveMembership {
-  return {
-    profileId: m.profile_id,
-    teamId: m.team_id,
-    teamName: m.teams.name,
-    season: m.teams.season,
-    logoUrl: m.teams.logo_url,
-    role: m.role,
-    homeUniform: m.teams.home_uniform,
-    awayUniform: m.teams.away_uniform,
-  };
 }

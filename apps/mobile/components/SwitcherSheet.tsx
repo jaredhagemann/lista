@@ -4,56 +4,14 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Image,
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext, type TeamMemberRow } from "../contexts/AppContext";
-
-function teamInitials(name: string) {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-}
-
-function TeamAvatar({
-  name,
-  logoUrl,
-  size = 36,
-}: {
-  name: string;
-  logoUrl: string | null;
-  size?: number;
-}) {
-  if (logoUrl) {
-    return (
-      <Image
-        source={{ uri: logoUrl }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-      />
-    );
-  }
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: "#0f172a",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Text style={{ color: "#fff", fontSize: size * 0.35, fontWeight: "700" }}>
-        {teamInitials(name)}
-      </Text>
-    </View>
-  );
-}
+import { displayLabel } from "../lib/labels";
+import { teamBranding } from "../lib/team-branding";
+import { RemoteLogo } from "./RemoteLogo";
 
 export function SwitcherSheet({
   visible,
@@ -150,16 +108,17 @@ export function SwitcherSheet({
               ) : (
                 teamRows.map(([teamId, { team, profileCount, role }]) => {
                   const isActive = teamId === membership?.teamId;
+                  const brand = teamBranding(team);
                   return (
                     <TouchableOpacity
                       key={teamId}
                       style={[styles.row, isActive && styles.rowActive]}
                       onPress={() => handleTeamPress(teamId)}
                     >
-                      <TeamAvatar name={team.name} logoUrl={team.logo_url} />
+                      <RemoteLogo uri={brand.logoUrl} name={team.name} size={36} />
                       <View style={styles.rowText}>
                         <Text style={styles.rowTitle} numberOfLines={1}>
-                          {team.name}
+                          {brand.displayName}
                         </Text>
                         <Text style={styles.rowSub}>
                           {team.season
@@ -167,7 +126,7 @@ export function SwitcherSheet({
                             : ""}
                           {profileCount > 1
                             ? `${profileCount} profiles`
-                            : role}
+                            : displayLabel(role)}
                         </Text>
                       </View>
                       {isActive && (
@@ -232,7 +191,7 @@ export function SwitcherSheet({
                             {name}
                           </Text>
                           <Text style={styles.rowSub}>
-                            {m.role} · {label}
+                            {displayLabel(m.role)} · {displayLabel(label)}
                           </Text>
                         </View>
                         {isActiveProfile && (
@@ -333,7 +292,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     marginTop: 1,
-    textTransform: "capitalize",
   },
   profileAvatar: {
     width: 36,

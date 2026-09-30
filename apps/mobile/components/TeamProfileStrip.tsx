@@ -1,18 +1,10 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity, Image, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAppContext } from "../contexts/AppContext";
 import { SwitcherSheet } from "./SwitcherSheet";
-
-function teamInitials(name: string) {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-}
+import { RemoteLogo } from "./RemoteLogo";
 
 export function TeamProfileStrip() {
   const { membership, ownProfile, activeProfile, loading, switching } =
@@ -42,16 +34,11 @@ export function TeamProfileStrip() {
         {/* Team avatar */}
         {loading ? (
           <View style={styles.avatarPlaceholder} />
-        ) : membership?.logoUrl ? (
-          <Image
-            source={{ uri: membership.logoUrl }}
-            style={styles.avatar}
-          />
+        ) : membership ? (
+          <RemoteLogo uri={membership.logoUrl} name={membership.teamName} size={32} />
         ) : (
           <View style={styles.avatarInitials}>
-            <Text style={styles.avatarInitialsText}>
-              {membership ? teamInitials(membership.teamName) : "—"}
-            </Text>
+            <Text style={styles.avatarInitialsText}>—</Text>
           </View>
         )}
 
@@ -61,7 +48,7 @@ export function TeamProfileStrip() {
             <View style={styles.skeletonTitle} />
           ) : (
             <Text style={styles.teamName} numberOfLines={1}>
-              {membership?.teamName ?? "No team"}
+              {membership?.displayName ?? "No team"}
             </Text>
           )}
           {!loading && isViewingManaged ? (
@@ -91,11 +78,6 @@ export function TeamProfileStrip() {
 import { StyleSheet } from "react-native";
 
 const styles = StyleSheet.create({
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
   avatarInitials: {
     width: 32,
     height: 32,

@@ -18,6 +18,7 @@ import { supabase } from "../../../lib/supabase";
 import { unregisterForPushNotifications } from "../../../lib/notifications";
 import { deletionRefusal } from "../../../lib/account-deletion";
 import { useAppContext } from "../../../contexts/AppContext";
+import { displayLabel } from "../../../lib/labels";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -233,7 +234,7 @@ export default function SettingsHubScreen() {
               <Text style={styles.profileEmail}>{ownProfile.email}</Text>
             ) : null}
             {membership ? (
-              <Text style={styles.profileRole}>{membership.role} · {membership.teamName}</Text>
+              <Text style={styles.profileRole}>{displayLabel(membership.role)} · {membership.teamName}</Text>
             ) : null}
           </View>
         </View>
@@ -333,7 +334,7 @@ const styles = StyleSheet.create({
   avatarFallbackText: { fontSize: 20, fontWeight: "700", color: "#374151" },
   profileName: { fontSize: 17, fontWeight: "700", color: "#111827" },
   profileEmail: { fontSize: 13, color: "#6b7280", marginTop: 1 },
-  profileRole: { fontSize: 12, color: "#9ca3af", marginTop: 2, textTransform: "capitalize" },
+  profileRole: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",

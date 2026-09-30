@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { displayLabel } from "../../../lib/labels";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -174,7 +175,7 @@ export default function TeamSettingsScreen() {
               >
                 <View style={styles.adminRowText}>
                   <Text style={styles.adminName}>{item.name}</Text>
-                  <Text style={styles.adminRole}>{item.role}</Text>
+                  <Text style={styles.adminRole}>{displayLabel(item.role)}</Text>
                 </View>
                 <Text style={styles.adminChevron}>›</Text>
               </TouchableOpacity>
@@ -318,7 +319,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#9ca3af",
     marginTop: 2,
-    textTransform: "capitalize",
   },
   adminChevron: { fontSize: 20, color: "#d1d5db", marginLeft: 8 },
   separator: { height: 1, backgroundColor: "#f3f4f6", marginVertical: 4 },
