@@ -1408,7 +1408,7 @@ export type Database = {
       enqueue_tournament_notice: {
         Args: {
           p_action: string
-          p_affected: number
+          p_affected_games: Json
           p_games: number
           p_games_action: string
           p_tournament: Database["public"]["Tables"]["events"]["Row"]
@@ -1488,6 +1488,7 @@ export type Database = {
         Returns: string
       }
       team_org_id: { Args: { t_id: string }; Returns: string }
+      tournament_game_summaries: { Args: { p_ids: string[] }; Returns: Json }
       training_leaderboard: {
         Args: {
           p_anchor?: string
