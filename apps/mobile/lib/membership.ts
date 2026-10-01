@@ -1,5 +1,5 @@
 import type { ActiveMembership, TeamMemberRow } from "../contexts/AppContext";
-import { teamBranding } from "./team-branding";
+import { clubSecondaryColor, LISTA_BLUE, teamBranding } from "./team-branding";
 
 /**
  * The active membership the screens read. A club team's logo falls back to the
@@ -13,6 +13,8 @@ export function rowToMembership(m: TeamMemberRow): ActiveMembership {
     teamId: m.team_id,
     teamName: m.teams.name,
     displayName: brand.displayName,
+    clubName: brand.clubName,
+    winColor: clubSecondaryColor(m.teams.organizations) ?? LISTA_BLUE,
     season: m.teams.season,
     logoUrl: brand.logoUrl,
     role: m.role,
