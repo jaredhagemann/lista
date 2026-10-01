@@ -1,7 +1,6 @@
 # Spec — Tournaments and leagues
 
-**Status:** Draft. D1, D2, D3 and D10 decided 2026-10-01; the rest are open (§6), each with a recommendation.
-Nothing is built until they're settled.
+**Status:** Decided 2026-10-01 (§6, D1–D12). Ready to plan the build: tournaments first, then leagues (D12).
 **Requested:** 2026-10-01, by the user. To be decided before the 1.1.0 mobile release, because tournaments may
 change what the app's schedule and event screens show.
 **Scope:** database, web and the mobile app.
@@ -63,8 +62,10 @@ fields on the event row, the same way game details already live on `events`.
     when both are set.
 - **Link from game to tournament:** `tournament_id uuid references events(id)`, nullable, on game events.
   - A database rule (trigger) enforces that it points at a tournament on the **same team**.
-  - Deleting a tournament: either its games become standalone, or deletion is refused while it has games.
-    See D5.
+  - **Deleting a tournament (D5):** refused while it has games (the foreign key, with no cascade, as for a
+    series head under BUG-009). "Delete the tournament and its games" is a separate, explicit action: a
+    database function like `delete_event_series` that deletes the games, their answers, then the tournament,
+    in one transaction.
 - **Days:** the tournament's `start_time` and `end_time` span its days, in its zone (`events.timezone`).
   - A game's time should fall inside the tournament's days. Warn in the form, but don't enforce it in the
     database: schedules slip.
@@ -121,7 +122,7 @@ Sunday's games").
 - **Emails and notifications:**
   - A tournament reads "Surf Cup · Sat Oct 12 – Sun Oct 13".
   - Games name their tournament.
-  - Reminders go out for the tournament, not for each game (D6).
+  - Reminders go out for the tournament and for each of its games, like any event (D6).
 
 ### Mobile app
 
@@ -167,15 +168,15 @@ The same as the web, read-only for now, since the app doesn't create events:
 | D1 | How is a tournament modeled? | **A:** a `tournament` event type, with games linked by `events.tournament_id` (§3). | **A, decided 2026-10-01** |
 | D2 | Where do people answer "are you coming?" | **On the tournament.** One answer for the weekend. Per-game answers stay possible but aren't asked for. Coaches mostly need "who's coming to Surf Cup". | **Both, decided 2026-10-01:** answer the tournament, and optionally a game. A game's own answer wins (§4, "Availability") |
 | D3 | Do tournament games count toward the overall record? | **Yes.** The overall record is every game, and the tournament adds its own record next to it. | **Yes, decided 2026-10-01** |
-| D4 | Can a game be in both a league and a tournament? | **Yes, independently.** Nothing is inherited. | Open |
-| D5 | Deleting a tournament that has games | **Refuse while it has games, and offer "delete the tournament and its games"**, like a series (BUG-009). Games aren't left orphaned silently. | Open |
-| D6 | Reminders for a tournament | **One reminder for the tournament** (its first day). None for each of its games. | Open |
-| D7 | A round on each game ("Pool A", "Semifinal")? | **Yes, optional `events.round text`.** It's cheap and makes the game list read right. | Open |
-| D8 | The dashboard after a tournament | **Show the placement as the last result** until a newer game. "Surf Cup · 2nd place · 3–1–0". | Open |
-| D9 | Leagues on the Record card | **A row per active league** under the overall record. On the web, maybe a season view later (roadmap: Stats & Season Records). | Open |
+| D4 | Can a game be in both a league and a tournament? | **Yes, independently.** Nothing is inherited. | **As recommended, decided 2026-10-01** |
+| D5 | Deleting a tournament that has games | **Refuse while it has games, and offer "delete the tournament and its games"**, like a series (BUG-009). Games aren't left orphaned silently. | **As recommended, decided 2026-10-01** |
+| D6 | Reminders for a tournament | **One reminder for the tournament** (its first day). None for each of its games. | **Decided 2026-10-01, against the recommendation: a reminder for every event**, the tournament and each of its games, as for any event |
+| D7 | A round on each game ("Pool A", "Semifinal")? | **Yes, optional `events.round text`.** It's cheap and makes the game list read right. | **As recommended, decided 2026-10-01** |
+| D8 | The dashboard after a tournament | **Show the placement as the last result** until a newer game. "Surf Cup · 2nd place · 3–1–0". | **As recommended, decided 2026-10-01** |
+| D9 | Leagues on the Record card | **A row per active league** under the overall record. On the web, maybe a season view later (roadmap: Stats & Season Records). | **As recommended, decided 2026-10-01** |
 | D10 | League model | **B:** team leagues (§5). Club leagues later. | **B, team leagues, decided 2026-10-01** |
-| D11 | Mobile before 1.1.0? | **Display only:** tournament cards, the tournament screen, "Part of", multi-day dates, league tags and records. Creating them stays on the web. | Open |
-| D12 | Order of work | **Tournaments first** (the schema, then web, then mobile), **then leagues.** Leagues don't change what 1.0.12 sees, so they don't hold the release. | Open |
+| D11 | Mobile before 1.1.0? | **Display only:** tournament cards, the tournament screen, "Part of", multi-day dates, league tags and records. Creating them stays on the web. | **As recommended, decided 2026-10-01** |
+| D12 | Order of work | **Tournaments first** (the schema, then web, then mobile), **then leagues.** Leagues don't change what 1.0.12 sees, so they don't hold the release. | **As recommended, decided 2026-10-01** |
 
 ## 7. Compatibility with the installed 1.0.12 (D4 of the mobile spec)
 

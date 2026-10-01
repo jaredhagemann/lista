@@ -11,7 +11,7 @@ Shipped features are removed from this list. Their specs stay in `docs/specs/`, 
 Roughly prioritized — revisit ordering as the product evolves.
 
 ### 1. Tournaments and Leagues (next, before the 1.1.0 mobile release)
-Spec: `docs/specs/tournaments-and-leagues.md`. Decisions are open (§6).
+Spec: `docs/specs/tournaments-and-leagues.md`. Decided 2026-10-01: tournaments first, then leagues.
 - **Tournaments:** a new event type spanning several days, with several games, a placement ("2nd place",
   "Gold bracket champions"), and a record limited to its own games. People answer "are you coming?" once for
   the tournament.
