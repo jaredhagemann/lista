@@ -105,7 +105,7 @@ One PR per part. Each is test-first, and adds its entry and on-device check to `
 | — | Version 1.1.0 in `app.json`, so checkpoint TestFlight builds run from the Actions tab | #104 | Merged; build 18 reached TestFlight 2026-09-30 after an expired Apple agreement was signed |
 | 3 | Availability, trimmed: the ✓ ? ✗ picker with tap-again-to-clear, Players vs Coaches & staff, your own row updating, answering for the profile on the event's team | #105 | Merged |
 | — | BUG-030 filed (a flaky web test, not fixed); BUG-031, the chat input hidden by the keyboard, found on build 18 and fixed | #106; #107, #108 | Merged |
-| 4 | Dashboard cards: Team card, Record card (reads `brand_color_secondary`) | this PR | In review |
+| 4 | Dashboard cards: Team card, Record card (reads `brand_color_secondary`) | #109 | In review |
 | 5 | Release prep: the §3 compatibility review, and the release notes' final pass | — | Next |
 
 Then the release (§4): push the `ios-v1.1.0` tag, run the release notes' on-device checks on the TestFlight
