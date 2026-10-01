@@ -2,7 +2,7 @@
 
 **Severity:** P1. Chat from the phone is unusable: you can't see what you type, or send it. The workaround is
 the web.
-**Status:** Open
+**Status:** Fixed in code; reaches phones with the 1.1.0 build
 **Reported:** 2026-09-30 by the user, testing TestFlight 1.1.0 (build 18) on an iPhone
 **Area:** ios, chat
 **Evidence class:** Mixed. The symptom is reproduced on a device (TestFlight build 18, production). The cause
@@ -90,4 +90,29 @@ ticket if it's wrong.
 
 ## Fix as implemented
 
+**Branch:** `fix/031-mobile-chat-keyboard`
+**PR:** #108
+**Migration:** none
+
+- **`apps/mobile/components/KeyboardScreen.tsx`** (new) wraps a `KeyboardAvoidingView` in a view that measures
+  where it sits on screen (`measureInWindow`, on layout). It passes that top as `keyboardVerticalOffset`, so the
+  padding matches the real overlap whatever is above it: the safe area, the team strip, a header, or larger
+  text. Until it has been measured, the offset is 0, as before.
+- **Both chat screens** (`chat/[channelId].tsx`, `chat/dm/[dmId].tsx`) use it instead of their own
+  `KeyboardAvoidingView` with offset 0.
+- **Not changed:** `settings/feedback.tsx`'s hard-coded `keyboardVerticalOffset={90}` was left alone. It may
+  fall short in the same way, and should be checked on the device and ticketed separately if it does.
+
 ## Verification
+
+**Test:** `apps/mobile/__tests__/ChatKeyboard.test.tsx`.
+- **Fails against the unfixed code:** the check that both chat screens use `KeyboardScreen` and no longer
+  pass a fixed 0.
+- **The component:** a measured top of 151 becomes the offset, and the offset is 0 before measuring.
+
+**On a device, required:** Jest can't show a keyboard. The checks are in `docs/releases/mobile-next.md` and
+are to be run on the 1.1.0 TestFlight build:
+- In a channel and in a direct message, the box sits just above the keyboard, and Send works.
+- The same with iOS text size set large.
+
+The Android behavior (`height`) is unchanged and untested. The iOS release is what ships.
