@@ -1,7 +1,7 @@
 # Spec — Tournaments and leagues
 
-**Status:** Draft, for discussion. The modeling choices are open: see §6 for the questions and the
-recommendations. Nothing is built until they're settled.
+**Status:** Draft. D1, D2, D3 and D10 decided 2026-10-01; the rest are open (§6), each with a recommendation.
+Nothing is built until they're settled.
 **Requested:** 2026-10-01, by the user. To be decided before the 1.1.0 mobile release, because tournaments may
 change what the app's schedule and event screens show.
 **Scope:** database, web and the mobile app.
@@ -79,13 +79,36 @@ fields on the event row, the same way game details already live on `events`.
 - **Title:** the tournament's own title ("Surf Cup"). Its games keep `gameTitle` ("U10 Girls vs Rivals FC").
   Where a game is shown outside its tournament, a line under it names the tournament.
 
+### Availability (D2: both)
+
+People answer the tournament, and can answer a single game to override it (for example, "can't make
+Sunday's games").
+- **Storage:** existing `availability` rows, one per person per event. The tournament's row is the main
+  answer, and a game's own row is an override. No new table.
+- **A game's answer:** its own row if there is one, else the tournament's, else none. The rule
+  `effectiveAnswer(gameRow, tournamentRow)` is shared by the web and the phone.
+- **Where answers are shown:**
+  - **The tournament's response list:** the tournament answers.
+  - **A game's response list:** answers for that game. Inherited ones are marked "from the tournament", so a
+    coach can tell "said yes to the weekend" from "said yes to this game".
+  - **The coach's availability grid:** one column for the tournament, and a column per game showing the
+    resulting answer, with overrides marked.
+- **Clearing a game's answer** goes back to the tournament's answer. It doesn't mean "no answer".
+- **"Set my unanswered events to Available"** (`set_unanswered_availability`, BUG-014): it answers
+  tournaments. Games under an answered tournament already have an answer and are left alone.
+- **Reminders and unanswered counts:** a game counts as unanswered only if neither it nor its tournament has
+  an answer.
+- **1.0.12:** it reads raw `availability` rows. On a tournament game it shows only that game's own answers,
+  not inherited ones. Not wrong, just less complete.
+
 ### Web
 
 - **Create a tournament:** name, dates, location and notes, then add games to it: a time, opponent,
   home/away, uniform, and optionally a round ("Pool A", "Semifinal"; see D7). It's saved in one transaction,
   so there's one notification.
 - **Tournament page:** dates, location, placement, and its record. Its games in order, each with its score and
-  result. "Are you coming?" for the tournament (D2).
+  result. "Are you coming?" for the tournament, and on each game an optional override (D2, "Availability"
+  above).
 - **Schedule and calendar:** the tournament as one item spanning its days (a multi-day bar on the calendar),
   with its games under it or indented in the list. To check: the calendar draws only the start day for
   multi-day events today.
@@ -104,7 +127,8 @@ fields on the event row, the same way game details already live on `events`.
 
 The same as the web, read-only for now, since the app doesn't create events:
 - **Schedule and home:** one card for the tournament, showing its date range.
-- **Tournament screen:** dates, location, placement and record, its games, and the availability picker.
+- **Tournament screen:** dates, location, placement and record, its games, and the availability picker. A
+  game's screen keeps its own picker for an override, showing the inherited answer until one is set.
 - **Game screen:** "Part of Surf Cup".
 - **Multi-day times:** the event screen reads "Sat Oct 12 – Sun Oct 13" instead of "Ends 5:00 PM".
 
@@ -140,16 +164,16 @@ The same as the web, read-only for now, since the app doesn't create events:
 
 | # | Question | Recommendation | Decision |
 | --- | --- | --- | --- |
-| D1 | How is a tournament modeled? | **A:** a `tournament` event type, with games linked by `events.tournament_id` (§3). | Open |
-| D2 | Where do people answer "are you coming?" | **On the tournament.** One answer for the weekend. Per-game answers stay possible but aren't asked for. Coaches mostly need "who's coming to Surf Cup". | Open |
-| D3 | Do tournament games count toward the overall record? | **Yes.** The overall record is every game, and the tournament adds its own record next to it. | Open |
+| D1 | How is a tournament modeled? | **A:** a `tournament` event type, with games linked by `events.tournament_id` (§3). | **A, decided 2026-10-01** |
+| D2 | Where do people answer "are you coming?" | **On the tournament.** One answer for the weekend. Per-game answers stay possible but aren't asked for. Coaches mostly need "who's coming to Surf Cup". | **Both, decided 2026-10-01:** answer the tournament, and optionally a game. A game's own answer wins (§4, "Availability") |
+| D3 | Do tournament games count toward the overall record? | **Yes.** The overall record is every game, and the tournament adds its own record next to it. | **Yes, decided 2026-10-01** |
 | D4 | Can a game be in both a league and a tournament? | **Yes, independently.** Nothing is inherited. | Open |
 | D5 | Deleting a tournament that has games | **Refuse while it has games, and offer "delete the tournament and its games"**, like a series (BUG-009). Games aren't left orphaned silently. | Open |
 | D6 | Reminders for a tournament | **One reminder for the tournament** (its first day). None for each of its games. | Open |
 | D7 | A round on each game ("Pool A", "Semifinal")? | **Yes, optional `events.round text`.** It's cheap and makes the game list read right. | Open |
 | D8 | The dashboard after a tournament | **Show the placement as the last result** until a newer game. "Surf Cup · 2nd place · 3–1–0". | Open |
 | D9 | Leagues on the Record card | **A row per active league** under the overall record. On the web, maybe a season view later (roadmap: Stats & Season Records). | Open |
-| D10 | League model | **B:** team leagues (§5). Club leagues later. | Open |
+| D10 | League model | **B:** team leagues (§5). Club leagues later. | **B, team leagues, decided 2026-10-01** |
 | D11 | Mobile before 1.1.0? | **Display only:** tournament cards, the tournament screen, "Part of", multi-day dates, league tags and records. Creating them stays on the web. | Open |
 | D12 | Order of work | **Tournaments first** (the schema, then web, then mobile), **then leagues.** Leagues don't change what 1.0.12 sees, so they don't hold the release. | Open |
 
@@ -179,6 +203,7 @@ This is why tournaments should land before 1.1.0 ships: 1.1.0 should show them p
   - deletion follows D5
   - a league must be the team's own
 - **Rules (web and phone, the same cases):**
+  - `effectiveAnswer`: a game's own answer wins, else the tournament's, else none; clearing a game falls back
   - the tournament record counts only its games
   - placement text (label wins, ordinal otherwise)
   - league records split by league, and the overall record counts everything
