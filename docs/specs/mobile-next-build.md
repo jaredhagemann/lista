@@ -101,15 +101,16 @@ One PR per part. Each is test-first, and adds its entry and on-device check to `
 | — | Tests in CI (D3) | #101 | Merged |
 | — | BUG-028 club owner deletion, BUG-029 director invitation | #99, #100 | Merged |
 | 1 | Labels and club branding, this spec, SVG logos | #102 | Merged |
-| 2 | Game display: titles on the home, schedule and event screens; the event screen's Game details | #103 | In review |
-| 3 | Availability, trimmed: the ✓ ? ✗ picker with tap-again-to-clear, Players vs Coaches & staff, your own row updating | — | Next |
-| 4 | Dashboard cards: Team card, Record card (reads `brand_color_secondary`) | — | To do |
-| 5 | Release prep: the §3 compatibility review, version 1.1.0, release notes' current version | — | To do |
+| 2 | Game display: titles on the home, schedule and event screens; the event screen's Game details | #103 | Merged |
+| — | Version 1.1.0 in `app.json`, so checkpoint TestFlight builds run from the Actions tab | #104 | Merged; first checkpoint build started 2026-09-30 |
+| 3 | Availability, trimmed: the ✓ ? ✗ picker with tap-again-to-clear, Players vs Coaches & staff, your own row updating | #105 | In review |
+| 4 | Dashboard cards: Team card, Record card (reads `brand_color_secondary`) | — | Next |
+| 5 | Release prep: the §3 compatibility review, and the release notes' final pass | — | To do |
 
 Then the release (§4): push the `ios-v1.1.0` tag, run the release notes' on-device checks on the TestFlight
 build, and submit in App Store Connect.
 
-**Noted for part 3:** the event screen lists team members from the **active** team, not the event's own.
+**Fixed in part 3:** the event screen listed team members from the **active** team, not the event's own.
 Opened from another team's notification, its response list would show the wrong roster.
 
 **Possible follow-up, not in scope:** the web also shows the uniform on schedule rows and the dashboard's

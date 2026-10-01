@@ -60,6 +60,8 @@ const mockCtx = {
     homeUniform: null,
     awayUniform: null,
   },
+  ownProfile: { id: "me" },
+  allMemberships: [] as unknown[],
   loading: false,
   refresh: jest.fn(),
 };

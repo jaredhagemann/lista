@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation } from "expo-router";
@@ -16,10 +17,17 @@ import { useAppContext } from "../../../contexts/AppContext";
 import { displayLabel } from "../../../lib/labels";
 import { gameTitle, homeAwayLabel, scoreLine, uniformOf, type TeamUniforms } from "../../../lib/game-display";
 import { UniformLabel } from "../../../components/UniformLabel";
-
-type AvailabilityStatus = "available" | "maybe" | "unavailable";
+import {
+  answerersFor,
+  groupResponses,
+  nextAvailability,
+  type Answerer,
+  type AvailabilityStatus,
+  type RosterMember,
+} from "../../../lib/availability";
 
 type EventDetail = {
+  team_id: string;
   id: string;
   title: string;
   event_type: string;
@@ -112,13 +120,87 @@ function GameDetails({ event }: { event: EventDetail }) {
 type AvailabilityRow = {
   profile_id: string;
   status: AvailabilityStatus;
-  profiles: { first_name: string; last_name: string } | null;
 };
 
 type TeamMemberRow = {
   profile_id: string;
+  role: string | null;
   profiles: { first_name: string; last_name: string } | null;
 };
+
+const ANSWER_STYLE: Record<AvailabilityStatus, { symbol: string; color: string; label: string }> = {
+  available: { symbol: "✓", color: "#15803d", label: "Available" },
+  maybe: { symbol: "?", color: "#b45309", label: "Maybe" },
+  unavailable: { symbol: "✗", color: "#b91c1c", label: "Unavailable" },
+};
+
+/** A read-only answer in a fixed-width slot, or a dash for no response. */
+function AnswerIcon({ status }: { status: AvailabilityStatus | null }) {
+  const style = status ? ANSWER_STYLE[status] : null;
+  return (
+    <Text
+      accessibilityLabel={style?.label ?? "No response"}
+      style={{ width: 16, textAlign: "center", fontSize: 13, fontWeight: "600", color: style?.color ?? "#9ca3af" }}
+    >
+      {style?.symbol ?? "—"}
+    </Text>
+  );
+}
+
+/**
+ * Players grouped by answer, then coaches and staff with their role, as the
+ * web's ResponseList. Only players count in the summary.
+ */
+function Responses({ roster, answers }: { roster: RosterMember[]; answers: ReadonlyMap<string, AvailabilityStatus> }) {
+  const { groups, staff, summary, playerCount } = groupResponses(roster, answers);
+  const sections = [
+    { key: "available", label: "Available", color: "text-green-700", members: groups.available },
+    { key: "maybe", label: "Maybe", color: "text-amber-700", members: groups.maybe },
+    { key: "unavailable", label: "Unavailable", color: "text-red-700", members: groups.unavailable },
+    { key: "none", label: "No response", color: "text-gray-400", members: groups.none },
+  ] as const;
+
+  return (
+    <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
+      <View className="flex-row items-center justify-between mb-3 gap-2">
+        <Text className="font-semibold text-gray-900">Responses</Text>
+        {summary ? <Text className="text-xs text-gray-500 flex-shrink">{summary}</Text> : null}
+      </View>
+
+      {sections.map(({ key, label, color, members }) =>
+        members.length > 0 ? (
+          <View key={key} accessibilityLabel={`${label} (${members.length})`} className="mb-3">
+            <Text className={`text-xs font-semibold uppercase tracking-wide mb-1 ${color}`}>
+              {label} ({members.length})
+            </Text>
+            {members.map((m) => (
+              <Text key={m.profileId} className={`text-sm py-0.5 ${key === "none" ? "text-gray-400" : "text-gray-700"}`}>
+                {m.name}
+              </Text>
+            ))}
+          </View>
+        ) : null
+      )}
+
+      {playerCount === 0 ? <Text className="text-sm text-gray-400 mb-3">No players on this team yet.</Text> : null}
+
+      {staff.length > 0 ? (
+        <View accessibilityLabel={`Coaches & staff (${staff.length})`} className="pt-3 border-t border-gray-100">
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+            Coaches & staff ({staff.length})
+          </Text>
+          {staff.map((m) => (
+            <View key={m.profileId} className="flex-row items-center gap-2 py-0.5">
+              <AnswerIcon status={m.status} />
+              <Text className="text-sm text-gray-700 flex-shrink">{m.name}</Text>
+              <Text className="text-xs text-gray-400">{m.roleLabel}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 
 function RsvpButton({
@@ -143,6 +225,9 @@ function RsvpButton({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: isActive, disabled }}
       style={{
         flex: 1,
         paddingVertical: 10,
@@ -170,50 +255,79 @@ function RsvpButton({
 export default function EventDetailScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const navigation = useNavigation();
-  const { membership } = useAppContext();
+  const { membership, ownProfile, allMemberships } = useAppContext();
 
   const [event, setEvent] = useState<EventDetail | null>(null);
-  const [myStatus, setMyStatus] = useState<AvailabilityStatus | null>(null);
-  const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
-  const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([]);
+  // Everyone's answer, yours included: one source, so answering moves your row.
+  const [answers, setAnswers] = useState<Map<string, AvailabilityStatus>>(new Map());
+  const [roster, setRoster] = useState<RosterMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Who answers: a profile of yours on the event's team, which may not be the
+  // one being viewed (review of #105). `chosen` is a pick among several.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const who = event
+    ? answerersFor(event.team_id, allMemberships, membership?.profileId)
+    : { answeringAs: null, choices: [] as Answerer[] };
+  const answeringAs = who.choices.some((c) => c.profileId === chosen) ? chosen : who.answeringAs;
+  const answeringName = who.choices.find((c) => c.profileId === answeringAs)?.name;
+  const pickerTitle =
+    answeringAs && answeringAs === ownProfile?.id
+      ? "Your availability"
+      : answeringName
+        ? `Availability for ${answeringName}`
+        : "Availability";
+  const myStatus = answeringAs ? answers.get(answeringAs) ?? null : null;
+
   async function fetchData() {
     if (!eventId || !membership?.profileId) return;
 
-    const [eventResult, availResult, membersResult] = await Promise.all([
+    const [eventResult, availResult] = await Promise.all([
       supabase
         .from("events")
         .select(
-          "id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, opponent, home_away, uniform, score_for, score_against, game_result, teams(timezone, name, home_uniform, away_uniform, home_uniform_color, away_uniform_color), locations(name, address)"
+          "id, team_id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, opponent, home_away, uniform, score_for, score_against, game_result, teams(timezone, name, home_uniform, away_uniform, home_uniform_color, away_uniform_color), locations(name, address)"
         )
         .eq("id", eventId)
         .single(),
-      supabase
-        .from("availability")
-        .select("profile_id, status, profiles(first_name, last_name)")
-        .eq("event_id", eventId),
-      supabase
-        .from("team_members")
-        .select("profile_id, profiles(first_name, last_name)")
-        .eq("team_id", membership.teamId),
+      supabase.from("availability").select("profile_id, status").eq("event_id", eventId),
     ]);
 
-    if (eventResult.data) {
-      const detail = eventResult.data as unknown as EventDetail;
+    const detail = (eventResult.data ?? null) as unknown as EventDetail | null;
+    if (detail) {
       setEvent(detail);
       navigation.setOptions({ title: gameTitle(detail, detail.teams?.name) });
+
+      // The event's own team, which may not be the one the app has open (an
+      // event opened from another team's notification).
+      const { data: members } = await supabase
+        .from("team_members")
+        .select("profile_id, role, profiles(first_name, last_name)")
+        .eq("team_id", detail.team_id);
+      setRoster(
+        ((members ?? []) as unknown as TeamMemberRow[]).map((m) => ({
+          profileId: m.profile_id,
+          name: [m.profiles?.first_name, m.profiles?.last_name].filter(Boolean).join(" ") || "Unknown",
+          role: m.role,
+        }))
+      );
     }
 
     const rows = (availResult.data ?? []) as unknown as AvailabilityRow[];
-    setAvailability(rows);
-    setTeamMembers((membersResult.data ?? []) as unknown as TeamMemberRow[]);
-    const mine = rows.find((r) => r.profile_id === membership.profileId);
-    setMyStatus(mine?.status ?? null);
+    setAnswers(new Map(rows.map((r) => [r.profile_id, r.status])));
     setLoading(false);
     setRefreshing(false);
+  }
+
+  function setAnswer(profileId: string, status: AvailabilityStatus | null) {
+    setAnswers((prev) => {
+      const next = new Map(prev);
+      if (status) next.set(profileId, status);
+      else next.delete(profileId);
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -227,29 +341,22 @@ export default function EventDetailScreen() {
   }
 
   async function handleRsvp(clicked: AvailabilityStatus) {
-    if (!membership?.profileId || !eventId) return;
+    if (!answeringAs || !eventId) return;
+    const profileId = answeringAs;
     setRsvpLoading(true);
     const previous = myStatus;
+    const next = nextAvailability(previous, clicked);
 
-    if (clicked === myStatus) {
-      setMyStatus(null);
-      const { error } = await supabase
-        .from("availability")
-        .delete()
-        .eq("event_id", eventId)
-        .eq("profile_id", membership.profileId);
-      if (error) setMyStatus(previous);
-    } else {
-      setMyStatus(clicked);
-      const { error } = await supabase.from("availability").upsert(
-        {
-          event_id: eventId,
-          profile_id: membership.profileId,
-          status: clicked,
-        },
-        { onConflict: "event_id,profile_id" }
-      );
-      if (error) setMyStatus(previous);
+    setAnswer(profileId, next);
+    const { error } =
+      next === null
+        ? await supabase.from("availability").delete().eq("event_id", eventId).eq("profile_id", profileId)
+        : await supabase
+            .from("availability")
+            .upsert({ event_id: eventId, profile_id: profileId, status: next }, { onConflict: "event_id,profile_id" });
+    if (error) {
+      setAnswer(profileId, previous);
+      Alert.alert("Couldn't save your answer", "Please check your connection and try again.");
     }
 
     setRsvpLoading(false);
@@ -275,17 +382,6 @@ export default function EventDetailScreen() {
         <Text className="text-gray-500">Event not found.</Text>
       </SafeAreaView>
     );
-  }
-
-  const available = availability.filter((r) => r.status === "available");
-  const maybe = availability.filter((r) => r.status === "maybe");
-  const unavailable = availability.filter((r) => r.status === "unavailable");
-  const respondedIds = new Set(availability.map((r) => r.profile_id));
-  const noResponse = teamMembers.filter((m) => !respondedIds.has(m.profile_id));
-
-  function memberName(r: { profiles: { first_name: string; last_name: string } | null }) {
-    if (!r.profiles) return "Unknown";
-    return [r.profiles.first_name, r.profiles.last_name].filter(Boolean).join(" ");
   }
 
   return (
@@ -390,102 +486,82 @@ export default function EventDetailScreen() {
         {/* RSVP */}
         {!event.is_cancelled ? (
           <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
-            <Text className="font-semibold text-gray-900 mb-3">
-              Your availability
-            </Text>
-            <View className="flex-row gap-2">
-              <RsvpButton
-                label="Available"
-                icon="✓"
-                status="available"
-                current={myStatus}
-                activeColor="#16a34a"
-                onPress={() => handleRsvp("available")}
-                disabled={rsvpLoading}
-              />
-              <RsvpButton
-                label="Maybe"
-                icon="?"
-                status="maybe"
-                current={myStatus}
-                activeColor="#d97706"
-                onPress={() => handleRsvp("maybe")}
-                disabled={rsvpLoading}
-              />
-              <RsvpButton
-                label="Can't go"
-                icon="✗"
-                status="unavailable"
-                current={myStatus}
-                activeColor="#dc2626"
-                onPress={() => handleRsvp("unavailable")}
-                disabled={rsvpLoading}
-              />
-            </View>
-            {myStatus ? (
-              <Text className="text-xs text-gray-400 text-center mt-2">
-                Tap again to clear your response
+            <Text className="font-semibold text-gray-900 mb-3">{pickerTitle}</Text>
+            {who.choices.length === 0 ? (
+              <Text className="text-sm text-gray-500">
+                None of your players or your own profile is on this team, so there's nothing to answer here.
               </Text>
-            ) : null}
+            ) : (
+              <>
+                {who.choices.length > 1 ? (
+                  <View className="flex-row flex-wrap gap-2 mb-3">
+                    {who.choices.map((c) => {
+                      const selected = c.profileId === answeringAs;
+                      return (
+                        <TouchableOpacity
+                          key={c.profileId}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Answer for ${c.name}`}
+                          accessibilityState={{ selected }}
+                          onPress={() => setChosen(c.profileId)}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 6,
+                            borderRadius: 99,
+                            borderWidth: 1,
+                            borderColor: selected ? "#0f172a" : "#e5e7eb",
+                            backgroundColor: selected ? "#0f172a" : "#ffffff",
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: "500", color: selected ? "#ffffff" : "#374151" }}>
+                            {c.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                <View accessibilityLabel={pickerTitle} className="flex-row gap-2">
+                  <RsvpButton
+                    label="Available"
+                    icon="✓"
+                    status="available"
+                    current={myStatus}
+                    activeColor="#16a34a"
+                    onPress={() => handleRsvp("available")}
+                    disabled={rsvpLoading || !answeringAs}
+                  />
+                  <RsvpButton
+                    label="Maybe"
+                    icon="?"
+                    status="maybe"
+                    current={myStatus}
+                    activeColor="#d97706"
+                    onPress={() => handleRsvp("maybe")}
+                    disabled={rsvpLoading || !answeringAs}
+                  />
+                  <RsvpButton
+                    label="Unavailable"
+                    icon="✗"
+                    status="unavailable"
+                    current={myStatus}
+                    activeColor="#dc2626"
+                    onPress={() => handleRsvp("unavailable")}
+                    disabled={rsvpLoading || !answeringAs}
+                  />
+                </View>
+                {!answeringAs ? (
+                  <Text className="text-xs text-gray-400 text-center mt-2">Choose who you're answering for</Text>
+                ) : myStatus ? (
+                  <Text className="text-xs text-gray-400 text-center mt-2">Tap again to clear the response</Text>
+                ) : null}
+              </>
+            )}
           </View>
         ) : null}
 
-        {/* Availability summary — always shown */}
-        <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
-          <Text className="font-semibold text-gray-900 mb-3">Responses</Text>
-
-          {available.length > 0 ? (
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">
-                Available ({available.length})
-              </Text>
-              {available.map((r) => (
-                <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
-                  {memberName(r)}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-
-          {maybe.length > 0 ? (
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">
-                Maybe ({maybe.length})
-              </Text>
-              {maybe.map((r) => (
-                <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
-                  {memberName(r)}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-
-          {unavailable.length > 0 ? (
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">
-                Unavailable ({unavailable.length})
-              </Text>
-              {unavailable.map((r) => (
-                <Text key={r.profile_id} className="text-sm text-gray-700 py-0.5">
-                  {memberName(r)}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-
-          {noResponse.length > 0 ? (
-            <View>
-              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
-                No Response ({noResponse.length})
-              </Text>
-              {noResponse.map((m) => (
-                <Text key={m.profile_id} className="text-sm text-gray-400 py-0.5">
-                  {memberName(m)}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-        </View>
+        {/* Responses: always shown */}
+        <Responses roster={roster} answers={answers} />
       </ScrollView>
     </SafeAreaView>
   );
