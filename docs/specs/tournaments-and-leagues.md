@@ -1,7 +1,7 @@
 # Spec — Tournaments and leagues
 
-**Status:** Decided 2026-10-01 (§6), revised the same day after review (§9). Two questions are left: D16b and
-D17 (§6).
+**Status:** Decided 2026-10-01 (§6, D1–D18), revised the same day after review (§9). Ready to build:
+tournaments first, then leagues (D12).
 **Requested:** 2026-10-01, by the user. The 1.1.0 mobile release waits for both tournaments and leagues (D12).
 **Scope:** database, web and the mobile app.
 
@@ -143,7 +143,7 @@ People answer the tournament, and can answer a game to override it ("can't make 
     overrides that stop following.
   - A game whose tournament is answered already has an answer, and is skipped.
   - A `'tournament'` type filter answers tournaments.
-  - **The `'game'` filter (D16b, open):** recommended: it covers **standalone games only**. Tournament games
+  - **The `'game'` filter (D16b):** it covers **standalone games only**. Tournament games
     are answered through their tournament, under the `'tournament'` filter or with no filter. A "games" fill
     never silently answers a weekend-long tournament, and never creates overrides.
 - **Reminders and unanswered counts:** a game counts as unanswered only if neither it nor its tournament has
@@ -258,9 +258,9 @@ Display and answering only. Creating events stays on the web (D11).
 - **Records:** overall (every game), plus one per active league: "Fall 2026 Division 3 · 6–2–1" (D9).
 - **Schedule:** a small league tag on league games.
 - **Tournaments and leagues are independent** (D4): a game can carry either, or both.
-- **The old team fields (D17, open):** `teams.league` and `teams.league_url` are the team's free-text league
+- **The old team fields (D17):** `teams.league` and `teams.league_url` are the team's free-text league
   and its website, on the web's team settings.
-  - **Recommended: leave them for now**, labeled "League (shown on your team page)", and don't use them for
+  - **Decided: leave them for now**, labeled "League (shown on your team page)", and don't use them for
     records.
   - Later, either retire them or turn the website into a field on `leagues`. That's a separate change: data
     exists in them, and 1.0.12 doesn't read them, so there's no rush.
@@ -285,8 +285,8 @@ Display and answering only. Creating events stays on the web (D11).
 | D14 | 1.0.12 shows a game's raw answer, not the inherited one | Accepted for the rollout, given the small user base. Noted in the release notes (§4, Availability) |
 | D15 | Cancelling and restoring | Cancel offers "and its remaining games" or "keep them as standalone games". Restore restores the tournament only. Games are restored one by one |
 | D16 | Bulk fill when a tournament and its games are unanswered | Answer only the tournament |
-| D16b | The bulk fill's `'game'` filter and tournament games | **Open.** Recommended: standalone games only. Tournament games go through their tournament |
-| D17 | One league per season, archiving, and the old `teams.league` fields | Per season, and archiving keeps records (decided). **Open:** the old fields. Recommended: leave them for now, relabeled, and decide later |
+| D16b | The bulk fill's `'game'` filter and tournament games | Standalone games only. Tournament games are answered through their tournament |
+| D17 | One league per season, archiving, and the old `teams.league` fields | Per season, and archiving keeps records. The old fields stay for now, relabeled as display text and unused for records; retiring them is a later, separate change |
 | D18 | Tournaments and recurring series | A tournament and its games are always standalone. A trigger refuses series links |
 
 ## 7. Compatibility with the installed 1.0.12 (D4 of the mobile spec)
@@ -358,5 +358,6 @@ The user's review of the first draft changed:
    played games (§5).
 5. **Series and tournaments:** made exclusive (D18).
 
-It also settled cancelling and restoring (D15), one league per season with archiving (D17), bulk fill (D16)
-and all-day dates (D13). It changed the release: 1.1.0 waits for leagues too (D11, D12).
+It also settled cancelling and restoring (D15), one league per season with archiving and the old team fields
+(D17), bulk fill and its games-only filter (D16, D16b), and all-day dates (D13). It changed the release:
+1.1.0 waits for leagues too (D11, D12).
