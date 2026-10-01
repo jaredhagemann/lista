@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # A docs-only PR has no migration to validate on staging, so it skips this.
+    # Merges to main always run, so production never misses a pending migration.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 jobs:
   # On PRs: push pending migrations to staging to validate they apply cleanly.

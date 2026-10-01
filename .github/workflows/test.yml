@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # A PR that only changes docs or other Markdown (specs, bug tickets, the
+    # roadmap, release notes) can't change what these tests check, so it skips
+    # them. A PR touching anything else runs everything, even when it also
+    # changes docs. None of these checks is required to merge (the `main`
+    # ruleset only requires a PR), so a skipped run can't leave a PR waiting.
+    # Pushes to main always run.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 # A newer push to the same PR supersedes the run in progress, so two runs never
 # pull the Supabase images at once. Runs on main always finish.
