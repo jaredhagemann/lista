@@ -91,7 +91,7 @@ ticket if it's wrong.
 ## Fix as implemented
 
 **Branch:** `fix/031-mobile-chat-keyboard`
-**PR:** see the PR that moved this file
+**PR:** #108
 **Migration:** none
 
 - **`apps/mobile/components/KeyboardScreen.tsx`** (new) wraps a `KeyboardAvoidingView` in a view that measures
