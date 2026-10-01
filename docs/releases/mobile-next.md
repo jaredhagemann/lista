@@ -195,15 +195,78 @@ Files: `components/KeyboardScreen.tsx`, `app/(app)/chat/[channelId].tsx`, `app/(
 
 ## Before shipping
 
-1. `cd apps/mobile && npx jest` — the suites run and pass (they were thought broken until 2026-09-17; see
-   [BUG-018](../bugs/fixed/018-mobile-jest-suites-fail-to-start.md)).
-2. `cd apps/mobile && npx tsc --noEmit`.
-3. `version` in `apps/mobile/app.json` is the version being released (1.1.0). The `ios-v1.1.0` tag must match it.
-4. Check that no schema change since the last build assumes behaviour only this build has.
+1. `cd apps/mobile && npx jest`, and `npx tsc --noEmit`. CI runs both on every PR (#101), and the TestFlight
+   workflow runs them again before it builds, so a failing commit never becomes a build.
+2. `version` in `apps/mobile/app.json` is the version being released (1.1.0). The `ios-v1.1.0` tag must match it.
+3. ~~Check that no schema change since the last build assumes behaviour only this build has.~~ Done
+   2026-09-30: see **Compatibility review** below.
 
-## After shipping
+## Compatibility review: the installed 1.0.12 against `main` (2026-09-30)
 
-Each of these is the check recorded on its ticket, and none of them can be run before the build exists:
+Phones on 1.0.12 keep running it until they update, so nothing on the server may need 1.1.0 (spec D4). This
+covers the 44 migrations after 1.0.12's commit (`b3473c71b`, 2026-04-14), and the web API routes 1.0.12 calls.
+
+**Result: no change requires 1.1.0.** One known breakage (BUG-023), already documented, and two by-design
+refusals that 1.0.12 reports poorly.
+
+**What 1.0.12 does** (from its source at `b3473c71b`):
+- **Writes:**
+  - chat: `messages` insert, and soft delete via `deleted_at`; `channels` insert (groups); `channel_members`
+    insert and the read-marker upsert; `dm_channels` insert and its read-marker update
+  - `availability` upsert and delete
+  - `feedback` insert, and `notification_preferences` upsert
+  - `profiles`: name, birthday, gender, and `active_team_id` for your own and managed profiles
+  - `push_subscriptions` delete and insert
+- **API routes:** `invitations/send`, `invitations/[id]/resend`, `account/delete` (GET and DELETE),
+  `account/owned-teams`, `account/transfer-ownership`, `managed-profiles`, `auth/signup`, `invite/[id]`,
+  `invite/[id]/accept`, `teams`.
+
+**Checked:**
+- **No column 1.0.12 reads was dropped or renamed.** The schema only added columns and tables.
+- **Identity-protection triggers** (`20260917000000`, `…0002`, `…0004`) lock only identity columns: a profile's
+  id, login and email; a message's body, sender and channel; a channel member's or DM's ids. 1.0.12 never
+  changes those:
+  - its profile edit sets name, birthday and gender only
+  - message edits set only `deleted_at`
+  - its read markers keep their ids
+- **New chat policies** (`20260917000004`): 1.0.12 sends as the signed-in user, and only to channels and DMs
+  of teams it's on.
+  - Its group creation adds members picked from the roster, with players resolved to their guardians, in one
+    insert. `can_add_channel_member` allows that, because `profile_on_team` counts a player's guardian.
+  - Covered by `tests/rls/chat-access.test.ts`: "a member creating a group can add themselves and teammates,
+    as the app does", and the read-marker upserts.
+- **API routes:** all ten still exist with the same methods, and accept 1.0.12's bodies:
+  - `invite/[id]/accept` still takes `{ type: "self" | "manager" }`. The `self` harm is BUG-011, the reason
+    for "Accept invitations on the web" above.
+  - `invitations/send` takes a guardian invitation as `role: "manager"` with `managedProfileId`, exactly what
+    BUG-012's rule now requires.
+  - `invite/[id]` still returns every field 1.0.12 reads.
+  - `account/delete` only added fields, which 1.0.12 ignores.
+- **Untouched or unaffected:** `feedback`, `notification_preferences`, the `events` triggers and the new
+  `teams` insert policy. 1.0.12 creates teams through `/api/teams`, not directly.
+
+**Known breakage, documented:** `push_subscriptions_expo_push_token_key` (`20260918000000`), a unique index on
+the push token. 1.0.12 re-registers by delete-then-insert. On a handset that changed accounts, the insert
+collides and fails silently. That's [BUG-023](../bugs/023-device-token-stuck-on-previous-account.md), fixed in
+this build.
+
+**Refused by design; 1.0.12 shows it poorly:**
+- **Answering for another team's event** (`20260616000000_availability_roster_only`): an answer must be for a
+  profile on the event's team. 1.0.12 always answers as the profile being viewed, so an event opened from
+  another team's notification is refused, and 1.0.12 undoes the tap silently. The data stays correct. 1.1.0
+  answers for the right profile (#105).
+- **A closed club** (`20260924000001`): writes on its teams, events, chat and availability are refused, by
+  design (BUG-013). 1.0.12 shows a generic error or nothing.
+
+**Cosmetic on 1.0.12:**
+- **Roles:** a director role prints as "director". 1.1.0 capitalizes it.
+- **Archived teams** (`teams.archived_at`) still appear in the team list. The web's team picker lists them
+  too, so that's not a phone-only difference.
+
+## On the TestFlight build, before submitting for review
+
+Each of these is the check recorded on its ticket. They need a real build, so run them on the 1.1.0
+TestFlight build (production data: use a test team for anything that writes):
 
 - **BUG-011:** invite a player whose guardian already manages a child on another team; accept **in the app**
   as the guardian. The app asks who you are, offers the child by name, and the existing child gains a team.
@@ -235,4 +298,8 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
 
-Then move BUG-023 to `fixed/`, and record the deploy verification on BUG-007 and BUG-011.
+## After release
+
+Once 1.1.0 is live on the App Store: move BUG-023 to `fixed/`, and record the device checks above as
+deployment verification on BUG-007, BUG-010, BUG-011, BUG-028, BUG-029 and BUG-031. Then start a fresh
+`mobile-next.md` for the next build, with 1.1.0 as the shipped version.

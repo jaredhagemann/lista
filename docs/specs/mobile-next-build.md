@@ -67,6 +67,11 @@ after `b3473c71b`, checking each against what 1.0.12 reads and writes:
 
 This build adds no server change.
 
+**Done 2026-09-30 (part 5):** no change requires 1.1.0. The one breakage, the push-token index, is BUG-023,
+fixed in this build. Two by-design refusals reach 1.0.12 users as silent or generic failures: answering for
+another team's event, and a closed club. The full review is in `docs/releases/mobile-next.md` →
+"Compatibility review".
+
 ## 4. Release process
 
 **Today:** pushing a tag `ios-vX.Y.Z` on a commit on `main` runs `.github/workflows/ios-testflight.yml`:
@@ -82,8 +87,8 @@ updated, which is why the release notes said 1.0.0.
   Vitest and the phone's Jest and `tsc`.
 - **Nothing stopped a tag on a failing commit.** Fixed in #101: the TestFlight workflow runs the phone's tests
   and `tsc` before it builds.
-- **Stale version:** `docs/releases/mobile-next.md` names 1.0.0 as current. The release prep (part 5) fixes
-  it.
+- **Stale version:** `app.json` and `docs/releases/mobile-next.md` said 1.0.0. Fixed in #104: `app.json` is
+  1.1.0 and the release notes name 1.0.12 as shipped.
 
 | # | Question | Decision (2026-09-29) |
 | --- | --- | --- |
