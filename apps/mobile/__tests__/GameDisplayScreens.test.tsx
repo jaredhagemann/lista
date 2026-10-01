@@ -19,7 +19,7 @@ jest.mock("../lib/supabase", () => {
   const from = (table: string) => {
     const result = () => Promise.resolve({ data: mockTables[table] ?? null, error: null, count: 0 });
     const chain: Record<string, unknown> = {};
-    for (const m of ["eq", "gte", "order", "limit", "in"]) chain[m] = () => chain;
+    for (const m of ["eq", "gte", "order", "limit", "in", "not"]) chain[m] = () => chain;
     chain.select = (columns: string) => {
       (mockSelects[table] ??= []).push(columns);
       return chain;

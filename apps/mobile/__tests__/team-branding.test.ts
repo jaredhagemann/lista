@@ -94,3 +94,29 @@ describe("the active membership", () => {
     });
   });
 });
+
+describe("the active membership, for the dashboard (part 4)", () => {
+  const row = (organizations: unknown) =>
+    ({
+      id: "m-1",
+      team_id: "t-1",
+      profile_id: "p-1",
+      role: "coach",
+      teams: { id: "t-1", name: "12U Girls", season: null, logo_url: null, home_uniform: null, away_uniform: null, organizations },
+      profiles: {} as never,
+    }) as never;
+
+  it("names a club team's club, and wins in the club's secondary color", () => {
+    expect(rowToMembership(row({ ...SLOFC, brand_color_secondary: "#C8102E" }))).toMatchObject({
+      clubName: "SLOFC",
+      winColor: "#C8102E",
+    });
+  });
+
+  it("a free team has no club, and wins in lista blue", () => {
+    expect(rowToMembership(row({ ...SLOFC, plan: "free", brand_color_secondary: "#C8102E" }))).toMatchObject({
+      clubName: null,
+      winColor: "#01D7F4",
+    });
+  });
+});

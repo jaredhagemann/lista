@@ -16,6 +16,9 @@ import { eventZone, formatEventClock, formatEventDay } from "../../lib/event-tim
 import { useAppContext } from "../../contexts/AppContext";
 import { displayLabel } from "../../lib/labels";
 import { gameTitle } from "../../lib/game-display";
+import { teamRecord, type ResultGame, type TeamRecord } from "../../lib/team-record";
+import { TeamCard, type TeamCardMember } from "../../components/TeamCard";
+import { RecordCard } from "../../components/RecordCard";
 
 type Event = {
   id: string;
@@ -54,7 +57,10 @@ export default function HomeScreen() {
   const { membership, loading: membershipLoading, refresh } = useAppContext();
 
   const [events, setEvents] = useState<Event[]>([]);
-  const [memberCount, setMemberCount] = useState<number | null>(null);
+  const [members, setMembers] = useState<TeamCardMember[]>([]);
+  // Games with a result, for the Record card; the team's zone for its date line.
+  const [record, setRecord] = useState<TeamRecord | null>(null);
+  const [teamTimeZone, setTeamTimeZone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -65,7 +71,7 @@ export default function HomeScreen() {
       return;
     }
 
-    const [eventsResult, countResult] = await Promise.all([
+    const [eventsResult, membersResult, resultsResult] = await Promise.all([
       supabase
         .from("events")
         .select(
@@ -78,12 +84,21 @@ export default function HomeScreen() {
         .limit(5),
       supabase
         .from("team_members")
-        .select("*", { count: "exact", head: true })
+        .select("id, role, profiles(first_name, last_name)")
         .eq("team_id", membership.teamId),
+      supabase
+        .from("events")
+        .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, teams(timezone)")
+        .eq("team_id", membership.teamId)
+        .eq("event_type", "game")
+        .not("game_result", "is", null),
     ]);
 
     setEvents((eventsResult.data ?? []) as unknown as Event[]);
-    setMemberCount(countResult.count ?? 0);
+    setMembers((membersResult.data ?? []) as unknown as TeamCardMember[]);
+    const results = (resultsResult.data ?? []) as unknown as (ResultGame & { teams: { timezone: string | null } | null })[];
+    setRecord(teamRecord(results));
+    setTeamTimeZone(results[0]?.teams?.timezone ?? null);
     setLoading(false);
     setRefreshing(false);
   }
@@ -251,22 +266,26 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Team */}
-        <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <View className="flex-row items-center justify-between px-4 pt-4 pb-3 border-b border-gray-50">
-            <Text className="font-semibold text-gray-900">Team</Text>
-            <Ionicons name="people-outline" size={18} color="#9ca3af" />
+        <TeamCard
+          teamName={membership.teamName}
+          clubName={membership.clubName}
+          season={membership.season}
+          logoUrl={membership.logoUrl}
+          members={members}
+          onOpenMember={(id) => router.push(`/(app)/team/${id}` as any)}
+          onOpenRoster={() => router.push("/(app)/team" as any)}
+        />
+
+        {record ? (
+          <View className="mt-4">
+            <RecordCard
+              teamName={membership.teamName}
+              record={record}
+              teamTimeZone={teamTimeZone}
+              winColor={membership.winColor}
+            />
           </View>
-          <View className="px-4 py-4">
-            <Text className="text-3xl font-bold text-gray-900">
-              {memberCount ?? "—"}
-            </Text>
-            <Text className="text-sm text-gray-500 mb-2">team members</Text>
-            <TouchableOpacity onPress={() => router.push("/(app)/team" as any)}>
-              <Text className="text-sm text-blue-600">View roster</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

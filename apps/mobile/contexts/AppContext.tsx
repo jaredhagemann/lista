@@ -58,6 +58,10 @@ export type ActiveMembership = {
   teamName: string;
   /** "[club] - [team]" for a club team, else the team's name. */
   displayName: string;
+  /** The club's name for a club team, else null. */
+  clubName: string | null;
+  /** The Record card's win color: the club's secondary color, else lista blue. */
+  winColor: string;
   season: string | null;
   /** The team's logo, else its club's. */
   logoUrl: string | null;
@@ -135,7 +139,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { data: membershipsData } = await supabase
       .from("team_members")
       .select(
-        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform, organizations(name, org_name_public, logo_url, plan)), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
+        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform, organizations(name, org_name_public, logo_url, plan, brand_color_secondary)), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
       )
       .in("profile_id", allProfileIds)
       .order("created_at");

@@ -13,13 +13,25 @@ export function teamInitials(name: string) {
 }
 
 /**
- * A team's (or its club's) logo in a circle, whatever format was uploaded.
+ * A team's (or its club's) logo, whatever format was uploaded: in a circle (the
+ * top strip, the team picker), or with `tile` as the Team card's rounded square,
+ * fitted whole and with muted initials, as on the web.
  *
  * Image can't draw SVG, which the web's uploaders accept, so the format is
  * asked first (lib/logo-kind) and SVG goes to react-native-svg. Without a logo,
  * or when one fails to load, the team's initials show instead.
  */
-export function RemoteLogo({ uri, name, size }: { uri: string | null; name: string; size: number }) {
+export function RemoteLogo({
+  uri,
+  name,
+  size,
+  tile = false,
+}: {
+  uri: string | null;
+  name: string;
+  size: number;
+  tile?: boolean;
+}) {
   const [kind, setKind] = useState<LogoKind | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -36,26 +48,43 @@ export function RemoteLogo({ uri, name, size }: { uri: string | null; name: stri
     };
   }, [uri]);
 
-  const circle = { width: size, height: size, borderRadius: size / 2 };
+  const shape = { width: size, height: size, borderRadius: tile ? 12 : size / 2 };
 
   if (!uri || failed) {
     return (
-      <View style={[circle, { backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" }]}>
-        <Text style={{ color: "#fff", fontSize: size * 0.35, fontWeight: "700" }}>{teamInitials(name)}</Text>
+      <View
+        style={[shape, { backgroundColor: tile ? "#f3f4f6" : "#0f172a", alignItems: "center", justifyContent: "center" }]}
+      >
+        <Text
+          style={{
+            color: tile ? "#6b7280" : "#fff",
+            fontSize: size * (tile ? 0.3 : 0.35),
+            fontWeight: tile ? "600" : "700",
+          }}
+        >
+          {teamInitials(name)}
+        </Text>
       </View>
     );
   }
 
   // Asking the format: hold the space.
-  if (!kind) return <View style={[circle, { backgroundColor: "#f3f4f6" }]} />;
+  if (!kind) return <View style={[shape, { backgroundColor: "#f3f4f6" }]} />;
 
   if (kind === "svg") {
     return (
-      <View style={[circle, { overflow: "hidden" }]}>
+      <View style={[shape, { overflow: "hidden" }]}>
         <SvgUri uri={uri} width={size} height={size} onError={() => setFailed(true)} />
       </View>
     );
   }
 
-  return <Image source={{ uri }} style={circle} onError={() => setFailed(true)} />;
+  return (
+    <Image
+      source={{ uri }}
+      style={shape}
+      resizeMode={tile ? "contain" : "cover"}
+      onError={() => setFailed(true)}
+    />
+  );
 }

@@ -191,6 +191,28 @@ by that, so the box sits just above it.
 Files: `components/KeyboardScreen.tsx`, `app/(app)/chat/[channelId].tsx`, `app/(app)/chat/dm/[dmId].tsx`,
 `__tests__/ChatKeyboard.test.tsx`.
 
+### The home screen's Team and Record cards, as on the web — [spec §1](../specs/mobile-next-build.md)
+
+**Installed build:** the home screen's Team card shows only a member count.
+
+**New build:**
+- **Team card:** the team's logo (its own, or its club's) on a rounded tile, or its initials. Then its own
+  name, with the club and season under it. Then its members by name and role, coaches and staff first
+  (director, coach, manager) and then players by name, each opening their page. A long roster scrolls inside
+  the card (up to 384 pt). Then the count and the roster link.
+- **Record card:** shown once a past game has a result. The last game is a two-line scoreline: the team and
+  its score, then "vs" or "at" the opponent and theirs, or the result word when there's no score. Under it,
+  the date and time in the game's zone. Then wins, losses and ties, with a bar split in those proportions:
+  wins in the club's secondary color (else lista blue), losses black, ties grey.
+
+These are the web's rules (`lib/team-record.ts`, and `clubSecondaryColor` / `LISTA_BLUE` in
+`lib/team-branding.ts`). The membership query also reads the club's `brand_color_secondary`, an existing
+column. No server change.
+
+Files: `components/TeamCard.tsx`, `components/RecordCard.tsx`, `components/RemoteLogo.tsx` (a tile shape),
+`lib/team-record.ts`, `lib/team-branding.ts`, `lib/membership.ts`, `contexts/AppContext.tsx`,
+`app/(app)/index.tsx`, `__tests__/team-record.test.ts`, `__tests__/DashboardCards.test.tsx`.
+
 ---
 
 ## Before shipping
@@ -231,6 +253,10 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   "Availability for [sibling]" and the answer saves.
 - **BUG-031:** in a team channel and in a direct message, tap the message box: it sits just above the
   keyboard, what you type is visible, and Send works. Repeat with iOS text size set large.
+- **Dashboard cards:** on a club team, the home screen's Team card shows the club's logo (if the team has
+  none), "[club] · [season]", and the members with coaches first, each opening their page. On a team with a
+  scored past game, the Record card shows the last game's scoreline and date, and W–L–T with the bar's win
+  segment in the club's secondary color.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
