@@ -187,10 +187,21 @@ A tournament-wide action must send **one notice that reads as a tournament**, ne
 - **Creating:** a team admin saves the tournament and its games in one call (`create_tournament`), with
   "notify the team" checked by default, as for any new event. One notice: "Surf Cup · Fri Oct 11 – Sun Oct 13
   · 5 games", and the games listed.
-- **Where it links:** tournament notices link to the **tournament page**. Their Available / Maybe /
-  Unavailable buttons answer the **tournament**.
-- **Single games** keep today's notices ("Semifinal moved to 3:00 PM"), with "Part of Surf Cup". Their answer
-  buttons answer that game, as an override.
+- **Links and answer buttons depend on the action.** This is today's rule for single events
+  (`asksForAnswers` in `lib/notifications/worker.ts` offers answers only for created, updated and restored;
+  links fall back to `/dashboard/schedule`), applied to tournaments:
+
+  | Tournament notice | Links to | Available / Maybe / Unavailable |
+  | --- | --- | --- |
+  | Created, updated, restored | the tournament page | yes, answering the **tournament** |
+  | Cancelled (with or without its games) | the tournament page, which still exists, marked cancelled | no |
+  | Deleted (with its games) | the **schedule** (`/dashboard/schedule`), since the tournament is gone | no |
+
+  Games unlinked by "cancel the tournament only" are listed in the cancellation notice as staying on the
+  schedule. They get no buttons there; each game's own page has its picker.
+- **Single games** keep today's notices ("Semifinal moved to 3:00 PM"), with "Part of Surf Cup", and the same
+  rule. A created, updated or restored game's buttons answer that game, as an override. A cancelled or
+  deleted game's notice has none.
 - **Reminders (D6):** a reminder for every event, the tournament and each game, as for any event.
   - The tournament's goes with the reminders run before its start date. Its `start_time` is midnight that
     day, inside the next-24-hours window.
@@ -340,8 +351,11 @@ Everything here is additive: new nullable columns, a new table, and one new even
   - "Part of"
   - the "League games" action including past games
   - the Record card's league rows
-- **Worker:** a tournament job renders the tournament template whatever its count, links to the tournament
-  page, and its answer buttons answer the tournament.
+- **Worker:** a tournament job renders the tournament template whatever its count. Per action (§4,
+  Notifications):
+  - created, updated and restored link to the tournament page, with answer buttons for the tournament
+  - cancelled links to the tournament page, with no buttons
+  - deleted links to the schedule, with no buttons
 - **Mobile:** the tournament card ("Now" while underway) and screen, date ranges, "Part of", the game's
   inherited answer and override, and league rows on the Record card.
 - **Compatibility:** the release notes' 1.0.12 review gains these migrations and the D14 difference.
@@ -357,6 +371,8 @@ The user's review of the first draft changed:
 4. **League tagging:** moved out of the series editor, into a separate classification action that includes
    played games (§5).
 5. **Series and tournaments:** made exclusive (D18).
+6. **Where notices link:** deleted tournament notices link to the schedule, not the gone tournament, and
+   cancelled and deleted notices carry no answer buttons (§4, Notifications), as for single events today.
 
 It also settled cancelling and restoring (D15), one league per season with archiving and the old team fields
 (D17), bulk fill and its games-only filter (D16, D16b), and all-day dates (D13). It changed the release:
