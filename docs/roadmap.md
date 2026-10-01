@@ -13,13 +13,13 @@ Roughly prioritized — revisit ordering as the product evolves.
 ### 1. Tournaments and Leagues (next, before the 1.1.0 mobile release)
 Spec: `docs/specs/tournaments-and-leagues.md`. Decided 2026-10-01: tournaments first, then leagues.
 - **Tournaments:** a new event type spanning several days, with several games, a placement ("2nd place",
-  "Gold bracket champions"), and a record limited to its own games. People answer "are you coming?" once for
-  the tournament.
-- **Leagues:** tag games with one of the team's leagues, and show a league record next to the overall record.
+  "Gold bracket champions"), and a record limited to its own games. People answer for the tournament, and can
+  override it for a game.
+- **Leagues:** one per season, games tagged with one (played games included), and a league record next to the
+  overall record.
 
-To be settled before the 1.1.0 mobile release (`docs/releases/mobile-next.md`), because tournaments change
-what the app's schedule and event screens should show. The installed 1.0.12 shows a tournament as a plain
-event (spec §7). Leagues don't affect what 1.0.12 sees.
+The 1.1.0 mobile release (`docs/releases/mobile-next.md`) waits for both, because they change what the app's
+schedule, event and home screens show. The installed 1.0.12 shows a tournament as a plain event (spec §7).
 
 ### 2. Stats & Season Records
 Game results and scores can be entered on an event, and the dashboard's Record card shows the team's W–L–T

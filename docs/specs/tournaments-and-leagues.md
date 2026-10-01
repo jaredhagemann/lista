@@ -1,8 +1,8 @@
 # Spec — Tournaments and leagues
 
-**Status:** Decided 2026-10-01 (§6, D1–D12). Ready to plan the build: tournaments first, then leagues (D12).
-**Requested:** 2026-10-01, by the user. To be decided before the 1.1.0 mobile release, because tournaments may
-change what the app's schedule and event screens show.
+**Status:** Decided 2026-10-01 (§6), revised the same day after review (§9). Two questions are left: D16b and
+D17 (§6).
+**Requested:** 2026-10-01, by the user. The 1.1.0 mobile release waits for both tournaments and leagues (D12).
 **Scope:** database, web and the mobile app.
 
 ## 1. What's wanted
@@ -20,17 +20,30 @@ change what the app's schedule and event screens show.
 ## 2. Today
 
 - **Event types:** `events.event_type` is one of `practice`, `game` or `other`, enforced by a check constraint
-  (`20260101000000_initial_schema.sql`).
+  (`20260101000000_initial_schema.sql`). `set_unanswered_availability` also rejects any other type
+  (`20260922000000`, line 48).
 - **Game fields live on the event:** `opponent`, `home_away`, `uniform`, `score_for`, `score_against` and
   `game_result`.
-- **The record:** wins, losses and ties are counted over every past game with a result (`lib/events/team-record.ts`,
-  on both the web and the phone). There's no grouping of games.
+- **The record:** wins, losses and ties over every past game with a result (`lib/events/team-record.ts`, on
+  both the web and the phone). There's no grouping of games.
 - **Series:** a recurring series is a head event with `recurrence_rule`, and children point at it through
-  `events.parent_event_id` (BUG-009). That link means "an occurrence of this series", **not** "part of this
-  tournament", and tournaments shouldn't reuse it.
-- **Notifications:** jobs are batched per transaction, team and action
-  (`20260917000007_notification_jobs.sql`). Creating a tournament and its games in one save sends one
-  notification, not one per game.
+  `events.parent_event_id` (BUG-009). The series editor (`lib/events/series-edit.ts`) only changes upcoming
+  occurrences, and skips ones individually cancelled or rescheduled.
+- **Every query is by start time:**
+  - schedule pages are a keyset on `(start_time, id)` (`lib/events/queries.ts`)
+  - the dashboard's Upcoming is `start_time >= now`, and so is the app's home screen
+  - the reminders cron takes events starting in the next 24 hours
+  - none of them looks at `end_time`
+- **Notifications** (`20260917000007_notification_jobs.sql`):
+  - Creating an event notifies only when the app asks (`enqueue_event_notification`).
+  - Cancelling, restoring, deleting, and changes to time, location or arrival are enqueued by a trigger.
+    Other edits, and past events, never notify.
+  - Jobs are batched per transaction, team and action. A batch keeps its **first** event's snapshot, and
+    counts the rest.
+  - The worker renders any batch of more than one as a **series** update ("N events in this series have
+    changed").
+- **Team settings:** `teams.league` and `teams.league_url` are free text, edited and shown on the web only.
+  The app doesn't read them.
 - **What branches on `event_type`:**
   - on the web: the calendar, schedule list, event page and form, the series editor, the availability matrix,
     the dashboard, the reminders cron, the notification worker and dispatch, the event email, and game titles
@@ -41,97 +54,174 @@ change what the app's schedule and event screens show.
 | | A. A tournament is an event | B. A separate `tournaments` table | C. A tag on games only |
 | --- | --- | --- | --- |
 | **Shape** | A new `event_type = 'tournament'`, spanning its days. Each game points to it through a new `events.tournament_id`. | `tournaments(team_id, name, dates, location, placement…)`, and games point to it through `events.tournament_id`. | `events.tournament_name` text on each game. |
-| **On the schedule, calendar, reminders** | Free: it's an event. One card for the weekend, plus its games. | Needs new rendering everywhere a schedule is shown. | Only the games show. Nothing ties them together. |
+| **On the schedule, calendar, reminders** | Free, once queries understand multi-day events (§4). | Needs new rendering everywhere a schedule is shown. | Only the games show. Nothing ties them together. |
 | **"Are you coming?"** | Free: availability on the tournament event. | New availability table, or per game only. | Per game only. |
 | **Placement and record** | Columns on the tournament event, and its record from the games pointing to it. | Columns on `tournaments`, and the same record. | Placement has nowhere to live. A record by name works until it's misspelled. |
-| **1.0.12 on phones** | Shows the tournament as an event with an unknown type: a plain badge, the title, and times. It works, but looks a bit off (§7). | Doesn't see tournaments at all, only their games. | Unaffected. |
-| **Cost** | Moderate. The type, two columns, a link and its rules, plus UI. | Highest. New schedule plumbing on both apps. | Lowest, but it doesn't meet the need. |
+| **1.0.12 on phones** | Shows the tournament as an event of an unknown type (§7). | Doesn't see tournaments at all, only their games. | Unaffected. |
+| **Cost** | Moderate. | Highest. | Lowest, but it doesn't meet the need. |
 
-**Recommendation: A.** You described tournaments as an event type, and that's where the machinery already is:
-schedule, calendar, availability, reminders, notifications and the event page. A tournament gains its own
-fields on the event row, the same way game details already live on `events`.
+**Decided: A** (D1).
 
-## 4. Tournaments: proposed design (option A)
+## 4. Tournaments: design
 
 ### Data
 
-- **Event type:** `event_type` allows `'tournament'`.
+- **Event type:** `event_type` allows `'tournament'`. The check constraint changes, and so does
+  `set_unanswered_availability`.
 - **Tournament fields** (new, nullable, on `events`; only a tournament may set them):
   - `placement_rank int`: 1, 2, 3… Shown as "1st place" when there's no label.
-  - `placement_label text`: free text, e.g. "Gold bracket champions" or "Group stage". It wins over the rank
-    when both are set.
-- **Link from game to tournament:** `tournament_id uuid references events(id)`, nullable, on game events.
-  - A database rule (trigger) enforces that it points at a tournament on the **same team**.
-  - **Deleting a tournament (D5):** refused while it has games (the foreign key, with no cascade, as for a
-    series head under BUG-009). "Delete the tournament and its games" is a separate, explicit action: a
-    database function like `delete_event_series` that deletes the games, their answers, then the tournament,
-    in one transaction.
-- **Days:** the tournament's `start_time` and `end_time` span its days, in its zone (`events.timezone`).
-  - A game's time should fall inside the tournament's days. Warn in the form, but don't enforce it in the
-    database: schedules slip.
-- **No repeats:** a tournament can't be recurring (`recurrence_rule` stays null).
+  - `placement_label text`: free text, e.g. "Gold bracket champions" or "Group stage". It wins over the rank.
+- **Link from game to tournament:** `tournament_id uuid references events(id)`, nullable, games only.
+  - It must point at a tournament on the **same team** (enforced by a trigger).
+- **Round:** `round text`, optional on games ("Pool A", "Semifinal"; D7).
+- **Standalone only (D18):** a tournament, and every game linked to one, is never part of a recurring series.
+  - Each has `recurrence_rule` and `parent_event_id` both null.
+  - A trigger refuses to link a series head or child to a tournament, and refuses to make a tournament or a
+    tournament game into a series.
+  - So deleting or cancelling a tournament's games can never reach a series: no foreign-key failure, and no
+    unrelated occurrences.
+- **Dates (D13): all-day and inclusive.** A tournament is a range of whole days in its zone
+  (`events.timezone`, else the team's).
+  - `start_time` is midnight starting its first day. `end_time` is midnight ending its last day, so a
+    Friday–Sunday tournament ends at 00:00 Monday, local time.
+  - It's shown as dates only: "Fri Oct 11 – Sun Oct 13".
+  - Its games have real times. The form warns if a game falls outside the tournament's days, but the
+    database doesn't enforce it, because schedules slip.
+- **Deleting (D5):**
+  - A plain delete of a tournament with games is refused: the foreign key has no cascade, as for a series
+    head under BUG-009.
+  - "Delete the tournament and its games" is one database function. It deletes the games (and their
+    answers), then the tournament, in one transaction, with one notification (see Notifications).
 
 ### Rules
 
-- **Tournament record:** wins, losses and ties over its games with a result. It's `teamRecord` over the
-  games where `tournament_id` equals the tournament.
-- **Overall record:** still every game, tournament games included (D3).
+- **Tournament record:** wins, losses and ties over its games with a result.
+- **Overall record:** every game, tournament games included (D3).
 - **Placement:** set by a team admin on the tournament, usually at the end. It isn't derived from the games.
-- **Title:** the tournament's own title ("Surf Cup"). Its games keep `gameTitle` ("U10 Girls vs Rivals FC").
-  Where a game is shown outside its tournament, a line under it names the tournament.
+- **Titles:** the tournament's own title ("Surf Cup"). Its games keep `gameTitle` ("U10 Girls vs Rivals FC").
+  Wherever a game is shown, a line names its tournament ("Surf Cup · Semifinal").
+
+### Multi-day events in queries
+
+A Friday–Sunday tournament mustn't drop off Upcoming on Friday afternoon, or out of November when it started
+on October 31. So multi-day events need queries by **overlap**, not by start time.
+
+- **Overlap with a window** (a month, a week, "from now"): `start_time < window end` and
+  `end_time > window start`. This applies to every event type: a practice in progress also overlaps "now".
+  - **Upcoming** (the dashboard, and the app's home): `end_time > now`. A tournament stays listed until its
+    last day ends, marked "Now" while it's underway.
+  - **The calendar's month:** overlap with the month, so a tournament crossing a month boundary shows in both.
+  - **The schedule list:** the keyset on `(start_time, id)` stays as the order. Its filter for upcoming
+    becomes `end_time > now`, so an underway tournament leads the list.
+- **No nesting across pages:**
+  - In the schedule list, the tournament is one row at its start, showing its dates and game count. Each of
+    its games is its own row at its own time, with the "Surf Cup · Semifinal" line.
+  - Nothing is grouped under the tournament in the list, so it doesn't matter which page a tournament and its
+    games land on.
+  - The **tournament page** lists all its games with its own query (`tournament_id = …`). That's where they're
+    grouped.
+- **The calendar:** a bar across the tournament's days, and each game on its day as today.
+- **Indexes:** an index on `(team_id, end_time)` for the overlap filters, plus one on `tournament_id`.
+  `20260921000000` already has `(team_id, start_time, id)`.
 
 ### Availability (D2: both)
 
-People answer the tournament, and can answer a single game to override it (for example, "can't make
-Sunday's games").
+People answer the tournament, and can answer a game to override it ("can't make Sunday's games").
 - **Storage:** existing `availability` rows, one per person per event. The tournament's row is the main
   answer, and a game's own row is an override. No new table.
 - **A game's answer:** its own row if there is one, else the tournament's, else none. The rule
   `effectiveAnswer(gameRow, tournamentRow)` is shared by the web and the phone.
 - **Where answers are shown:**
   - **The tournament's response list:** the tournament answers.
-  - **A game's response list:** answers for that game. Inherited ones are marked "from the tournament", so a
-    coach can tell "said yes to the weekend" from "said yes to this game".
-  - **The coach's availability grid:** one column for the tournament, and a column per game showing the
-    resulting answer, with overrides marked.
+  - **A game's response list:** answers for that game. Inherited ones are marked "from the tournament".
+  - **The coach's availability grid:** a column for the tournament, and one per game showing the resulting
+    answer, with overrides marked.
 - **Clearing a game's answer** goes back to the tournament's answer. It doesn't mean "no answer".
-- **"Set my unanswered events to Available"** (`set_unanswered_availability`, BUG-014): it answers
-  tournaments. Games under an answered tournament already have an answer and are left alone.
+- **Bulk "Set my unanswered events to…"** (`set_unanswered_availability`, BUG-014; D16):
+  - When a tournament and its games are all unanswered, it answers **only the tournament**. The games then
+    follow it, including if the tournament answer changes later. Answering the games too would turn them into
+    overrides that stop following.
+  - A game whose tournament is answered already has an answer, and is skipped.
+  - A `'tournament'` type filter answers tournaments.
+  - **The `'game'` filter (D16b, open):** recommended: it covers **standalone games only**. Tournament games
+    are answered through their tournament, under the `'tournament'` filter or with no filter. A "games" fill
+    never silently answers a weekend-long tournament, and never creates overrides.
 - **Reminders and unanswered counts:** a game counts as unanswered only if neither it nor its tournament has
   an answer.
-- **1.0.12:** it reads raw `availability` rows. On a tournament game it shows only that game's own answers,
-  not inherited ones. Not wrong, just less complete.
+- **1.0.12, an accepted difference (D14):** 1.0.12 reads raw rows, so on a tournament game it shows that game's
+  own answer, or "no response". It never shows the inherited one.
+  - **Example:** someone answers Available for the tournament, then Unavailable for one game. If they clear the
+    game in 1.0.12, it shows "no response", but coaches see Available again, inherited from the tournament.
+  - **Decided:** accept this for the rollout, given the small user base. The release notes say so. It ends when
+    they update to 1.1.0.
+
+### Cancelling and rescheduling (D15)
+
+Today, cancelling or restoring changes only the selected event. A tournament needs its own actions, each
+one database function:
+- **Cancel a tournament:** the coach chooses:
+  - **"Cancel the tournament and its remaining games"**: its upcoming games are cancelled too. Past games
+    keep their results.
+  - **"Cancel the tournament only, and keep its games as standalone games"**: its upcoming games are
+    unlinked (`tournament_id` cleared) and stay on the schedule. Their own answers stay; inherited answers
+    don't move to them.
+- **Restore a tournament:** restores the tournament only. Games cancelled with it stay cancelled, and each is
+  restored on its own.
+- **Reminders** follow `is_cancelled`, as today: cancelled games get none.
+- **Rescheduling a tournament's dates** doesn't move its games. The form lists any games now outside the
+  dates, so the coach can move them.
+- **Cancelling or rescheduling a single game** works as for any game, and its notice names the tournament.
+
+### Notifications
+
+A tournament-wide action must send **one notice that reads as a tournament**, never as a series.
+
+- **Tournament jobs:** a tournament-wide function (create, cancel with or without games, restore, delete with
+  games) enqueues **one** job itself.
+  - The snapshot is the tournament's, plus a summary of what happened to its games: "and its 4 remaining
+    games".
+  - Per-row trigger jobs from the games are suppressed for that transaction, through a transaction-local
+    setting the trigger checks. So the batch can't keep a game's snapshot first.
+- **The worker:** a job whose snapshot is a tournament uses a **tournament template**, whatever its count. It
+  never uses the series template.
+- **Creating:** a team admin saves the tournament and its games in one call (`create_tournament`), with
+  "notify the team" checked by default, as for any new event. One notice: "Surf Cup · Fri Oct 11 – Sun Oct 13
+  · 5 games", and the games listed.
+- **Where it links:** tournament notices link to the **tournament page**. Their Available / Maybe /
+  Unavailable buttons answer the **tournament**.
+- **Single games** keep today's notices ("Semifinal moved to 3:00 PM"), with "Part of Surf Cup". Their answer
+  buttons answer that game, as an override.
+- **Reminders (D6):** a reminder for every event, the tournament and each game, as for any event.
+  - The tournament's goes with the reminders run before its start date. Its `start_time` is midnight that
+    day, inside the next-24-hours window.
+  - It reads as a tournament: "Surf Cup starts tomorrow · 5 games".
 
 ### Web
 
-- **Create a tournament:** name, dates, location and notes, then add games to it: a time, opponent,
-  home/away, uniform, and optionally a round ("Pool A", "Semifinal"; see D7). It's saved in one transaction,
-  so there's one notification.
-- **Tournament page:** dates, location, placement, and its record. Its games in order, each with its score and
-  result. "Are you coming?" for the tournament, and on each game an optional override (D2, "Availability"
-  above).
-- **Schedule and calendar:** the tournament as one item spanning its days (a multi-day bar on the calendar),
-  with its games under it or indented in the list. To check: the calendar draws only the start day for
-  multi-day events today.
-- **Game page:** a "Part of Surf Cup" link back to the tournament.
+- **Create a tournament:** name, dates, location and notes, then its games: a time, opponent, home/away,
+  uniform, round, and league (D4). Saved in one call, with one notice.
+- **Tournament page:**
+  - dates, location, placement, and its record
+  - its games in order, each with its round, score and result
+  - "Are you coming?" for the tournament, and each game's optional override
+  - the cancel, restore and delete choices (D5, D15)
+- **Schedule and calendar:** as in "Multi-day events in queries".
+- **Game page:** "Part of Surf Cup", linking to the tournament.
 - **Dashboard:**
-  - Upcoming events show the tournament once, with its dates.
-  - The Record card stays overall.
-  - When a tournament ends with a placement, it shows as the last result, e.g. "Surf Cup · 2nd place · 3–1–0"
-    (D8).
-- **Emails and notifications:**
-  - A tournament reads "Surf Cup · Sat Oct 12 – Sun Oct 13".
-  - Games name their tournament.
-  - Reminders go out for the tournament and for each of its games, like any event (D6).
+  - Upcoming shows the tournament while it's upcoming or underway.
+  - The Record card stays overall, with league rows (D9). After a tournament with a placement, the last
+    result is "Surf Cup · 2nd place · 3–1–0" (D8).
+- **Emails:** as in "Notifications".
 
 ### Mobile app
 
-The same as the web, read-only for now, since the app doesn't create events:
-- **Schedule and home:** one card for the tournament, showing its date range.
-- **Tournament screen:** dates, location, placement and record, its games, and the availability picker. A
-  game's screen keeps its own picker for an override, showing the inherited answer until one is set.
-- **Game screen:** "Part of Surf Cup".
-- **Multi-day times:** the event screen reads "Sat Oct 12 – Sun Oct 13" instead of "Ends 5:00 PM".
+Display and answering only. Creating events stays on the web (D11).
+- **Home and schedule:** the tournament as one card with its dates (and "Now" while it's underway), and its
+  games as their own rows with "Surf Cup · Semifinal". Queries by overlap, as on the web.
+- **Tournament screen:** dates, location, placement and record, its games, and the picker for the tournament.
+- **Game screen:** "Part of Surf Cup", and its own picker for an override. It shows the inherited answer until
+  one is set.
+- **Multi-day dates:** "Fri Oct 11 – Sun Oct 13" instead of "Ends 5:00 PM".
 
 ## 5. Leagues
 
@@ -139,77 +229,134 @@ The same as the web, read-only for now, since the app doesn't create events:
 
 | | A. Free-text tag on games | B. Team leagues | C. Club leagues |
 | --- | --- | --- | --- |
-| **Shape** | `events.league text` | `leagues(team_id, name, season)`, and games carry `league_id` | `leagues(organization_id, name, season)`, plus `team_leagues`, and games carry `league_id` |
-| **Record by league** | Grouped by text. A typo splits a record. | Exact. | Exact, and the same league across a club's teams. |
-| **Entering it** | Type it on every game. | Pick from the team's leagues, or add one in team settings. | A club defines it once, and teams join it. |
-| **Fits** | A quick start. | Any team, free or club. | Clubs. Later, standings across a club's teams. |
+| **Shape** | `events.league text` | `leagues(team_id, name, season)`, and games carry `league_id` | `leagues(organization_id, …)`, plus `team_leagues` |
+| **Record by league** | Grouped by text. A typo splits a record. | Exact. | Exact, and shared across a club's teams. |
+| **Fits** | A quick start. | Any team, free or club. | Clubs. Later, standings across teams. |
 
-**Recommendation: B, team leagues.** It's exact, it works for free teams, and it can grow into C: add
-`organization_id` later, and let club teams share a league.
+**Decided: B, team leagues** (D10). It can grow into C later.
 
-### Proposed design (B)
+### Design
 
-- **Data:** `leagues(id, team_id, name, season text null, archived_at null)`, plus `events.league_id`
-  (nullable, games only, and the league must be the event's own team's).
-- **Entering it:**
-  - The game form gets a League picker (the team's leagues, plus "Add league…").
-  - The series editor can set it for a whole series of league games.
-  - Team settings list the leagues.
-- **Records:** overall (every game), plus one per league. The Record card shows the overall record. With
-  leagues, it adds a row per active league, e.g. "Fall League 6–2–1", or a picker (D9).
+- **One league per season (D17):** `leagues(id, team_id, name, season text not null, archived_at null)`.
+  - "Fall 2026 Division 3" is one league. Next fall's is another.
+  - A record is always one season's.
+- **Archiving** hides a league from pickers and from the Record card's rows. It never removes its games' tags,
+  so its record stays, for a season view later (roadmap: Stats & Season Records).
+- **Games:** `events.league_id`, nullable, games only, and the league must be the event's own team's (a
+  trigger).
+- **Tagging games:**
+  - **New games:** the game form, and the new-series form, have a League picker: the team's active leagues,
+    plus "Add league…".
+  - **Existing games, past ones included:** a separate **"League games"** action in the league's settings. It
+    lists the team's games for a date range, with checkboxes, and sets or clears `league_id` on the chosen
+    ones.
+    - It changes classification only, never the schedule. So it's silent: the notification trigger ignores
+      the column, and past games never notify.
+    - It includes played games, so a league added halfway through a season gets its earlier results.
+  - **The series editor doesn't set leagues.** It only touches upcoming occurrences and skips exceptions, so
+    it would leave played games out of the league's record. Feedback, §9.
+- **Records:** overall (every game), plus one per active league: "Fall 2026 Division 3 · 6–2–1" (D9).
 - **Schedule:** a small league tag on league games.
-- **Tournaments and leagues are independent:** a game can carry either, or both. For example, a league's cup
-  played as a tournament. Tournament games aren't league games unless tagged (D4).
+- **Tournaments and leagues are independent** (D4): a game can carry either, or both.
+- **The old team fields (D17, open):** `teams.league` and `teams.league_url` are the team's free-text league
+  and its website, on the web's team settings.
+  - **Recommended: leave them for now**, labeled "League (shown on your team page)", and don't use them for
+    records.
+  - Later, either retire them or turn the website into a field on `leagues`. That's a separate change: data
+    exists in them, and 1.0.12 doesn't read them, so there's no rush.
 
-## 6. Questions to settle
+## 6. Decisions
 
-| # | Question | Recommendation | Decision |
-| --- | --- | --- | --- |
-| D1 | How is a tournament modeled? | **A:** a `tournament` event type, with games linked by `events.tournament_id` (§3). | **A, decided 2026-10-01** |
-| D2 | Where do people answer "are you coming?" | **On the tournament.** One answer for the weekend. Per-game answers stay possible but aren't asked for. Coaches mostly need "who's coming to Surf Cup". | **Both, decided 2026-10-01:** answer the tournament, and optionally a game. A game's own answer wins (§4, "Availability") |
-| D3 | Do tournament games count toward the overall record? | **Yes.** The overall record is every game, and the tournament adds its own record next to it. | **Yes, decided 2026-10-01** |
-| D4 | Can a game be in both a league and a tournament? | **Yes, independently.** Nothing is inherited. | **As recommended, decided 2026-10-01** |
-| D5 | Deleting a tournament that has games | **Refuse while it has games, and offer "delete the tournament and its games"**, like a series (BUG-009). Games aren't left orphaned silently. | **As recommended, decided 2026-10-01** |
-| D6 | Reminders for a tournament | **One reminder for the tournament** (its first day). None for each of its games. | **Decided 2026-10-01, against the recommendation: a reminder for every event**, the tournament and each of its games, as for any event |
-| D7 | A round on each game ("Pool A", "Semifinal")? | **Yes, optional `events.round text`.** It's cheap and makes the game list read right. | **As recommended, decided 2026-10-01** |
-| D8 | The dashboard after a tournament | **Show the placement as the last result** until a newer game. "Surf Cup · 2nd place · 3–1–0". | **As recommended, decided 2026-10-01** |
-| D9 | Leagues on the Record card | **A row per active league** under the overall record. On the web, maybe a season view later (roadmap: Stats & Season Records). | **As recommended, decided 2026-10-01** |
-| D10 | League model | **B:** team leagues (§5). Club leagues later. | **B, team leagues, decided 2026-10-01** |
-| D11 | Mobile before 1.1.0? | **Display only:** tournament cards, the tournament screen, "Part of", multi-day dates, league tags and records. Creating them stays on the web. | **As recommended, decided 2026-10-01** |
-| D12 | Order of work | **Tournaments first** (the schema, then web, then mobile), **then leagues.** Leagues don't change what 1.0.12 sees, so they don't hold the release. | **As recommended, decided 2026-10-01** |
+| # | Question | Decision (2026-10-01) |
+| --- | --- | --- |
+| D1 | How is a tournament modeled? | A `tournament` event type, with games linked by `events.tournament_id` (§3) |
+| D2 | Where do people answer? | **Both:** the tournament, and optionally a game. The game's own answer wins (§4, Availability) |
+| D3 | Tournament games in the overall record? | Yes |
+| D4 | A game in a league and a tournament? | Yes, independently. Nothing is inherited |
+| D5 | Deleting a tournament with games | A plain delete is refused. "Delete the tournament and its games" is one function and one notice |
+| D6 | Reminders | **A reminder for every event:** the tournament (before its start date) and each game. This went against the recommendation of one per tournament |
+| D7 | A round on games | Yes, optional `events.round` |
+| D8 | The dashboard after a tournament | Its placement shows as the last result until a newer game |
+| D9 | Leagues on the Record card | A row per active league under the overall record |
+| D10 | League model | Team leagues (§5) |
+| D11 | The app before 1.1.0 | Display and answering for **both tournaments and leagues**. Creating them stays on the web |
+| D12 | Order, and the release | Tournaments first (database, web, app), then leagues (database, web, app). **The `ios-v1.1.0` tag waits until both are done** |
+| D13 | Tournament dates | All-day and inclusive, in the tournament's zone. Its reminder goes before its start date |
+| D14 | 1.0.12 shows a game's raw answer, not the inherited one | Accepted for the rollout, given the small user base. Noted in the release notes (§4, Availability) |
+| D15 | Cancelling and restoring | Cancel offers "and its remaining games" or "keep them as standalone games". Restore restores the tournament only. Games are restored one by one |
+| D16 | Bulk fill when a tournament and its games are unanswered | Answer only the tournament |
+| D16b | The bulk fill's `'game'` filter and tournament games | **Open.** Recommended: standalone games only. Tournament games go through their tournament |
+| D17 | One league per season, archiving, and the old `teams.league` fields | Per season, and archiving keeps records (decided). **Open:** the old fields. Recommended: leave them for now, relabeled, and decide later |
+| D18 | Tournaments and recurring series | A tournament and its games are always standalone. A trigger refuses series links |
 
 ## 7. Compatibility with the installed 1.0.12 (D4 of the mobile spec)
 
-Everything here is additive, nullable columns and one new event type value, but 1.0.12 will see tournaments.
-Checked against 1.0.12's source:
-- **Badge and title:** it shows a tournament with the default (purple) badge reading "Tournament" (its style
-  capitalizes the stored word), and its title. That's fine.
-- **Times:** its event screen shows the start date and time, then "Ends 5:00 PM" with no date
-  (`[eventId].tsx:288` at `b3473c71b`), which is misleading for a three-day event. Acceptable for a
-  transition, but worth noting in the release notes.
-- **Availability:** works on a tournament like any event.
-- **Games:** show as ordinary games, without their tournament.
-- **Leagues:** 1.0.12 never reads `league_id`, so nothing changes for it.
-- **Refusals:** no new refusal affects 1.0.12's writes. Its writes are availability, chat, profiles and
-  preferences, and none of the new rules touch them.
+Everything here is additive: new nullable columns, a new table, and one new event type value. Checked against
+1.0.12's source (`b3473c71b`):
+- **Badge and title:** the default (purple) badge reading "Tournament" (its style capitalizes the stored
+  word), and the title. Fine.
+- **Times:** its event screen shows the start, then "Ends" with a time and no date (`[eventId].tsx:288`), in
+  the phone's zone. For an all-day tournament that's midnight, "Ends 12:00 AM" for someone in the
+  tournament's zone. Misleading, and noted in the release notes.
+- **Upcoming:** its home screen queries `start_time >= now`, so an underway tournament drops off its Upcoming
+  list on its first day. Its games still show. Accepted.
+- **Answers (D14):** it shows a tournament game's own answer, or "no response", never the inherited one. Its
+  writes are plain rows, which the new rules still accept. Clearing a game's answer in 1.0.12 deletes the
+  override, the same as in 1.1.0. Only the display differs.
+- **Games:** shown as ordinary games, without their tournament or round.
+- **Leagues:** 1.0.12 never reads `leagues` or `league_id`.
+- **Refusals:** the new triggers (same team, standalone, games only) apply to event writes, which 1.0.12 never
+  makes.
 
-This is why tournaments should land before 1.1.0 ships: 1.1.0 should show them properly from day one.
-
-## 8. Testing (once decided)
+## 8. Testing
 
 - **Database (`tests/rls/`):**
   - a game can link only to a tournament on its own team
+  - a series head or child can't link to a tournament, and a tournament or tournament game can't be made
+    recurring (D18)
+  - tournament fields are refused on non-tournaments, and `league_id` and `round` on non-games
   - only team admins set placement
-  - the tournament fields are refused on non-tournaments
-  - deletion follows D5
-  - a league must be the team's own
+  - a plain delete of a tournament with games is refused, and the delete-with-games function removes exactly
+    its games and answers (D5)
+  - cancel with games, cancel keeping games (unlinked), and restore not restoring games (D15)
+  - a tournament-wide action enqueues **one** job with the tournament's snapshot, and no game jobs
+  - `set_unanswered_availability` answers only the tournament when all are unanswered, skips games under an
+    answered tournament, and accepts `'tournament'` (D16)
+  - a league must be the team's own, and tagging past games enqueues nothing
+- **Queries:**
+  - an underway tournament is in Upcoming
+  - one crossing a month boundary is in both months
+  - schedule pages keep their order, with games and their tournament on different pages
 - **Rules (web and phone, the same cases):**
-  - `effectiveAnswer`: a game's own answer wins, else the tournament's, else none; clearing a game falls back
+  - `effectiveAnswer`: a game's own answer wins, else the tournament's, else none, and clearing falls back
   - the tournament record counts only its games
-  - placement text (label wins, ordinal otherwise)
-  - league records split by league, and the overall record counts everything
-- **Web:** the tournament form saves in one transaction with one notification; the schedule shows one item per
-  tournament; the tournament page; the game's "Part of" link; the Record card's league rows.
-- **Mobile:** the tournament card and screen, the date range, "Part of", and the league rows on the Record
-  card.
-- **Compatibility:** the release notes' 1.0.12 review is extended to cover the new type and columns.
+  - placement text (the label wins, else an ordinal)
+  - all-day date ranges in the tournament's zone, across daylight saving
+  - league records by league, and the overall record counts everything
+- **Web:**
+  - creating in one call with one notice, in the tournament template
+  - the tournament page
+  - the cancel, restore and delete choices
+  - "Part of"
+  - the "League games" action including past games
+  - the Record card's league rows
+- **Worker:** a tournament job renders the tournament template whatever its count, links to the tournament
+  page, and its answer buttons answer the tournament.
+- **Mobile:** the tournament card ("Now" while underway) and screen, date ranges, "Part of", the game's
+  inherited answer and override, and league rows on the Record card.
+- **Compatibility:** the release notes' 1.0.12 review gains these migrations and the D14 difference.
+
+## 9. Review, 2026-10-01
+
+The user's review of the first draft changed:
+1. **The 1.0.12 answer difference:** it's more than "less complete", and is now accepted explicitly (D14).
+2. **Multi-day queries:** added (§4, "Multi-day events in queries"): overlap, staying in Upcoming until the
+   end, month boundaries, and no nesting across pages.
+3. **Tournament notifications:** added (§4, "Notifications"). Batches keep the first snapshot and render as a
+   series today, so tournament actions enqueue their own job and get their own template.
+4. **League tagging:** moved out of the series editor, into a separate classification action that includes
+   played games (§5).
+5. **Series and tournaments:** made exclusive (D18).
+
+It also settled cancelling and restoring (D15), one league per season with archiving (D17), bulk fill (D16)
+and all-day dates (D13). It changed the release: 1.1.0 waits for leagues too (D11, D12).
