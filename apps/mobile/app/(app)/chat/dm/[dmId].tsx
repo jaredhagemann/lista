@@ -3,8 +3,6 @@ import {
   View,
   FlatList,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,6 +13,7 @@ import { notifyChatMessage } from "../../../../lib/chat-notify";
 import { useSession } from "../../../_layout";
 import { MessageItem, type Message } from "../../../../components/chat/MessageItem";
 import { MessageInput } from "../../../../components/chat/MessageInput";
+import { KeyboardScreen } from "../../../../components/KeyboardScreen";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export default function DmScreen() {
@@ -174,11 +173,7 @@ export default function DmScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={0}
-    >
+    <KeyboardScreen style={styles.container}>
         <FlatList
           data={messages}
           keyExtractor={(m) => m.id}
@@ -199,7 +194,7 @@ export default function DmScreen() {
           }}
         />
         <MessageInput onSend={handleSend} />
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

@@ -179,6 +179,18 @@ answers as the profile being viewed, which the database refuses for another team
 Files: `lib/availability.ts`, `app/(app)/schedule/[eventId].tsx`, `__tests__/availability.test.ts`,
 `__tests__/AvailabilityScreen.test.tsx`.
 
+### Chat's message box stays above the keyboard — [BUG-031](../bugs/fixed/031-mobile-chat-input-hidden-by-keyboard.md)
+
+**Installed build (and 1.1.0 build 18):** in a channel or a direct message, the keyboard covers the message box
+and Send, so you can't see what you type or send it. The screens assumed they started at the top of the
+screen, but they sit about 140–155 pt lower, below the safe area, team strip and header.
+
+**New build:** `components/KeyboardScreen.tsx` measures where the chat sits on screen and offsets the keyboard
+by that, so the box sits just above it.
+
+Files: `components/KeyboardScreen.tsx`, `app/(app)/chat/[channelId].tsx`, `app/(app)/chat/dm/[dmId].tsx`,
+`__tests__/ChatKeyboard.test.tsx`.
+
 ---
 
 ## Before shipping
@@ -217,6 +229,8 @@ Each of these is the check recorded on its ticket, and none of them can be run b
   and isn't counted. Open an event of a team the app doesn't have open (from a notification): the roster is
   that team's. As a parent viewing one player, open a sibling's event on another team: the picker reads
   "Availability for [sibling]" and the answer saves.
+- **BUG-031:** in a team channel and in a direct message, tap the message box: it sits just above the
+  keyboard, what you type is visible, and Send works. Repeat with iOS text size set large.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
