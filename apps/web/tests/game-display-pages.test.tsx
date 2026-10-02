@@ -16,9 +16,16 @@ import { render, screen, cleanup } from "@testing-library/react";
 const mocks = vi.hoisted(() => {
   const tables: Record<string, unknown> = {};
   const from = (table: string) => {
-    const result = () => Promise.resolve({ data: tables[table] ?? null, error: null, count: 0 });
+    // A tournament's games are events filtered by tournament_id: their own rows.
+    const columns: string[] = [];
+    const key = () => (table === "events" && columns.includes("tournament_id") ? "tournament_games" : table);
+    const result = () => Promise.resolve({ data: tables[key()] ?? null, error: null, count: 0 });
     const chain: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "neq", "in", "gte", "lte", "order", "limit", "is", "not"]) chain[m] = () => chain;
+    for (const m of ["select", "neq", "in", "gte", "gt", "lte", "order", "limit", "is", "not"]) chain[m] = () => chain;
+    chain.eq = (column: string) => {
+      columns.push(column);
+      return chain;
+    };
     chain.single = result;
     chain.maybeSingle = result;
     chain.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => result().then(res, rej);
@@ -114,6 +121,30 @@ describe("the event page", () => {
       away_uniform_color: "#ffffff",
     });
     expect(mocks.eventDetailProps?.teamTimeZone).toBe("America/Los_Angeles");
+  });
+
+  it("hands a tournament's page its games (docs/specs/tournaments-and-leagues.md §4)", async () => {
+    const games = [{ id: "g-1", tournament_id: "t-1" }, { id: "g-2", tournament_id: "t-1" }];
+    mocks.tables.events = { ...GAME, id: "t-1", event_type: "tournament", tournament: null };
+    mocks.tables.tournament_games = games;
+    mocks.tables.availability = [];
+    mocks.tables.team_members = [];
+
+    render(await EventDetailPage({ params: Promise.resolve({ eventId: "t-1" }), searchParams: Promise.resolve({}) }));
+
+    expect(mocks.eventDetailProps?.tournamentGames).toEqual(games);
+  });
+
+  it("hands a game's page its tournament, and asks for no games", async () => {
+    mocks.tables.events = { ...GAME, tournament_id: "t-1", round: "Final", tournament: { id: "t-1", title: "Surf Cup" } };
+    mocks.tables.tournament_games = [{ id: "should-not-load" }];
+    mocks.tables.availability = [];
+    mocks.tables.team_members = [];
+
+    render(await EventDetailPage({ params: Promise.resolve({ eventId: "evt-1" }), searchParams: Promise.resolve({}) }));
+
+    expect((mocks.eventDetailProps?.event as { tournament: unknown }).tournament).toEqual({ id: "t-1", title: "Surf Cup" });
+    expect(mocks.eventDetailProps?.tournamentGames).toEqual([]);
   });
 });
 
