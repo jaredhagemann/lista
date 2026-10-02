@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-01, [PR #114 — Tournaments, part 1: database](https://github.com/jaredhagemann/lista/pull/114), commit `18b0da0a67b7d4ebaefeca0a2a179f26c7988c63`.
-**Current outcome:** six P2 findings, all implemented in `5e00b4d06` and awaiting review. None is marked resolved yet.
+**Last reviewed:** 2026-10-01, [PR #114 — Tournaments, part 1: database](https://github.com/jaredhagemann/lista/pull/114), commit `82005445befca94d176147a6b5a1c1a0a5960997`.
+**Current outcome:** TL-001 through TL-006 are resolved (verified at `82005445b`). TL-007 is implemented in `b80893172` and awaiting review.
 
 ## Using this document as the feature changes
 
@@ -18,23 +18,25 @@
 
 | ID | Priority | Finding | Status | Fix / verification |
 | --- | --- | --- | --- | --- |
-| [TL-001](#tl-001--serialize-tournament-validation-with-parent-edits) | P2 | Concurrent edits can invalidate tournament links | Implemented — awaiting review | `5e00b4d06`, migration `20261001000001`; `tests/rls/tournaments-review.test.ts` |
-| [TL-002](#tl-002--check-existing-series-children-before-converting-a-head) | P2 | A series head can join a tournament while retaining occurrences | Implemented — awaiting review | `5e00b4d06`, migration `20261001000001`; `tests/rls/tournaments-review.test.ts` |
-| [TL-003](#tl-003--exclude-answered-games-when-selecting-bulk-answer-targets) | P2 | Bulk fill can change availability outside the selected window | Implemented — awaiting review | `5e00b4d06`, migration `20261001000001`; `tests/rls/tournaments-review.test.ts` |
-| [TL-004](#tl-004--notify-when-deletion-removes-active-child-games) | P2 | Deleting a cancelled or ended tournament can silently remove active games | Implemented — awaiting review | `5e00b4d06`, migration `20261001000001`; `tests/rls/tournaments-review.test.ts` |
-| [TL-005](#tl-005--snapshot-retained-games-before-unlinking-them) | P2 | Cancellation loses the game details needed by its notification | Implemented — awaiting review | `5e00b4d06`, migration `20261001000001`; `tests/rls/tournaments-review.test.ts` |
-| [TL-006](#tl-006--suppress-creation-notices-for-completed-tournaments) | P2 | Historical tournament creation queues a notification | Implemented — awaiting review | `5e00b4d06`, migration `20261001000001`; `tests/rls/tournaments-review.test.ts` |
+| [TL-001](#tl-001--serialize-tournament-validation-with-parent-edits) | P2 | Concurrent edits can invalidate tournament links | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
+| [TL-002](#tl-002--check-existing-series-children-before-converting-a-head) | P2 | A series head can join a tournament while retaining occurrences | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
+| [TL-003](#tl-003--exclude-answered-games-when-selecting-bulk-answer-targets) | P2 | Bulk fill can change availability outside the selected window | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
+| [TL-004](#tl-004--notify-when-deletion-removes-active-child-games) | P2 | Deleting a cancelled or ended tournament can silently remove active games | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
+| [TL-005](#tl-005--snapshot-retained-games-before-unlinking-them) | P2 | Cancellation loses the game details needed by its notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
+| [TL-006](#tl-006--suppress-creation-notices-for-completed-tournaments) | P2 | Historical tournament creation queues a notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
+| [TL-007](#tl-007--revalidate-games-before-applying-a-tournament-cancellation) | P2 | Cancellation can change a game concurrently moved to another tournament | Implemented — awaiting review | Fix `b80893172`, migration `20261002000000`; reproduced at `82005445b` |
 
 ## Part 1 — database findings
 
-All six findings were reproduced against the local Supabase database with migration
-`20261001000000_tournaments.sql` applied. They are not claims about observed production behavior.
+TL-001 through TL-006 were initially reproduced against the local Supabase database with migration
+`20261001000000_tournaments.sql` applied. Their fixes and TL-007 were checked with
+`20261001000001_tournaments_review_fixes.sql` applied. These are not claims about observed production behavior.
 The web and mobile implementation, including the tournament notification template, are later parts;
 their absence is not a finding in this review.
 
 ### TL-001 — Serialize tournament validation with parent edits
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [`events_check_tournament_links`, line 76](https://github.com/jaredhagemann/lista/blob/18b0da0a67b7d4ebaefeca0a2a179f26c7988c63/supabase/migrations/20261001000000_tournaments.sql#L76-L82), together with the parent-edit check at lines 101–104.
 
 The parent lookup takes no lock. A parent type or team update and a new game link can each validate
@@ -58,20 +60,22 @@ edits. Neither commit order should permit a game to reference a non-tournament o
 **Regression coverage:** use two database connections to exercise the overlap above, the team-change
 variant, and valid same-team linking. Assert the final relationship is valid or one operation is rejected.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
+**Resolution and verification:** Resolved in the follow-up review at `82005445b`. Implemented in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
 Linking a game now reads its tournament `FOR SHARE`, which conflicts with any update to the tournament row.
 The foreign key alone takes `FOR KEY SHARE`, which doesn't. An occurrence reads its series head the same way.
 So whichever transaction commits second is validated against the first: a link waits for a type or team change
 and is then refused, or a type or team change waits for a link and is then refused by the existing
 `TOURNAMENT_HAS_GAMES` check.
-Verified locally: `tests/rls/tournaments-review.test.ts` → "TL-001", with two real `psql` sessions. One holds
+Implementation verification (reported with `5e00b4d06`): `tests/rls/tournaments-review.test.ts` → "TL-001", with two real `psql` sessions. One holds
 its transaction open for 2 seconds while the other runs. It covers the reported order, the reverse order, the
 team-change variant, and a valid link. The three overlap tests failed before the fix (both sessions committed),
 and they assert that the two can't both succeed and that no invalid link remains.
 
+Independent follow-up verification: two authenticated-admin database sessions confirmed that a type change before a link, a link before a type change, and a team change before a link each reject one conflicting operation. All three ended with zero invalid links.
+
 ### TL-002 — Check existing series children before converting a head
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [`events_check_tournament_links`, lines 86–95](https://github.com/jaredhagemann/lista/blob/18b0da0a67b7d4ebaefeca0a2a179f26c7988c63/supabase/migrations/20261001000000_tournaments.sql#L86-L95).
 
 The trigger checks a row's outgoing `parent_event_id`, but does not check whether other events already
@@ -94,17 +98,19 @@ in addition to checking its own recurrence fields. This preserves D18's standalo
 **Regression coverage:** test both attachment and type conversion of an existing head with children;
 verify rejection preserves the original series. Keep the legitimate standalone conversion/link cases covered.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
+**Resolution and verification:** Resolved in the follow-up review at `82005445b`. Implemented in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
 The trigger refuses an update that makes an event a tournament, or links it to one, while any event still has
 `parent_event_id` pointing at it (`TOURNAMENT_NOT_A_SERIES`). Clearing its own rule no longer gets around
 D18.
-Verified locally: "TL-002" covers joining a tournament and becoming one, each with the rule cleared; both are
+Implementation verification (reported with `5e00b4d06`): "TL-002" covers joining a tournament and becoming one, each with the rule cleared; both are
 refused, and the series (head rule, child link) is unchanged. The legitimate standalone cases still succeed.
 Both refusal tests failed before the fix.
 
+Independent follow-up verification: attaching a head with existing children and converting that head to a tournament both raised `TOURNAMENT_NOT_A_SERIES` in rolled-back SQL probes.
+
 ### TL-003 — Exclude answered games when selecting bulk-answer targets
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [`set_unanswered_availability`, lines 527–542](https://github.com/jaredhagemann/lista/blob/18b0da0a67b7d4ebaefeca0a2a179f26c7988c63/supabase/migrations/20261001000000_tournaments.sql#L527-L542).
 
 Time eligibility is checked on the source game, while answer existence is checked only on its tournament.
@@ -129,18 +135,20 @@ an eligible unanswered game, and D16/D16b's prohibition on creating game overrid
 inserted. Also cover an eligible unanswered game, an existing tournament answer, and the standalone-only
 `game` filter.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
+**Resolution and verification:** Resolved in the follow-up review at `82005445b`. Implemented in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
 A game in the window now stands for its tournament only while the game itself is unanswered. The fill
 requires no answer on the source event as well as on the target. An answered game no longer promotes an
 out-of-window tournament.
-Verified locally: "TL-003" reproduces the report: an underway tournament, tomorrow's game answered
+Implementation verification (reported with `5e00b4d06`): "TL-003" reproduces the report: an underway tournament, tomorrow's game answered
 Unavailable, a game nine days out, and a two-day fill. Nothing is inserted; this failed before the fix. It
 also covers an unanswered game in the window still reaching the underway tournament, and an answered
 tournament with the standalone-only `'game'` filter.
 
+Independent follow-up verification: the original answered-game/window case inserted zero rows. Removing the source game answer made the same fill insert exactly one tournament answer, preserving the intended underway-tournament behavior.
+
 ### TL-004 — Notify when deletion removes active child games
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [`delete_tournament`, lines 390–398](https://github.com/jaredhagemann/lista/blob/18b0da0a67b7d4ebaefeca0a2a179f26c7988c63/supabase/migrations/20261001000000_tournaments.sql#L390-L398).
 
 The function suppresses game notifications, then decides whether to send the replacement tournament
@@ -165,16 +173,18 @@ preserving one notice for the operation. Suppress the notice only when no affect
 future game, and entirely historical or already-cancelled events. Assert exactly one notice when an
 active upcoming/in-progress event is removed, and none when every affected event is silent history.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
+**Resolution and verification:** Resolved in the follow-up review at `82005445b`. Implemented in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
 `delete_tournament` records, before deleting, which games are live (not cancelled, not over). It sends its
 one notice when the tournament is live **or** any game is.
-Verified locally: "TL-004" covers a cancelled tournament with a restored future game and an ended tournament
+Implementation verification (reported with `5e00b4d06`): "TL-004" covers a cancelled tournament with a restored future game and an ended tournament
 with a game moved past it: exactly one `deleted` notice each, both failing before the fix. A tournament and
 games that are all history send none.
 
+Independent follow-up verification: both a cancelled parent with a restored future game and an ended parent with a future game produced exactly one deletion job.
+
 ### TL-005 — Snapshot retained games before unlinking them
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [`cancel_tournament`, lines 442–443](https://github.com/jaredhagemann/lista/blob/18b0da0a67b7d4ebaefeca0a2a179f26c7988c63/supabase/migrations/20261001000000_tournaments.sql#L442-L443), and the notification payload at lines 264–267.
 
 Cancelling while keeping games clears their tournament association and round, then queues only counts
@@ -197,18 +207,20 @@ not a request to implement the deferred email template in part 1.
 **Regression coverage:** include an unrelated standalone game and verify the snapshot contains exactly
 the retained tournament games. Their details must remain usable after unlinking and subsequent edits/deletion.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
+**Resolution and verification:** Resolved in the follow-up review at `82005445b`. Implemented in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
 Every tournament notice now carries `snapshot.tournament.affected_games`, from
 `tournament_game_summaries`: each game's id, title, times, zone, opponent, home/away, round and
 cancellation. It's captured before the action unlinks, cancels or deletes them. `affected` is now that
 list's length. The contract is in the spec (§4, Notifications).
-Verified locally: "TL-005" cancels keeping games, with an unrelated standalone game present, then deletes one
+Implementation verification (reported with `5e00b4d06`): "TL-005" cancels keeping games, with an unrelated standalone game present, then deletes one
 of the unlinked games. The notice still lists exactly the two retained games, with their details. Creating
 lists its games too. Both failed before the fix.
 
+Independent follow-up verification: after keeping two games and subsequently deleting one, the cancellation snapshot still held exactly those games and their original rounds, excluding an unrelated standalone game. The separate concurrent-mutation problem introduced by collecting IDs before the update is tracked as TL-007.
+
 ### TL-006 — Suppress creation notices for completed tournaments
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [`create_tournament`, lines 361–363](https://github.com/jaredhagemann/lista/blob/18b0da0a67b7d4ebaefeca0a2a179f26c7988c63/supabase/migrations/20261001000000_tournaments.sql#L361-L363).
 
 `p_notify` defaults to true, and the function enqueues a created notice without checking whether the
@@ -226,11 +238,71 @@ entry without sending families a new-event notice for a completed tournament.
 **Regression coverage:** historical creation with notification requested queues nothing; upcoming
 creation queues one notice; `p_notify = false` queues none.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
+**Resolution and verification:** Resolved in the follow-up review at `82005445b`. Implemented in `5e00b4d06` (PR #114), migration `20261001000001_tournaments_review_fixes.sql`. A second migration, because staging already had `20261001000000`.
 `create_tournament` notifies only when `p_notify` is set and the tournament hasn't ended, matching
 `enqueue_event_notification`'s rule for single events. Past tournaments can be entered silently.
-Verified locally: "TL-006" covers historical creation with notify requested (no job; this failed before the
+Implementation verification (reported with `5e00b4d06`): "TL-006" covers historical creation with notify requested (no job; this failed before the
 fix), upcoming creation (one job), and `p_notify = false` (none).
+
+Independent follow-up verification: historical creation with the default notification setting produced zero jobs; future creation produced one.
+
+### TL-007 — Revalidate games before applying a tournament cancellation
+
+**Priority / status:** P2 / Implemented — awaiting review.
+**Source:** [`cancel_tournament`, lines 350–360](https://github.com/jaredhagemann/lista/blob/82005445befca94d176147a6b5a1c1a0a5960997/supabase/migrations/20261001000001_tournaments_review_fixes.sql#L350-L360).
+
+The fix captures eligible game IDs and their summaries without locking those rows, then updates by ID
+alone. If another transaction moves a game before the update acquires its row lock, cancellation still
+acts on the captured ID even though that game no longer belongs to the tournament being cancelled.
+The previous implementation's update also filtered by tournament membership and start time; the new
+ID-only update drops that revalidation.
+
+**Reproduction:**
+
+1. Create tournaments `T1` and `T2`, with a future game `G` linked to `T1`.
+2. In transaction A, update `G.tournament_id` to `T2.id`, leaving the transaction uncommitted.
+3. In transaction B, call `cancel_tournament(T1.id, true)`. Its reads see the previously committed link
+   to `T1`, so it captures `G.id`; its subsequent update waits for A's row lock.
+4. Commit A and let B complete.
+
+**Observed:** both authenticated-admin transactions committed. `G` belonged to `T2` but was cancelled
+by the operation on `T1`. Repeating with `p_cancel_games = false` also let both commit and cleared `G`'s
+new `T2` link entirely, leaving it standalone. Both variants were reproduced locally at `82005445b`.
+
+**Requested change:** lock and revalidate the eligible game rows before taking their snapshots and
+applying the action. A game moved out of the tournament must not be cancelled or unlinked by an action
+on its former tournament. Keep the affected count and durable snapshot consistent with the rows actually
+changed; do not rely solely on IDs selected before a concurrent edit commits.
+
+**Regression coverage:** use two database sessions to overlap a game move with both cancellation choices.
+Assert either a coordinated rejection or preservation of the successfully moved game's new membership and
+active status. Verify the notice excludes games not actually changed, and keep ordinary cancellation and
+retained-game snapshot cases passing.
+
+**Resolution and verification:** Implemented — awaiting review. Fixed in `b80893172`, migration
+`20261002000000_tournaments_lock_games.sql`. That's a new migration, because #114 had already merged with
+TL-007 open.
+- **The fix:** `cancel_tournament` checks the caller first, then locks the tournament (`FOR UPDATE`) and its
+  eligible games (`FOR UPDATE`, filtered by membership, start time and, for the cancel choice, not already
+  cancelled). Only then does it summarize, count or change anything.
+  - Under read committed, a game that changed while the lock waited is re-checked against the filter, so a
+    game moved to another tournament drops out.
+  - The summary, `affected`, and the update all cover exactly the locked rows.
+- **Lock order:** the admin check comes before the lock, because `FOR UPDATE` only returns rows the caller
+  may update. That would have turned "not authorized" into "not found" (an existing test caught this).
+- **The same gap in `delete_tournament`, found while fixing this:** it summarized its games, and decided
+  whether any were live, before its delete re-checked membership. A game moved away could be listed in the
+  notice, or send one, without being deleted. It now locks the same way and deletes exactly the locked
+  games.
+- **Implementation verification:** `tests/rls/tournaments-review.test.ts` → "TL-007", with two `psql`
+  sessions. One moves the game to the second tournament and holds its transaction open. The other calls the
+  action as the coach, under the `authenticated` role and the coach's JWT claims.
+  - It covers cancelling with games, cancelling keeping games, and deleting. Each asserts the moved game keeps
+    its new tournament and isn't cancelled, and that the notice lists no game.
+  - All three failed before the fix.
+  - Ordinary cancellation still changes and lists its game.
+  - All 44 tournament tests pass, and the full RLS suite passes after `supabase db reset` (47 files, 605
+    tests).
 
 ## Review history
 
@@ -282,5 +354,42 @@ than reopen them implicitly. The source code review below is separate from accep
 - **TL-001 method:** two concurrent `psql` sessions in the database container. One holds its transaction
   open for 2 seconds. The tests assert that the two writes can't both commit, and that no invalid link
   remains, so they hold whichever session's write lands first.
+
+### 2026-10-01 — Independent follow-up review, PR #114
+
+- **Revision:** `82005445befca94d176147a6b5a1c1a0a5960997`; implementation changes in
+  `5e00b4d06c0a463492fdccc8e189666dd12dccf5`.
+- **Scope:** the follow-up migration, the 17 new regression tests and shared fixtures, generated types,
+  spec changes, and verification of TL-001 through TL-006.
+- **Status changes:** TL-001 through TL-006 → Resolved. Opened TL-007 (P2) for the new ID-only
+  cancellation update acting on a game moved concurrently to another tournament.
+- **Independent local verification:** with migration `20261001000001` applied, direct SQL probes verified
+  both reverse-series refusals, the bulk-answer failure and legitimate source case, both deletion-notice
+  cases, retained-game snapshots surviving later deletion, and historical/future creation notices.
+  Two-session probes verified TL-001 in both type-change orders and the team-change case. Two further
+  concurrency cases reproduced each cancellation choice in TL-007. Writes ran as `authenticated` with a
+  fixture coach identity; setup and cleanup used the local database administrator.
+- **Cleanup:** single-session probes rolled back. Uniquely identified concurrency fixtures were removed
+  after each case. No production or staging data was modified by this review.
+- **CI observed:** unit, web, mobile, RLS integration, and staging migration checks were green at this head.
+- **Local test limitation:** invoking Vitest for the two tournament test files still failed before test
+  execution because the local dependency tree is missing `esbuild`. The author's full-suite results above
+  are distinct from this review's independently executed SQL checks.
+- **Other checks:** `git diff --check` passed. This review updated only the review log; no application fixes
+  or GitHub comments were made.
+
+### 2026-10-02 — TL-007 fix, after #114 merged
+
+- **Revision:** `b80893172`, on `main` at `46479e2b4` (the #114 merge). The follow-up review round above was
+  committed as written in `45e420e01`.
+- **Scope:** migration `20261002000000_tournaments_lock_games.sql`, which replaces `cancel_tournament` and
+  `delete_tournament`, and four TL-007 tests.
+- **Status changes:** TL-007, Open → Implemented — awaiting review.
+- **Also changed:** `delete_tournament` had the same unlocked read before its change, so it gets the same fix
+  under TL-007 rather than a new finding.
+- **Local verification:**
+  - Against `main` (without the fix), the three overlap tests failed and the ordinary case passed.
+  - With the fix, all 44 tournament tests pass, and the full RLS suite passes with the pinned CLI (2.78.1):
+    47 files, 605 tests.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
