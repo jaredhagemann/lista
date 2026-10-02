@@ -285,6 +285,24 @@ this build.
 - **Archived teams** (`teams.archived_at`) still appear in the team list. The web's team picker lists them
   too, so that's not a phone-only difference.
 
+### Added 2026-10-01: tournaments (`20261001000000_tournaments.sql`)
+
+Spec: `docs/specs/tournaments-and-leagues.md` §7. Additive: a new event type value, four nullable columns on
+`events` (`tournament_id`, `round`, `placement_rank`, `placement_label`), row checks, a trigger, and three
+functions. Checked against what 1.0.12 reads and writes:
+- **Writes:** none affected. The new checks and the trigger apply to `events` writes, and 1.0.12 never writes
+  events. Its availability writes are plain upserts and deletes, which the new rules leave alone.
+- **Reads:** 1.0.12 selects named columns, never `*`, so the new columns are invisible to it.
+- **What its users will see once tournaments exist:**
+  - **A tournament:** an event with the default purple badge, reading "Tournament".
+  - **Its event screen:** "Ends" with a time and no date (midnight, for an all-day tournament).
+  - **Upcoming:** the tournament drops off its home screen's list on its first day, because that list queries
+    by start time. Its games still show.
+  - **Its games:** ordinary games, without their tournament or round.
+- **Answers (spec D14, accepted):** on a tournament game, 1.0.12 shows only that game's own answer, or "no
+  response", never the answer inherited from the tournament. Coaches on the web and on 1.1.0 see the
+  inherited one. This ends when people update.
+
 ## On the TestFlight build, before submitting for review
 
 Each of these is the check recorded on its ticket. They need a real build, so run them on the 1.1.0

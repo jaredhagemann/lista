@@ -4,6 +4,7 @@
 tournaments first, then leagues (D12).
 **Requested:** 2026-10-01, by the user. The 1.1.0 mobile release waits for both tournaments and leagues (D12).
 **Scope:** database, web and the mobile app.
+**Review log:** [Findings, verification, and iteration history](../reviews/2026-10-01-tournaments-and-leagues-review.md).
 
 ## 1. What's wanted
 
@@ -92,6 +93,13 @@ tournaments first, then leagues (D12).
     head under BUG-009.
   - "Delete the tournament and its games" is one database function. It deletes the games (and their
     answers), then the tournament, in one transaction, with one notification (see Notifications).
+  - **That notification goes out** when anything live is removed: the tournament, or **any** of its games
+    that isn't cancelled or over. A cancelled tournament can still have a restored game, and an ended one a
+    game moved past its dates (review TL-004).
+- **Series (D18), both ways:** an event that still heads a series, with occurrences pointing at it, can't
+  become a tournament or join one, even with its own rule cleared (review TL-002).
+- **Concurrent edits:** linking a game locks its tournament row, so a game being linked and its tournament
+  changing type or team can't both succeed (review TL-001).
 
 ### Rules
 
@@ -142,6 +150,9 @@ People answer the tournament, and can answer a game to override it ("can't make 
     follow it, including if the tournament answer changes later. Answering the games too would turn them into
     overrides that stop following.
   - A game whose tournament is answered already has an answer, and is skipped.
+  - A game only stands for its tournament while the game itself is unanswered. An answered game in the
+    window doesn't pull in its tournament, whose other games may lie outside the window (review TL-003). An
+    unanswered game in the window still reaches a tournament that's already underway.
   - A `'tournament'` type filter answers tournaments.
   - **The `'game'` filter (D16b):** it covers **standalone games only**. Tournament games
     are answered through their tournament, under the `'tournament'` filter or with no filter. A "games" fill
@@ -178,15 +189,22 @@ A tournament-wide action must send **one notice that reads as a tournament**, ne
 
 - **Tournament jobs:** a tournament-wide function (create, cancel with or without games, restore, delete with
   games) enqueues **one** job itself.
-  - The snapshot is the tournament's, plus a summary of what happened to its games: "and its 4 remaining
-    games".
+  - The snapshot is the tournament's, plus `tournament`, a summary of what happened to its games ("and its
+    4 remaining games"):
+    - `games`: how many it has, or had
+    - `affected`: how many this action changed
+    - `games_action`: `created`, `cancelled`, `kept` or `deleted`
+    - `affected_games`: each changed game's id, title, times, zone, opponent, home/away, round and
+      cancellation, captured **before** the action changed them. Unlinked or deleted games can't be found from
+      the tournament afterwards (review TL-005).
   - Per-row trigger jobs from the games are suppressed for that transaction, through a transaction-local
     setting the trigger checks. So the batch can't keep a game's snapshot first.
 - **The worker:** a job whose snapshot is a tournament uses a **tournament template**, whatever its count. It
   never uses the series template.
 - **Creating:** a team admin saves the tournament and its games in one call (`create_tournament`), with
   "notify the team" checked by default, as for any new event. One notice: "Surf Cup · Fri Oct 11 – Sun Oct 13
-  · 5 games", and the games listed.
+  · 5 games", and the games listed. A tournament that's already over is saved without a notice, as no event
+  notifies once it has ended. That lets a coach enter past tournaments (review TL-006).
 - **Links and answer buttons depend on the action.** This is today's rule for single events
   (`asksForAnswers` in `lib/notifications/worker.ts` offers answers only for created, updated and restored;
   links fall back to `/dashboard/schedule`), applied to tournaments:

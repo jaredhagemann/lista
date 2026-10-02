@@ -221,13 +221,17 @@ export type Database = {
           notes: string | null
           opponent: string | null
           parent_event_id: string | null
+          placement_label: string | null
+          placement_rank: number | null
           recurrence_rule: string | null
+          round: string | null
           score_against: number | null
           score_for: number | null
           start_time: string
           team_id: string | null
           timezone: string | null
           title: string
+          tournament_id: string | null
           uniform: string | null
         }
         Insert: {
@@ -244,13 +248,17 @@ export type Database = {
           notes?: string | null
           opponent?: string | null
           parent_event_id?: string | null
+          placement_label?: string | null
+          placement_rank?: number | null
           recurrence_rule?: string | null
+          round?: string | null
           score_against?: number | null
           score_for?: number | null
           start_time: string
           team_id?: string | null
           timezone?: string | null
           title: string
+          tournament_id?: string | null
           uniform?: string | null
         }
         Update: {
@@ -267,13 +275,17 @@ export type Database = {
           notes?: string | null
           opponent?: string | null
           parent_event_id?: string | null
+          placement_label?: string | null
+          placement_rank?: number | null
           recurrence_rule?: string | null
+          round?: string | null
           score_against?: number | null
           score_for?: number | null
           start_time?: string
           team_id?: string | null
           timezone?: string | null
           title?: string
+          tournament_id?: string | null
           uniform?: string | null
         }
         Relationships: [
@@ -303,6 +315,13 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "events"
             referencedColumns: ["id"]
           },
         ]
@@ -1327,6 +1346,10 @@ export type Database = {
         Args: { p_actor_id: string; p_transfer_id: string }
         Returns: undefined
       }
+      cancel_tournament: {
+        Args: { p_cancel_games: boolean; p_tournament_id: string }
+        Returns: number
+      }
       close_club: {
         Args: { p_actor_id: string; p_confirm_name: string; p_org_id: string }
         Returns: undefined
@@ -1349,11 +1372,26 @@ export type Database = {
         }
         Returns: string
       }
+      create_tournament: {
+        Args: {
+          p_first_day: string
+          p_games?: Json
+          p_last_day: string
+          p_location_id?: string
+          p_notes?: string
+          p_notify?: boolean
+          p_team_id: string
+          p_timezone?: string
+          p_title: string
+        }
+        Returns: string
+      }
       delete_event_occurrence: {
         Args: { p_event_id: string; p_promoted_head_rule?: string }
         Returns: undefined
       }
       delete_event_series: { Args: { p_event_id: string }; Returns: number }
+      delete_tournament: { Args: { p_tournament_id: string }; Returns: number }
       enqueue_event_notification: {
         Args: { p_action: string; p_event_id: string }
         Returns: string
@@ -1366,6 +1404,16 @@ export type Database = {
           p_team_id: string
         }
         Returns: string
+      }
+      enqueue_tournament_notice: {
+        Args: {
+          p_action: string
+          p_affected_games: Json
+          p_games: number
+          p_games_action: string
+          p_tournament: Database["public"]["Tables"]["events"]["Row"]
+        }
+        Returns: undefined
       }
       event_notification_snapshot: {
         Args: { e: Database["public"]["Tables"]["events"]["Row"] }
@@ -1440,6 +1488,7 @@ export type Database = {
         Returns: string
       }
       team_org_id: { Args: { t_id: string }; Returns: string }
+      tournament_game_summaries: { Args: { p_ids: string[] }; Returns: Json }
       training_leaderboard: {
         Args: {
           p_anchor?: string

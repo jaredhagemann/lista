@@ -90,6 +90,10 @@ const GAME = {
   score_against: 1,
   recurrence_rule: null,
   parent_event_id: null,
+  tournament_id: null,
+  round: null,
+  placement_rank: null,
+  placement_label: null,
   created_by: "coach-1",
   created_at: null,
 };
