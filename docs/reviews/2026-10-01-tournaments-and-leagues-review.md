@@ -3,7 +3,7 @@
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
 **Last reviewed:** 2026-10-01, [PR #114 — Tournaments, part 1: database](https://github.com/jaredhagemann/lista/pull/114), commit `82005445befca94d176147a6b5a1c1a0a5960997`.
-**Current outcome:** TL-001 through TL-006 are resolved after independent verification of `5e00b4d06` at `82005445b`. One new P2 finding, TL-007, remains open.
+**Current outcome:** TL-001 through TL-006 are resolved (verified at `82005445b`). TL-007 is implemented in `b80893172` and awaiting review.
 
 ## Using this document as the feature changes
 
@@ -24,7 +24,7 @@
 | [TL-004](#tl-004--notify-when-deletion-removes-active-child-games) | P2 | Deleting a cancelled or ended tournament can silently remove active games | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
 | [TL-005](#tl-005--snapshot-retained-games-before-unlinking-them) | P2 | Cancellation loses the game details needed by its notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
 | [TL-006](#tl-006--suppress-creation-notices-for-completed-tournaments) | P2 | Historical tournament creation queues a notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
-| [TL-007](#tl-007--revalidate-games-before-applying-a-tournament-cancellation) | P2 | Cancellation can change a game concurrently moved to another tournament | Open | Reproduced at `82005445b` |
+| [TL-007](#tl-007--revalidate-games-before-applying-a-tournament-cancellation) | P2 | Cancellation can change a game concurrently moved to another tournament | Implemented — awaiting review | Fix `b80893172`, migration `20261002000000`; reproduced at `82005445b` |
 
 ## Part 1 — database findings
 
@@ -248,7 +248,7 @@ Independent follow-up verification: historical creation with the default notific
 
 ### TL-007 — Revalidate games before applying a tournament cancellation
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [`cancel_tournament`, lines 350–360](https://github.com/jaredhagemann/lista/blob/82005445befca94d176147a6b5a1c1a0a5960997/supabase/migrations/20261001000001_tournaments_review_fixes.sql#L350-L360).
 
 The fix captures eligible game IDs and their summaries without locking those rows, then updates by ID
@@ -279,7 +279,30 @@ Assert either a coordinated rejection or preservation of the successfully moved 
 active status. Verify the notice excludes games not actually changed, and keep ordinary cancellation and
 retained-game snapshot cases passing.
 
-**Resolution and verification:** Open; no fixing commit or post-fix verification recorded.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `b80893172`, migration
+`20261002000000_tournaments_lock_games.sql`. That's a new migration, because #114 had already merged with
+TL-007 open.
+- **The fix:** `cancel_tournament` checks the caller first, then locks the tournament (`FOR UPDATE`) and its
+  eligible games (`FOR UPDATE`, filtered by membership, start time and, for the cancel choice, not already
+  cancelled). Only then does it summarize, count or change anything.
+  - Under read committed, a game that changed while the lock waited is re-checked against the filter, so a
+    game moved to another tournament drops out.
+  - The summary, `affected`, and the update all cover exactly the locked rows.
+- **Lock order:** the admin check comes before the lock, because `FOR UPDATE` only returns rows the caller
+  may update. That would have turned "not authorized" into "not found" (an existing test caught this).
+- **The same gap in `delete_tournament`, found while fixing this:** it summarized its games, and decided
+  whether any were live, before its delete re-checked membership. A game moved away could be listed in the
+  notice, or send one, without being deleted. It now locks the same way and deletes exactly the locked
+  games.
+- **Implementation verification:** `tests/rls/tournaments-review.test.ts` → "TL-007", with two `psql`
+  sessions. One moves the game to the second tournament and holds its transaction open. The other calls the
+  action as the coach, under the `authenticated` role and the coach's JWT claims.
+  - It covers cancelling with games, cancelling keeping games, and deleting. Each asserts the moved game keeps
+    its new tournament and isn't cancelled, and that the notice lists no game.
+  - All three failed before the fix.
+  - Ordinary cancellation still changes and lists its game.
+  - All 44 tournament tests pass, and the full RLS suite passes after `supabase db reset` (47 files, 605
+    tests).
 
 ## Review history
 
@@ -354,5 +377,19 @@ than reopen them implicitly. The source code review below is separate from accep
   are distinct from this review's independently executed SQL checks.
 - **Other checks:** `git diff --check` passed. This review updated only the review log; no application fixes
   or GitHub comments were made.
+
+### 2026-10-02 — TL-007 fix, after #114 merged
+
+- **Revision:** `b80893172`, on `main` at `46479e2b4` (the #114 merge). The follow-up review round above was
+  committed as written in `45e420e01`.
+- **Scope:** migration `20261002000000_tournaments_lock_games.sql`, which replaces `cancel_tournament` and
+  `delete_tournament`, and four TL-007 tests.
+- **Status changes:** TL-007, Open → Implemented — awaiting review.
+- **Also changed:** `delete_tournament` had the same unlocked read before its change, so it gets the same fix
+  under TL-007 rather than a new finding.
+- **Local verification:**
+  - Against `main` (without the fix), the three overlap tests failed and the ordinary case passed.
+  - With the fix, all 44 tournament tests pass, and the full RLS suite passes with the pinned CLI (2.78.1):
+    47 files, 605 tests.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
