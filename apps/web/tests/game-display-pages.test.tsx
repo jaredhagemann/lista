@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
     const key = () => (table === "events" && columns.includes("tournament_id") ? "tournament_games" : table);
     const result = () => Promise.resolve({ data: tables[key()] ?? null, error: null, count: 0 });
     const chain: Record<string, unknown> = {};
-    for (const m of ["select", "neq", "in", "gte", "gt", "lte", "order", "limit", "is", "not"]) chain[m] = () => chain;
+    for (const m of ["select", "neq", "in", "gte", "gt", "lte", "order", "limit", "is", "not", "or"]) chain[m] = () => chain;
     chain.eq = (column: string) => {
       columns.push(column);
       return chain;

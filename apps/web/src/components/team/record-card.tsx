@@ -29,18 +29,31 @@ function ScoreRow({ name, score }: { name: string; score: string | null }) {
  * losses and ties with a bar split in those proportions: wins in the club's
  * secondary color (lista blue outside a club), losses black, ties grey. Only
  * shown once a game has a result.
+ *
+ * After a tournament with a placement, the last result is the tournament until
+ * a newer game: its name, placement, own record and dates
+ * (docs/specs/tournaments-and-leagues.md, D8). The season's record still counts
+ * every game.
  */
 export function RecordCard({
   teamName,
   record,
   teamTimeZone,
   winColor,
+  lastTournament = null,
 }: {
   teamName: string;
   record: TeamRecord;
   teamTimeZone?: string | null;
   /** The club's secondary color on a club team, else lista blue. */
   winColor: string;
+  /** The latest placed tournament, when it ended after the last game started. */
+  lastTournament?: {
+    title: string;
+    placement: string;
+    record: TeamRecord | null;
+    dates: string;
+  } | null;
 }) {
   const { wins, losses, ties, last } = record;
   const scored = last.scoreFor != null && last.scoreAgainst != null;
@@ -62,18 +75,38 @@ export function RecordCard({
           <CardTitle className="text-sm font-medium">Record</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-6 sm:grid-cols-2 sm:gap-10">
-          <div className="min-w-0 space-y-2">
-            <span className="inline-block rounded bg-primary px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground">
-              Last game
-            </span>
-            <div role="table" aria-label="Last game score">
-              <ScoreRow name={teamName} score={scored ? String(last.scoreFor) : RESULT[last.result]} />
-              <ScoreRow name={opponent} score={scored ? String(last.scoreAgainst) : null} />
+          {lastTournament ? (
+            <div className="min-w-0 space-y-2">
+              <span className="inline-block rounded bg-primary px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground">
+                Last tournament
+              </span>
+              <p className="truncate text-lg font-semibold text-primary sm:text-xl">{lastTournament.title}</p>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                {lastTournament.placement && (
+                  <span className="text-lg font-semibold sm:text-xl">{lastTournament.placement}</span>
+                )}
+                {lastTournament.record && (
+                  <span aria-label="Tournament record" className="tabular-nums text-muted-foreground">
+                    {lastTournament.record.wins}–{lastTournament.record.losses}–{lastTournament.record.ties}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">{lastTournament.dates}</p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {formatShortEventDate(last.startTime, zone)}, {formatEventTime(last.startTime, zone)}
-            </p>
-          </div>
+          ) : (
+            <div className="min-w-0 space-y-2">
+              <span className="inline-block rounded bg-primary px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground">
+                Last game
+              </span>
+              <div role="table" aria-label="Last game score">
+                <ScoreRow name={teamName} score={scored ? String(last.scoreFor) : RESULT[last.result]} />
+                <ScoreRow name={opponent} score={scored ? String(last.scoreAgainst) : null} />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {formatShortEventDate(last.startTime, zone)}, {formatEventTime(last.startTime, zone)}
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col justify-center gap-4">
             <div className="grid grid-cols-3 text-center">
