@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gameTitle, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
+import { isTournament, tournamentDates, tournamentDayKeys } from "@/lib/events/tournament";
 import { UniformDot } from "@/components/events/uniform-label";
 import { EventFormDialog } from "./event-form-dialog";
 import { toast } from "sonner";
@@ -27,12 +28,14 @@ import { useNavigate } from "@/components/layout/navigation-progress";
 const eventTypeColors: Record<string, { bg: string; text: string }> = {
   practice: { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-700 dark:text-blue-300" },
   game: { bg: "bg-green-100 dark:bg-green-900/40", text: "text-green-700 dark:text-green-300" },
+  tournament: { bg: "bg-amber-100 dark:bg-amber-900/40", text: "text-amber-800 dark:text-amber-300" },
   other: { bg: "bg-purple-100 dark:bg-purple-900/40", text: "text-purple-700 dark:text-purple-300" },
 };
 
 const eventDotColors: Record<string, string> = {
   practice: "bg-blue-600",
   game: "bg-green-600",
+  tournament: "bg-amber-500",
   other: "bg-purple-600",
 };
 
@@ -206,13 +209,18 @@ export function ScheduleCalendar({
   const startDayOfWeek = firstWeekdayOf(month, gridZone);
 
   // Day cells keyed by the same zone the query used.
+  // A tournament sits on every day it covers, ahead of that day's other events,
+  // so its days read as one bar across the grid.
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEventRow[]>();
     for (const event of events ?? []) {
-      const key = dayKeyOf(event.start_time, gridZone);
-      const list = map.get(key) ?? [];
-      list.push(event);
-      map.set(key, list);
+      const keys = isTournament(event) ? tournamentDayKeys(event, gridZone) : [dayKeyOf(event.start_time, gridZone)];
+      for (const key of keys) {
+        const list = map.get(key) ?? [];
+        if (isTournament(event)) list.unshift(event);
+        else list.push(event);
+        map.set(key, list);
+      }
     }
     return map;
   }, [events, gridZone]);
@@ -411,6 +419,27 @@ export function ScheduleCalendar({
                   <div className="hidden sm:flex flex-col gap-0.5">
                     {visibleEvents.map((event) => {
                       const colors = eventTypeColors[event.event_type] ?? eventTypeColors.other;
+                      if (isTournament(event)) {
+                        // One segment of a bar across its days: square where it
+                        // continues, named on its first day and wherever a week
+                        // row starts (Sunday), so every row of it is labelled.
+                        const days = tournamentDayKeys(event, gridZone);
+                        const first = key === days[0];
+                        const last = key === days[days.length - 1];
+                        const weekStart = (startDayOfWeek + day - 1) % 7 === 0;
+                        return (
+                          <button
+                            key={event.id}
+                            onClick={(e) => handleEventClick(e, event.id)}
+                            title={`${event.title} · ${tournamentDates(event, gridZone)}`}
+                            className={`flex items-center text-left text-[11px] leading-tight py-0.5 px-1.5 min-h-[1.125rem] ${colors.bg} ${colors.text} hover:opacity-80 transition-opacity ${
+                              first ? "rounded-l" : "-ml-1"
+                            } ${last ? "rounded-r" : "-mr-1"}`}
+                          >
+                            {(first || weekStart) && <span className="truncate font-medium">{event.title}</span>}
+                          </button>
+                        );
+                      }
                       // Chips are one line: no score; the uniform is a dot, named in the tooltip.
                       const title = gameTitle(event, team.name, { includeScore: false });
                       const uniform = event.event_type === "game" ? uniformOf(event.uniform, team) : null;

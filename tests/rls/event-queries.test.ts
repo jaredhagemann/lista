@@ -249,6 +249,68 @@ describe("filters (BUG-014)", () => {
   });
 });
 
+// ── Multi-day events (docs/specs/tournaments-and-leagues.md §4) ──────────────
+
+describe("windows are by overlap, so multi-day events stay in them", () => {
+  /** A tournament over whole days: Oct 30 – Nov 1, UTC, unless told otherwise. */
+  async function seedSpan(teamId: string, createdBy: string, start: string, end: string, type = "tournament") {
+    const id = crypto.randomUUID();
+    const { error } = await adminClient.from("events").insert({
+      id,
+      team_id: teamId,
+      title: "Surf Cup",
+      event_type: type,
+      start_time: start,
+      end_time: end,
+      created_by: createdBy,
+    });
+    if (error) throw new Error(error.message);
+    return id;
+  }
+
+  async function idsIn(client: TestUser["client"], teamId: string, from: string, to?: string) {
+    const page = await fetchEventPage(client, {
+      query: { teamId, fromInclusive: from, toExclusive: to, includeCancelled: true },
+      pageSize: 50,
+      cursor: null,
+      projection: "calendar",
+    });
+    return page.items.map((e) => e.id);
+  }
+
+  it("an event underway is in a window that starts after it did", async () => {
+    const { coach, teamId } = await setup();
+    const now = Date.now();
+    const underway = await seedSpan(teamId, coach.user.id, new Date(now - 24 * HOUR_MS).toISOString(), new Date(now + 48 * HOUR_MS).toISOString());
+
+    expect(await idsIn(coach.client, teamId, new Date(now).toISOString())).toEqual([underway]);
+  });
+
+  it("a tournament crossing a month boundary is in both months", async () => {
+    const { coach, teamId } = await setup();
+    const id = await seedSpan(teamId, coach.user.id, "2026-10-30T00:00:00.000Z", "2026-11-02T00:00:00.000Z");
+
+    expect(await idsIn(coach.client, teamId, "2026-10-01T00:00:00.000Z", "2026-11-01T00:00:00.000Z")).toEqual([id]);
+    expect(await idsIn(coach.client, teamId, "2026-11-01T00:00:00.000Z", "2026-12-01T00:00:00.000Z")).toEqual([id]);
+  });
+
+  it("an event that ended when the window starts isn't in it", async () => {
+    const { coach, teamId } = await setup();
+    await seedSpan(teamId, coach.user.id, "2026-10-29T00:00:00.000Z", "2026-11-01T00:00:00.000Z");
+
+    expect(await idsIn(coach.client, teamId, "2026-11-01T00:00:00.000Z", "2026-12-01T00:00:00.000Z")).toEqual([]);
+  });
+
+  it("keeps start order: an underway tournament comes before what starts after it", async () => {
+    const { coach, teamId } = await setup();
+    const now = Date.now();
+    const [later] = await seedEvents(teamId, coach.user.id, [{ startTime: new Date(now + 2 * HOUR_MS).toISOString() }]);
+    const underway = await seedSpan(teamId, coach.user.id, new Date(now - 24 * HOUR_MS).toISOString(), new Date(now + 48 * HOUR_MS).toISOString());
+
+    expect(await idsIn(coach.client, teamId, new Date(now).toISOString())).toEqual([underway, later]);
+  });
+});
+
 // ── Validation and authorization ──────────────────────────────────────────────
 
 describe("what the repository refuses (BUG-014)", () => {

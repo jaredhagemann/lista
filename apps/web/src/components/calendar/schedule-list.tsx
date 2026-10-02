@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { EventFormDialog } from "./event-form-dialog";
 import { gameTitle, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
+import { isTournament, isUnderway, tournamentDates, tournamentLine } from "@/lib/events/tournament";
 import { UniformLabel } from "@/components/events/uniform-label";
 import { eventTimeZone } from "@/lib/events/event-timezone";
 import { browserTimeZone } from "@/lib/events/team-timezone";
@@ -53,8 +54,12 @@ import type { Database } from "@/types/database";
 type Event = Database["public"]["Tables"]["events"]["Row"];
 type EventWithLocation = Event & {
   locations: { name: string; address: string | null } | null;
+  /** A game's tournament, for "Surf Cup · Semifinal". */
+  tournament?: { title: string } | null;
+  /** A tournament's game count. */
+  games?: { count: number }[];
 };
-type TypeFilter = "all" | "game" | "practice" | "other";
+type TypeFilter = "all" | "game" | "practice" | "tournament" | "other";
 type PageSize = 30 | 50 | 100;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -68,6 +73,10 @@ const TYPE_BADGE: Record<string, { label: string; className: string }> = {
   game: {
     label: "Game",
     className: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border-0",
+  },
+  tournament: {
+    label: "Tournament",
+    className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-0",
   },
   other: {
     label: "Other",
@@ -326,7 +335,7 @@ export function ScheduleList({
         <div className="flex items-center gap-2">
           {/* Type filter */}
           <div className="flex items-center rounded-md border p-0.5 gap-0.5">
-            {(["all", "game", "practice", "other"] as TypeFilter[]).map((t) => (
+            {(["all", "game", "practice", "tournament", "other"] as TypeFilter[]).map((t) => (
               <button
                 key={t}
                 onClick={() => applyTypeFilter(t)}
@@ -452,7 +461,11 @@ export function ScheduleList({
                 const badge = TYPE_BADGE[event.event_type] ?? TYPE_BADGE.other;
                 // Shown in the event's own zone, labeled, wherever the viewer is (BUG-010).
                 const zone = eventTimeZone(event, timeZone, viewerZone);
-                const date = formatShortEventDate(event.start_time, zone);
+                // A tournament spans whole days, so it shows its dates, not times.
+                const tournament = isTournament(event);
+                const date = tournament ? tournamentDates(event, zone) : formatShortEventDate(event.start_time, zone);
+                const gameCount = event.games?.[0]?.count ?? 0;
+                const partOf = tournamentLine(event);
 
                 const arrivalTime =
                   event.arrival_time != null
@@ -491,6 +504,11 @@ export function ScheduleList({
                               Cancelled
                             </Badge>
                           )}
+                          {tournament && !event.is_cancelled && isUnderway(event) && (
+                            <Badge variant="outline" className="text-xs">
+                              Now
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <Badge className={`w-fit text-xs ${badge.className}`}>
@@ -498,9 +516,10 @@ export function ScheduleList({
                           </Badge>
                           {event.event_type === "game" && <UniformLabel uniform={uniformOf(event.uniform, team)} />}
                         </div>
+                        {partOf && <span className="text-xs text-muted-foreground">{partOf}</span>}
                         {/* Date + time shown inline on mobile */}
                         <span className="sm:hidden text-xs text-muted-foreground">
-                          {date} · {formatEventTime(event.start_time, zone)}
+                          {tournament ? `${date} · ${gameCount === 1 ? "1 game" : `${gameCount} games`}` : `${date} · ${formatEventTime(event.start_time, zone)}`}
                         </span>
                       </div>
                     </TableCell>
@@ -510,13 +529,19 @@ export function ScheduleList({
                       {date}
                     </TableCell>
 
-                    {/* Time */}
+                    {/* Time: a tournament's games instead, since it spans whole days */}
                     <TableCell className="hidden sm:table-cell whitespace-nowrap text-sm">
-                      <div>{formatEventTimeRange(event.start_time, event.end_time, zone)}</div>
-                      {arrivalTime && (
-                        <div className="text-xs text-muted-foreground">
-                          Arrive by {arrivalTime}
-                        </div>
+                      {tournament ? (
+                        <div>{gameCount === 1 ? "1 game" : `${gameCount} games`}</div>
+                      ) : (
+                        <>
+                          <div>{formatEventTimeRange(event.start_time, event.end_time, zone)}</div>
+                          {arrivalTime && (
+                            <div className="text-xs text-muted-foreground">
+                              Arrive by {arrivalTime}
+                            </div>
+                          )}
+                        </>
                       )}
                     </TableCell>
 
@@ -531,52 +556,55 @@ export function ScheduleList({
                         className="text-right"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-8"
-                              aria-label="Event actions"
-                            >
-                              <MoreHorizontal className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                navigate(`/dashboard/schedule/${event.id}?edit=true`)
-                              }
-                            >
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDuplicate(event)}
-                            >
-                              Duplicate
-                            </DropdownMenuItem>
-                            {!event.is_cancelled ? (
-                              <DropdownMenuItem
-                                onClick={() => setCancellingEvent(event)}
+                        {/* A tournament is managed from its page (part 2b): its actions differ. */}
+                        {!tournament && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                aria-label="Event actions"
                               >
-                                Cancel event
-                              </DropdownMenuItem>
-                            ) : (
+                                <MoreHorizontal className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
                               <DropdownMenuItem
-                                onClick={() => setRestoringEvent(event)}
+                                onClick={() =>
+                                  navigate(`/dashboard/schedule/${event.id}?edit=true`)
+                                }
                               >
-                                Restore
+                                Edit
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setDeletingEvent(event)}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <DropdownMenuItem
+                                onClick={() => handleDuplicate(event)}
+                              >
+                                Duplicate
+                              </DropdownMenuItem>
+                              {!event.is_cancelled ? (
+                                <DropdownMenuItem
+                                  onClick={() => setCancellingEvent(event)}
+                                >
+                                  Cancel event
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => setRestoringEvent(event)}
+                                >
+                                  Restore
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDeletingEvent(event)}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>
