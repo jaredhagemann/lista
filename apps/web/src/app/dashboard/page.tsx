@@ -16,6 +16,7 @@ import { TeamCard } from "@/components/team/team-card";
 import { RecordCard } from "@/components/team/record-card";
 import { clubSecondaryColor, LISTA_BLUE } from "@/lib/team-branding";
 import { teamRecord } from "@/lib/events/team-record";
+import { isTournament, isUnderway, placementText, tournamentDates, tournamentRecord } from "@/lib/events/tournament";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   locations: { name: string } | null;
@@ -61,7 +62,9 @@ export default async function DashboardPage() {
     .select("*, locations(name)")
     .eq("team_id", team.id)
     .eq("is_cancelled", false)
-    .gte("start_time", new Date().toISOString())
+    // By end time: a tournament stays listed while it's underway
+    // (docs/specs/tournaments-and-leagues.md §4).
+    .gt("end_time", new Date().toISOString())
     .order("start_time", { ascending: true })
     .limit(5);
 
@@ -69,7 +72,7 @@ export default async function DashboardPage() {
 
   // The Team card: the club's branding, and the team's games with a result
   // (spec: team-branding-and-labels §4).
-  const [{ data: members }, { data: org }, { data: resultGames }] = await Promise.all([
+  const [{ data: members }, { data: org }, { data: resultGames }, { data: placedTournaments }] = await Promise.all([
     supabase.from("team_members").select("id, role, profiles(first_name, last_name)").eq("team_id", team.id),
     team.organization_id
       ? supabase
@@ -80,13 +83,35 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: null }),
     supabase
       .from("events")
-      .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against")
+      .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id")
       .eq("team_id", team.id)
       .eq("event_type", "game")
       .not("game_result", "is", null),
+    // The latest finished tournament with a placement, for the Record card (D8).
+    supabase
+      .from("events")
+      .select("id, title, start_time, end_time, timezone, placement_rank, placement_label")
+      .eq("team_id", team.id)
+      .eq("event_type", "tournament")
+      .eq("is_cancelled", false)
+      .lte("end_time", new Date().toISOString())
+      .or("placement_rank.not.is.null,placement_label.not.is.null")
+      .order("end_time", { ascending: false })
+      .limit(1),
   ]);
 
   const record = teamRecord(resultGames ?? []);
+  // D8: the tournament is the last result until a game starts after it ended.
+  const placed = placedTournaments?.[0];
+  const lastTournament =
+    record && placed && Date.parse(placed.end_time) > Date.parse(record.last.startTime)
+      ? {
+          title: placed.title,
+          placement: placementText(placed) ?? "",
+          record: tournamentRecord(placed.id, resultGames ?? []),
+          dates: tournamentDates(placed, team.timezone),
+        }
+      : null;
 
   return (
     <div className="space-y-6">
@@ -116,12 +141,15 @@ export default async function DashboardPage() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{gameTitle(event, team.name)}</span>
-                      <Badge variant="outline">
-                        {displayLabel(event.event_type)}
-                      </Badge>
+                      <span className="flex items-center gap-1.5">
+                        {isTournament(event) && isUnderway(event) && <Badge variant="secondary">Now</Badge>}
+                        <Badge variant="outline">{displayLabel(event.event_type)}</Badge>
+                      </span>
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {(() => {
+                        // A tournament spans whole days: its dates, not a time.
+                        if (isTournament(event)) return tournamentDates(event, team.timezone);
                         // The event's own zone, else the team's, labeled (BUG-010). With
                         // neither, only the viewer's browser knows a sensible zone.
                         const zone = [event.timezone, team.timezone].find(isUsableTimeZone);
@@ -184,6 +212,7 @@ export default async function DashboardPage() {
             record={record}
             teamTimeZone={team.timezone}
             winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
+            lastTournament={lastTournament}
           />
         )}
       </div>
