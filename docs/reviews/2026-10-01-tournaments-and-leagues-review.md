@@ -3,7 +3,7 @@
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
 **Last reviewed:** 2026-10-02, [PR #115](https://github.com/jaredhagemann/lista/pull/115) at `99bab47cda875b96dd004ec31506f04c7f52a4a0`, and [PR #116](https://github.com/jaredhagemann/lista/pull/116) at `6a10d65636eb04a82beb3d120e8d123d5b0b350b`.
-**Current outcome:** TL-001 through TL-007 are resolved. PR #115 has no new findings. PR #116 has four open findings, TL-008 through TL-011.
+**Current outcome:** TL-001 through TL-007 are resolved. PR #115 has no new findings. TL-008 through TL-011 (PR #116) are implemented in `c5ca6d6f5` and awaiting review.
 
 ## Using this document as the feature changes
 
@@ -25,10 +25,10 @@
 | [TL-005](#tl-005--snapshot-retained-games-before-unlinking-them) | P2 | Cancellation loses the game details needed by its notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
 | [TL-006](#tl-006--suppress-creation-notices-for-completed-tournaments) | P2 | Historical tournament creation queues a notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
 | [TL-007](#tl-007--revalidate-games-before-applying-a-tournament-cancellation) | P2 | Cancellation can change a game concurrently moved to another tournament | Resolved | Fix `b80893172`; independently verified at `99bab47c` |
-| [TL-008](#tl-008--guard-the-edit-url-for-tournaments) | P2 | The edit URL still opens the single-event editor for tournaments | Open | PR #116, `6a10d656` |
-| [TL-009](#tl-009--keep-the-tournament-zone-in-calendar-reads) | P2 | Travel tournaments show incorrect calendar date labels | Open | PR #116, `6a10d656` |
-| [TL-010](#tl-010--name-a-tournament-where-its-visible-month-segment-begins) | P2 | A tournament crossing a month boundary can have no visible name | Open | PR #116, `6a10d656` |
-| [TL-011](#tl-011--show-each-games-result-independently-of-its-score) | P2 | Tournament game rows omit results entered without scores | Open | PR #116, `6a10d656` |
+| [TL-008](#tl-008--guard-the-edit-url-for-tournaments) | P2 | The edit URL still opens the single-event editor for tournaments | Implemented — awaiting review | Fix `c5ca6d6f5`; reported at `6a10d656` |
+| [TL-009](#tl-009--keep-the-tournament-zone-in-calendar-reads) | P2 | Travel tournaments show incorrect calendar date labels | Implemented — awaiting review | Fix `c5ca6d6f5`; reported at `6a10d656` |
+| [TL-010](#tl-010--name-a-tournament-where-its-visible-month-segment-begins) | P2 | A tournament crossing a month boundary can have no visible name | Implemented — awaiting review | Fix `c5ca6d6f5`; reported at `6a10d656` |
+| [TL-011](#tl-011--show-each-games-result-independently-of-its-score) | P2 | Tournament game rows omit results entered without scores | Implemented — awaiting review | Fix `c5ca6d6f5`; reported at `6a10d656` |
 
 ## Part 1 — database findings
 
@@ -321,7 +321,7 @@ management in part 2b, notices in part 2c, and later mobile work are deliberatel
 
 ### TL-008 — Guard the edit URL for tournaments
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [event-detail.tsx, line 901](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/event-detail.tsx#L901), with the edit-state initializer at lines 657–660 and the edit form at lines 825–855.
 
 The new tournament guard hides the Edit button, but the existing `?edit=true` entry point still sets
@@ -337,11 +337,18 @@ the ordinary editor. Existing new tests cover only the normal page with `initial
 **Requested change:** guard edit-state initialization and rendering for tournaments until their editor
 is available. Add a regression case for `initialEdit=true`, retaining normal game editing.
 
-**Resolution and verification:** Open. Confirmed by source control-flow review; no UI write performed.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** both the edit-state initializer and the editor's render check `isTournament(event)`. A
+  tournament opened with `?edit=true` shows its page, not the single-event editor, until part 2b adds its
+  own editor.
+- **Implementation verification:** `tests/tournament-event-page.test.tsx` → "TL-008".
+  - A tournament with `initialEdit` shows its page and games, with no event editor. This failed before the
+    fix.
+  - A game with `initialEdit` still opens the editor.
 
 ### TL-009 — Keep the tournament zone in calendar reads
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [schedule-calendar.tsx, line 434](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/schedule-calendar.tsx#L434), and [queries.ts, lines 122–123](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/lib/events/queries.ts#L122-L123).
 
 The new calendar tooltip calls `tournamentDates(event, gridZone)`, but the real calendar projection and
@@ -358,12 +365,24 @@ including timezone, which the real query does not return.
 labels with a tournament whose zone differs from the team's. Decide day-cell placement separately from
 the tournament's own date label; the label must preserve the tournament dates.
 
-**Resolution and verification:** Open. Independently reproduced by executing the current date helper
-with the real projection's shape.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** the calendar projection and `CalendarEventRow` include `timezone`, so `tournamentDates`
+  reads the tournament's own zone.
+- **Day-cell placement, decided separately as asked:** a tournament is all-day, so it sits on its own dates,
+  `tournamentDayKeys(event, event.timezone ?? gridZone)`. A Fri–Sun tournament occupies the Fri–Sun cells
+  on any team's calendar, rather than shifting to Thu–Sun for a calendar in a zone to its west. Other events
+  are placed by the calendar's zone, as before.
+- **Implementation verification:**
+  - `tests/event-range.test.ts` asserts that the calendar projection selects `timezone`. It goes through the
+    real `fetchEventPage`, so it covers the query the component tests can't see.
+  - `tests/tournament-schedule.test.tsx` → "TL-009": your New York example on a Los Angeles calendar. The
+    label reads "Fri, Dec 11 – Sun, Dec 13" on the Fri–Sun cells, and nothing is on Thu Dec 10.
+  - Both failed before the fix.
+  - The projection runs against the local database.
 
 ### TL-010 — Name a tournament where its visible month segment begins
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [schedule-calendar.tsx, lines 427–439](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/schedule-calendar.tsx#L427-L439).
 
 A segment is named only on the tournament's actual first day or a Sunday. The calendar renders only
@@ -377,12 +396,16 @@ fetched correctly by the new overlap query but appears only as an unnamed colore
 **Requested change:** label the first visible segment (including day 1) as well as new week rows. Add a
 month-boundary component test where the new month begins midweek and the tournament ends before Sunday.
 
-**Resolution and verification:** Open. Executed the current day-key helper and label predicate for this
-case; all three visible segments were unnamed.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** a segment is named on the tournament's first day, at each week start, **and on day 1 of the
+  month shown**. A tournament that began last month is named where its visible run begins.
+- **Implementation verification:** `tests/tournament-schedule.test.tsx` → "TL-010", using your example: a
+  Nov 30 – Dec 3 tournament in December, which opens on a Tuesday. It's named on Dec 1 and not again on
+  Dec 2 or 3. This failed before the fix.
 
 ### TL-011 — Show each game's result independently of its score
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [event-detail.tsx, lines 1050–1056](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/event-detail.tsx#L1050-L1056).
 
 The tournament's game list renders only `gameTitle`, round, and date/time. `gameTitle` does not read
@@ -397,8 +420,15 @@ row unchanged. The new test called “round and result” asserts numeric scores
 **Requested change:** render the result separately from the optional score. Cover result-only games,
 scored games, and games with neither a result nor score.
 
-**Resolution and verification:** Open. Confirmed from the row rendering and `gameTitle` implementation;
-the existing editor permits results with blank scores.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** each game row shows its result as its own Win, Loss or Tie badge, beside the title. The score
+  stays in the title when both sides are entered.
+- **Implementation verification:** `tests/tournament-event-page.test.tsx` → "TL-011" covers:
+  - result-only games (Win, Loss and Tie, each with blank scores)
+  - a scored game, showing its result and its score
+  - a game with neither, showing no result
+
+  The first two failed before the fix.
 
 ## Review history
 
@@ -509,5 +539,25 @@ than reopen them implicitly. The source code review below is separate from accep
 - **Review log:** carried forward the latest history from #115 before adding this round, because #116
   branched from main before that log update. Application code was not changed and no GitHub comments
   were published.
+
+### 2026-10-03 — TL-008 to TL-011 fixes, PR #116
+
+- **Revision:** `c5ca6d6f5`, on `6a10d6563` (the reviewed head). The review round above was committed as
+  written in `b3ed5cd58`.
+- **Scope:** `event-detail.tsx` (TL-008, TL-011), `schedule-calendar.tsx` and `queries.ts` (TL-009,
+  TL-010), and tests in `tournament-event-page`, `tournament-schedule`, `event-range` and
+  `event-projection-types`.
+- **Status changes:** TL-008 through TL-011, Open → Implemented — awaiting review.
+- **Decision recorded under TL-009:** a tournament's calendar cells follow its own dates in its own zone.
+  It's all-day, so Fri–Sun sits on Fri–Sun on any team's calendar.
+- **Local verification:**
+  - Before the fixes, the six new tests failed, and each failure reproduced its finding.
+  - With the fixes, web passes 1,326 of 1,326, and `tsc --noEmit` is clean.
+  - The calendar projection, now with `timezone`, runs against the local database.
+- **Still open from the review notes:**
+  - **Staging:** #116's staging migration needs #115's `20261002000000` on its branch. That will be done by
+    updating #116 from `main` once #115 merges.
+  - **Flaky test:** the web job's `leaderboard-pin.test.tsx` failure is BUG-030, the known flaky test filed
+    on 2026-09-30, and isn't a tournament regression.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
