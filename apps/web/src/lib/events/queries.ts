@@ -36,6 +36,7 @@ export type CalendarEventRow = Pick<
   | "event_type"
   | "start_time"
   | "end_time"
+  | "timezone"
   | "is_cancelled"
   | "opponent"
   | "home_away"
@@ -120,7 +121,7 @@ const PROJECTIONS: Record<EventProjection, string> = {
   // The grid needs placement and labelling, nothing else. A game is labelled by
   // its team and opponent, with its uniform (spec: game-display-and-uniform-colors).
   calendar:
-    "id, team_id, title, event_type, start_time, end_time, is_cancelled, opponent, home_away, uniform, score_for, score_against",
+    "id, team_id, title, event_type, start_time, end_time, timezone, is_cancelled, opponent, home_away, uniform, score_for, score_against",
   // The list needs what its rows and row actions read.
   list: "*, locations(name, address), tournament:tournament_id(title), games:events!tournament_id(count)",
 };

@@ -209,12 +209,12 @@ export function ScheduleCalendar({
   const startDayOfWeek = firstWeekdayOf(month, gridZone);
 
   // Day cells keyed by the same zone the query used.
-  // A tournament sits on every day it covers, ahead of that day's other events,
-  // so its days read as one bar across the grid.
+  // A tournament sits on every day it covers (its own dates, in its own zone),
+  // ahead of that day's other events, so its days read as one bar across the grid.
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEventRow[]>();
     for (const event of events ?? []) {
-      const keys = isTournament(event) ? tournamentDayKeys(event, gridZone) : [dayKeyOf(event.start_time, gridZone)];
+      const keys = isTournament(event) ? tournamentDayKeys(event, event.timezone ?? gridZone) : [dayKeyOf(event.start_time, gridZone)];
       for (const key of keys) {
         const list = map.get(key) ?? [];
         if (isTournament(event)) list.unshift(event);
@@ -421,9 +421,12 @@ export function ScheduleCalendar({
                       const colors = eventTypeColors[event.event_type] ?? eventTypeColors.other;
                       if (isTournament(event)) {
                         // One segment of a bar across its days: square where it
-                        // continues, named on its first day and wherever a week
-                        // row starts (Sunday), so every row of it is labelled.
-                        const days = tournamentDayKeys(event, gridZone);
+                        // continues, and named on its first day, wherever a week
+                        // row starts (Sunday), and on the 1st when it began last
+                        // month, so every visible run of it is labelled (TL-010).
+                        // Its days are its own dates, in its zone: it's all-day,
+                        // so Fri–Sun sits on Fri–Sun on any team's calendar (TL-009).
+                        const days = tournamentDayKeys(event, event.timezone ?? gridZone);
                         const first = key === days[0];
                         const last = key === days[days.length - 1];
                         const weekStart = (startDayOfWeek + day - 1) % 7 === 0;
@@ -436,7 +439,7 @@ export function ScheduleCalendar({
                               first ? "rounded-l" : "-ml-1"
                             } ${last ? "rounded-r" : "-mr-1"}`}
                           >
-                            {(first || weekStart) && <span className="truncate font-medium">{event.title}</span>}
+                            {(first || weekStart || day === 1) && <span className="truncate font-medium">{event.title}</span>}
                           </button>
                         );
                       }

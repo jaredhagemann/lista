@@ -225,4 +225,13 @@ describe("what a cursor page asks for", () => {
     expect(calls.filter((c) => c.method === "gt").map((c) => c.args[0])).toEqual(["end_time"]);
     expect(calls.some((c) => c.method === "or")).toBe(false);
   });
+
+  it("the calendar asks for each event's zone, which a tournament's dates are read in (TL-009)", async () => {
+    const { client, calls } = recordingClient();
+
+    await fetchEventPage(client, { query: RANGE, projection: "calendar", pageSize: 10, cursor: null });
+
+    const columns = String(calls.find((c) => c.method === "select")?.args[0]).split(",").map((c) => c.trim());
+    expect(columns).toContain("timezone");
+  });
 });

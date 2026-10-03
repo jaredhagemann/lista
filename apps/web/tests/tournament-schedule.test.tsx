@@ -196,4 +196,34 @@ describe("schedule calendar", () => {
     expect(within(cell("2026-12-12")).getByText("U10 Girls vs Rivals FC")).toBeTruthy();
     expect(within(cell("2026-12-11")).queryByText("U10 Girls vs Rivals FC")).toBeNull();
   });
+
+  // ── Review findings on PR #116 ──────────────────────────────────────────────
+
+  it("TL-009: a tournament in another zone keeps its own dates, in its label and its days", async () => {
+    // Fri Dec 11 – Sun Dec 13 in New York: midnight there is 9 PM the evening before in Los Angeles.
+    renderCalendar([
+      {
+        ...SURF_CUP,
+        timezone: "America/New_York",
+        start_time: "2026-12-11T05:00:00.000Z",
+        end_time: "2026-12-14T05:00:00.000Z",
+      },
+    ]);
+    await screen.findAllByText("Surf Cup");
+
+    for (const day of ["2026-12-11", "2026-12-12", "2026-12-13"]) {
+      expect(within(cell(day)).getAllByTitle("Surf Cup · Fri, Dec 11 – Sun, Dec 13").length).toBeGreaterThan(0);
+    }
+    expect(within(cell("2026-12-10")).queryAllByTitle(/Surf Cup/)).toHaveLength(0);
+  });
+
+  it("TL-010: one that began last month is named where this month's segment begins", async () => {
+    // Mon Nov 30 – Thu Dec 3: December opens on a Tuesday, and it ends before Sunday.
+    renderCalendar([{ ...SURF_CUP, start_time: "2026-11-30T08:00:00.000Z", end_time: "2026-12-04T08:00:00.000Z" }]);
+    await screen.findAllByText("Surf Cup");
+
+    expect(within(cell("2026-12-01")).getByText("Surf Cup")).toBeTruthy();
+    expect(within(cell("2026-12-02")).queryByText("Surf Cup")).toBeNull();
+    expect(within(cell("2026-12-03")).queryByText("Surf Cup")).toBeNull();
+  });
 });

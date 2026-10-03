@@ -655,7 +655,9 @@ export function EventDetail({
     event.parent_event_id != null || event.recurrence_rule != null;
 
   const [editState, setEditState] = useState<EditState>(() => {
-    if (!initialEdit || !isAdmin || event.is_cancelled) return null;
+    // A tournament has no editor until part 2b: the single-event one would give it
+    // arbitrary times or another type (review TL-008).
+    if (!initialEdit || !isAdmin || event.is_cancelled || isTournament(event)) return null;
     return isRecurring ? "prompt" : "single";
   });
   // Every occurrence of this event's series, loaded for a bulk edit or delete.
@@ -822,7 +824,7 @@ export function EventDetail({
 
   // ── Edit mode ──────────────────────────────────────────────────────────────
   const bulkScope = editState === "following" || editState === "series" ? editState : null;
-  if (editState === "single" || (bulkScope && series)) {
+  if (!isTournament(event) && (editState === "single" || (bulkScope && series))) {
     return (
       <div className="mx-auto max-w-2xl space-y-6">
         <Link
@@ -1047,8 +1049,18 @@ export function EventDetail({
                         href={`/dashboard/schedule/${g.id}`}
                         className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2 hover:bg-muted/50"
                       >
-                        <span className={g.is_cancelled ? "text-muted-foreground line-through" : "font-medium"}>
-                          {gameTitle(g, team.name)}
+                        <span className="flex items-center gap-2">
+                          <span className={g.is_cancelled ? "text-muted-foreground line-through" : "font-medium"}>
+                            {gameTitle(g, team.name)}
+                          </span>
+                          {/* The result on its own: it can be entered without a score (review TL-011). */}
+                          {g.game_result && (
+                            <Badge
+                              variant={g.game_result === "win" ? "default" : g.game_result === "loss" ? "destructive" : "secondary"}
+                            >
+                              {displayLabel(g.game_result)}
+                            </Badge>
+                          )}
                         </span>
                         <span className="text-muted-foreground">
                           {[g.round?.trim(), `${formatEventDate(g.start_time, zone)}, ${formatEventTime(g.start_time, zone)}`]

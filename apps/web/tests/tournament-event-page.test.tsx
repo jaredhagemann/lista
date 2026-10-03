@@ -194,6 +194,58 @@ describe("a tournament's page", () => {
   });
 });
 
+// ── Review findings on PR #116 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──
+
+describe("TL-008: the edit link doesn't open the single-event editor for a tournament", () => {
+  it("a tournament opened with ?edit=true shows its page, not the event editor", () => {
+    renderPage(SURF_CUP, { tournamentGames: GAMES, initialEdit: true });
+
+    expect(screen.queryByText("Edit event")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("list", { name: "Games" })).toBeTruthy();
+  });
+
+  it("a game opened with ?edit=true still opens the editor", () => {
+    renderPage(GAMES[0], { initialEdit: true });
+
+    expect(screen.getByText("Edit event")).toBeTruthy();
+  });
+});
+
+describe("TL-011: each game's result shows, with or without a score", () => {
+  function rowFor(id: string) {
+    const list = screen.getByRole("list", { name: "Games" });
+    return within(list).getAllByRole("link").find((a) => a.getAttribute("href") === `/dashboard/schedule/${id}`)!;
+  }
+
+  it("a result entered without a score", () => {
+    renderPage(SURF_CUP, {
+      tournamentGames: [
+        { ...GAMES[0], id: "w", game_result: "win", score_for: null, score_against: null },
+        { ...GAMES[1], id: "l", game_result: "loss", score_for: null, score_against: null },
+        { ...GAMES[2], id: "t", game_result: "tie", score_for: null, score_against: null },
+      ],
+    });
+
+    expect(within(rowFor("w")).getByText("Win")).toBeTruthy();
+    expect(within(rowFor("l")).getByText("Loss")).toBeTruthy();
+    expect(within(rowFor("t")).getByText("Tie")).toBeTruthy();
+  });
+
+  it("a scored game shows its result and its score", () => {
+    renderPage(SURF_CUP, { tournamentGames: GAMES });
+
+    expect(within(rowFor("g-1")).getByText("Win")).toBeTruthy();
+    expect(rowFor("g-1").textContent).toContain("3–1");
+  });
+
+  it("a game with neither shows no result", () => {
+    renderPage(SURF_CUP, { tournamentGames: GAMES });
+
+    expect(within(rowFor("g-3")).queryByText(/^(Win|Loss|Tie)$/)).toBeNull();
+  });
+});
+
 describe("a game in a tournament", () => {
   it("links back to its tournament, with its round", () => {
     renderPage({ ...GAMES[1], tournament: { id: "t-1", title: "Surf Cup" } });
