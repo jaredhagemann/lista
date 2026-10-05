@@ -319,3 +319,81 @@ describe("TL-006: a tournament that's already over is entered silently", () => {
     expect(await jobsOf(loud.teamId)).toHaveLength(1);
   });
 });
+
+// ── TL-007 ───────────────────────────────────────────────────────────────────
+
+describe("TL-007: a tournament action only changes games still in it", () => {
+  /** SQL run as the coach, through the same role and claims a signed-in request has. */
+  function asUser(userId: string, sql: string) {
+    return `begin;
+      set local role authenticated;
+      set local request.jwt.claims = '{"sub":"${userId}","role":"authenticated"}';
+      ${sql}
+      commit;`;
+  }
+
+  /** Two tournaments on one team; a future game starts in the first. */
+  async function gameInFirstOfTwo() {
+    const { coach, teamId } = await teamWithCoach();
+    const first = await createTournament(coach, teamId, { games: [game(48)], notify: false });
+    const second = await createTournament(coach, teamId, { games: [], notify: false });
+    const [g] = (await eventsOf(teamId)).filter((e) => e.tournament_id === first);
+    return { coach, teamId, first, second, gameId: g.id };
+  }
+
+  /** Moves the game to the second tournament in a transaction held open while `action` runs. */
+  async function moveDuring(gameId: string, to: string, action: string) {
+    const move = psqlSession(`begin; update events set tournament_id = '${to}' where id = '${gameId}'; select pg_sleep(2); commit;`);
+    await sleep(700);
+    const acted = await psqlSession(action);
+    return { move: await move, acted };
+  }
+
+  for (const cancelGames of [true, false]) {
+    it(`cancelling ${cancelGames ? "with" : "keeping"} its games leaves a game moved away meanwhile alone`, async () => {
+      const { coach, teamId, first, second, gameId } = await gameInFirstOfTwo();
+
+      const { move, acted } = await moveDuring(
+        gameId,
+        second,
+        asUser(coach.user.id, `select cancel_tournament('${first}', ${cancelGames});`)
+      );
+
+      expect(move.code).toBe(0);
+      expect(acted.code).toBe(0);
+      const moved = (await eventsOf(teamId)).find((e) => e.id === gameId)!;
+      expect(moved).toMatchObject({ tournament_id: second, is_cancelled: false });
+      const [job] = (await jobsOf(teamId)).filter((j) => j.event_id === first);
+      expect(job.snapshot.tournament).toMatchObject({ affected: 0, affected_games: [] });
+    });
+  }
+
+  it("deleting leaves a game moved away meanwhile alone, and doesn't list it", async () => {
+    const { coach, teamId, first, second, gameId } = await gameInFirstOfTwo();
+
+    const { move, acted } = await moveDuring(
+      gameId,
+      second,
+      asUser(coach.user.id, `select delete_tournament('${first}');`)
+    );
+
+    expect(move.code).toBe(0);
+    expect(acted.code).toBe(0);
+    const events = await eventsOf(teamId);
+    expect(events.find((e) => e.id === first)).toBeUndefined();
+    expect(events.find((e) => e.id === gameId)).toMatchObject({ tournament_id: second, is_cancelled: false });
+    const jobs = (await jobsOf(teamId)).filter((j) => j.event_id === first);
+    for (const job of jobs) expect(job.snapshot.tournament.affected_games).toEqual([]);
+  });
+
+  it("without a concurrent move, cancelling still changes and lists its games", async () => {
+    const { coach, teamId, first, gameId } = await gameInFirstOfTwo();
+
+    const { code } = await psqlSession(asUser(coach.user.id, `select cancel_tournament('${first}', true);`));
+
+    expect(code).toBe(0);
+    expect((await eventsOf(teamId)).find((e) => e.id === gameId)!.is_cancelled).toBe(true);
+    const [job] = (await jobsOf(teamId)).filter((j) => j.event_id === first);
+    expect(job.snapshot.tournament.affected_games.map((g: { id: string }) => g.id)).toEqual([gameId]);
+  });
+});
