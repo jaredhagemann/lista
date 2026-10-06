@@ -13,13 +13,22 @@ const mocks = vi.hoisted(() => {
   process.env.TZ = "UTC";
   const tables: Record<string, unknown> = {};
   const jobs: unknown[] = [];
+  /** How many reads of a tournament's games fail before one succeeds (TL-015). */
+  const failures = { tournamentGames: 0 };
   const from = vi.fn((table: string) => {
     const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+    let readsTournamentGames = false;
     const rows = () => {
       const data = tables[table] ?? null;
       return Array.isArray(data) ? data.filter((row) => filters.every((f) => f(row))) : data;
     };
-    const result = () => Promise.resolve({ data: rows(), error: null });
+    const result = () => {
+      if (readsTournamentGames && failures.tournamentGames > 0) {
+        failures.tournamentGames--;
+        return Promise.resolve({ data: null, error: { code: "57014", message: "statement timeout" } });
+      }
+      return Promise.resolve({ data: rows(), error: null });
+    };
     const written = () => Promise.resolve({ data: null, error: null });
     const chain: Record<string, unknown> = {
       single: result,
@@ -29,6 +38,7 @@ const mocks = vi.hoisted(() => {
       delete: () => chain,
       select: () => chain,
       eq: (column: string, value: unknown) => {
+        if (table === "events" && column === "tournament_id") readsTournamentGames = true;
         filters.push((row) => !(column in row) || row[column] === value);
         return chain;
       },
@@ -43,6 +53,7 @@ const mocks = vi.hoisted(() => {
   });
   const rpc = vi.fn(async () => ({ data: jobs.splice(0), error: null }));
   return {
+    failures,
     tables,
     jobs,
     from,
@@ -137,6 +148,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const key of Object.keys(mocks.tables)) delete mocks.tables[key];
   mocks.jobs.length = 0;
+  mocks.failures.tournamentGames = 0;
   vi.stubEnv("CRON_SECRET", "secret");
   vi.stubEnv("NEXT_PUBLIC_APP_URL", APP);
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -274,7 +286,7 @@ describe("the reminder cron", () => {
   const GAMES = GAME_SUMMARIES.map((g) => ({ ...g, team_id: "team-1", tournament_id: "t-1", event_type: "game" }));
 
   async function remind() {
-    await runReminders(new Request("http://localhost/api/cron/reminders", { headers: { authorization: "Bearer secret" } }));
+    return runReminders(new Request("http://localhost/api/cron/reminders", { headers: { authorization: "Bearer secret" } }));
   }
 
   it("reminds of a tournament the day before, as a tournament, with its games", async () => {
@@ -304,5 +316,65 @@ describe("the reminder cron", () => {
     await remind();
 
     expect(sent().text).toContain("Part of Surf Cup · Pool A");
+  });
+
+  // ── TL-015 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──
+
+  describe("TL-015: a failed read of a tournament's games", () => {
+    // A standalone practice in the same run, to show the rest still go out.
+    const PRACTICE = {
+      ...SURF_CUP,
+      id: "p-1",
+      title: "Practice",
+      event_type: "practice",
+      start_time: "2026-12-10T23:00:00.000Z",
+      end_time: "2026-12-11T00:30:00.000Z",
+      locations: null,
+    };
+    const gameRows = GAMES.map((g) => ({ ...g, teams: TEAM, locations: null, uniform: null, notes: null, arrival_time: null }));
+    const pushTitles = () => mocks.sendExpo.mock.calls.map((c) => (c as unknown as [string, { title: string }])[1].title);
+
+    beforeEach(() => {
+      vi.setSystemTime(new Date("2026-12-10T12:00:00.000Z"));
+    });
+
+    it("is tried again once, and a read that then succeeds sends the whole reminder", async () => {
+      mocks.tables.events = [SURF_CUP, ...gameRows];
+      mocks.failures.tournamentGames = 1;
+      const response = await remind();
+
+      expect(response.status).toBe(200);
+      const reminder = sentEmails().find((e) => e.subject === "Reminder: Surf Cup starts tomorrow")!;
+      expect(reminder.text).toContain("2 games");
+      expect(reminder.text).toContain("U10 Girls vs Rivals FC · Pool A");
+    });
+
+    it("that keeps failing sends no incomplete reminder, and the run reports it", async () => {
+      mocks.tables.events = [SURF_CUP, PRACTICE];
+      mocks.failures.tournamentGames = 2;
+      const response = await remind();
+
+      // Nothing about Surf Cup: not an email or a push without its schedule.
+      expect(sentEmails().some((e) => e.subject.includes("Surf Cup"))).toBe(false);
+      expect(pushTitles().some((t) => t.includes("Surf Cup"))).toBe(false);
+      // The rest of the run still goes out, and queued notices are still sent.
+      expect(sentEmails().some((e) => e.subject.startsWith("Reminder: Practice"))).toBe(true);
+      expect(mocks.rpc).toHaveBeenCalledWith("claim_notification_jobs", expect.anything());
+      // Visible to the cron's monitoring, with what failed.
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      expect(body.failedEvents).toEqual([{ eventId: "t-1", error: "statement timeout" }]);
+      expect(body.eventsProcessed).toBe(1);
+    });
+
+    it("a tournament with no games is still reminded, without them", async () => {
+      mocks.tables.events = [SURF_CUP];
+      const response = await remind();
+
+      expect(response.status).toBe(200);
+      const reminder = sentEmails().find((e) => e.subject === "Reminder: Surf Cup starts tomorrow")!;
+      expect(reminder.text).not.toMatch(/\d games?/);
+      expect(pushTitles()).toContain("Reminder: Surf Cup starts tomorrow");
+    });
   });
 });

@@ -70,8 +70,46 @@ export async function GET(request: Request) {
   // Through unknown: the typed client can't resolve the self-embed on tournament_id.
   const events = rawEvents as unknown as EventWithTeam[];
   let sent = 0;
+  // Events whose reminder couldn't be built: reported, never sent incomplete (TL-015).
+  const failedEvents: { eventId: string; error: string }[] = [];
+
+  /**
+   * A tournament's games, tried twice: a statement timeout is usually brief. A
+   * read that fails is an error, never an empty schedule, which would send a
+   * reminder without its games. The next daily run is usually after the
+   * tournament has started, so it can't repair one.
+   */
+  async function readTournamentGames(
+    tournamentId: string
+  ): Promise<{ games: TournamentGameSnapshot[] } | { error: string }> {
+    let lastError = "unknown error";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await supabase
+        .from("events")
+        .select(REMINDER_TOURNAMENT_GAME_COLUMNS)
+        .eq("tournament_id", tournamentId)
+        .order("start_time", { ascending: true });
+      if (!error) return { games: (data ?? []) as TournamentGameSnapshot[] };
+      lastError = error.message;
+    }
+    return { error: lastError };
+  }
 
   for (const event of events) {
+    // A tournament reads as one, with its games (D6): "Surf Cup starts tomorrow · 5 games".
+    // Read first, so a failed read skips it before anything is sent.
+    const isTournament = event.event_type === "tournament";
+    let games: TournamentGameSnapshot[] = [];
+    if (isTournament) {
+      const read = await readTournamentGames(event.id);
+      if ("error" in read) {
+        console.error(`Reminder for tournament ${event.id} not sent: its games could not be read: ${read.error}`);
+        failedEvents.push({ eventId: event.id, error: read.error });
+        continue;
+      }
+      games = read.games;
+    }
+
     const teamName = event.teams?.name ?? "Unknown";
     // The server runs in UTC: format in the event's own zone (else the team's,
     // for events from before event zones), and name the event's actual day
@@ -107,17 +145,6 @@ export async function GET(request: Request) {
       event.id,
       recipients.flatMap((r) => r.coversProfileIds)
     );
-    // A tournament reads as one, with its games (D6): "Surf Cup starts tomorrow · 5 games".
-    const isTournament = event.event_type === "tournament";
-    const games: TournamentGameSnapshot[] = isTournament
-      ? (((
-          await supabase
-            .from("events")
-            .select(REMINDER_TOURNAMENT_GAME_COLUMNS)
-            .eq("tournament_id", event.id)
-            .order("start_time", { ascending: true })
-        ).data ?? []) as TournamentGameSnapshot[])
-      : [];
     const playing = games.filter((g) => !g.is_cancelled).length;
     const gamesPhrase = playing > 0 ? `${playing} ${playing === 1 ? "game" : "games"}` : null;
 
@@ -223,10 +250,15 @@ export async function GET(request: Request) {
     console.error("Notification drain failed:", err);
   }
 
-  return NextResponse.json({
-    success: true,
-    eventsProcessed: events.length,
-    notificationsSent: sent,
-    notificationJobsDrained: drained.claimed,
-  });
+  // A failed event fails the run, so the cron's monitoring sees it; the rest were still sent.
+  return NextResponse.json(
+    {
+      success: failedEvents.length === 0,
+      eventsProcessed: events.length - failedEvents.length,
+      notificationsSent: sent,
+      notificationJobsDrained: drained.claimed,
+      ...(failedEvents.length > 0 ? { failedEvents } : {}),
+    },
+    { status: failedEvents.length > 0 ? 500 : 200 }
+  );
 }
