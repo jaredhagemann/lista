@@ -3,7 +3,7 @@
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
 **Last reviewed:** 2026-10-06, [PR #117 — Tournaments, web: create and manage tournaments (part 2b)](https://github.com/jaredhagemann/lista/pull/117), commit `23bd5d3786c1fc77e5fb14e0041ac7beea3f1548`.
-**Current outcome:** TL-001 through TL-011 remain resolved; PRs #115 and #116 are merged. PR #117 has three new open findings: TL-012 and TL-013 (P2), and TL-014 (P3). All current CI checks pass, including staging. Tournament notices remain a release dependency.
+**Current outcome:** TL-001 through TL-011 remain resolved; PRs #115 and #116 are merged. PR #117's three findings, TL-012 and TL-013 (P2) and TL-014 (P3), are implemented in `a0642c8dd` and awaiting review. All current CI checks pass, including staging. Tournament notices remain a release dependency.
 
 ## Using this document as the feature changes
 
@@ -29,9 +29,9 @@
 | [TL-009](#tl-009--keep-the-tournament-zone-in-calendar-reads) | P2 | Travel tournaments show incorrect calendar date labels | Resolved | Fix `c5ca6d6f5`; verified at `f7f3e62cf` on 2026-10-05 |
 | [TL-010](#tl-010--name-a-tournament-where-its-visible-month-segment-begins) | P2 | A tournament crossing a month boundary can have no visible name | Resolved | Fix `c5ca6d6f5`; verified at `f7f3e62cf` on 2026-10-05 |
 | [TL-011](#tl-011--show-each-games-result-independently-of-its-score) | P2 | Tournament game rows omit results entered without scores | Resolved | Fix `c5ca6d6f5`; verified at `f7f3e62cf` on 2026-10-05 |
-| [TL-012](#tl-012--reject-games-that-end-at-or-before-their-start) | P2 | New game forms save invalid time ranges | Open | PR #117, `23bd5d378` |
-| [TL-013](#tl-013--apply-the-selected-location-to-games-created-with-the-tournament) | P2 | Games created with a tournament lose the selected venue | Open | PR #117, `23bd5d378` |
-| [TL-014](#tl-014--keep-placement-only-edits-silent) | P3 | Placement-only edits can queue an update notice | Open | PR #117, `23bd5d378` |
+| [TL-012](#tl-012--reject-games-that-end-at-or-before-their-start) | P2 | New game forms save invalid time ranges | Implemented — awaiting review | Fix `a0642c8dd` (PR #117) |
+| [TL-013](#tl-013--apply-the-selected-location-to-games-created-with-the-tournament) | P2 | Games created with a tournament lose the selected venue | Implemented — awaiting review | Fix `a0642c8dd` (PR #117) |
+| [TL-014](#tl-014--keep-placement-only-edits-silent) | P3 | Placement-only edits can queue an update notice | Implemented — awaiting review | Fix `a0642c8dd` (PR #117) |
 
 ## Implementation progress as of 2026-10-06
 
@@ -462,7 +462,7 @@ renderer is recorded as a release dependency rather than a new implementation fi
 
 ### TL-012 — Reject games that end at or before their start
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [tournament-form.ts, lines 90–102](https://github.com/jaredhagemann/lista/blob/23bd5d3786c1fc77e5fb14e0041ac7beea3f1548/apps/web/src/lib/events/tournament-form.ts#L90-L102), shared by tournament creation and Add a game.
 
 Both game inputs are required, but neither the form nor its shared payload helper validates ordering.
@@ -483,12 +483,32 @@ game. Prefer an appropriate database invariant as well if enforcing this across 
 **Regression coverage:** reversed and equal ranges must create no tournament/game; a valid range must
 still succeed. Include a game crossing midnight to ensure valid multi-day ranges remain allowed.
 
-**Resolution and verification:** Open. Payload and local database behavior independently reproduced;
-all database fixtures were rolled back.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `a0642c8dd` (PR #117).
+- **The fix:**
+  - `gameTimesError` in `tournament-form.ts` refuses an end at or before the start, or a missing time.
+  - The create form checks every game first and shows the error on that game. Nothing is written when one
+    fails, not even a new location, and the database isn't called. Add a game checks the same way before
+    its insert.
+  - **Database invariant:** migration `20261006000000_tournament_game_times.sql` adds a trigger refusing
+    `INVALID_GAME_TIMES` for any tournament game, on insert or on a change to its times or tournament. That
+    covers `create_tournament` (the whole call rolls back) and plain writes.
+  - **Scope decision:** the trigger covers tournament games only, not every event. A table-wide check would
+    also apply to any existing standalone event with such times, making its next update fail (a cancel, a
+    score). Those events predate tournaments and this review.
+- **Implementation verification:**
+  - `tests/tournament-form.test.ts` → `gameTimesError`: reversed, equal and missing times refused, and a
+    game past midnight accepted.
+  - `tests/tournament-manage.test.tsx` → "TL-012": create with a reversed range, with an equal range, and
+    with a new location (nothing written); Add a game reversed (no insert, no notice); a game past midnight
+    still saves.
+  - `tests/rls/tournaments-manage.test.ts` → "TL-012": `create_tournament` with a reversed or equal game
+    saves no tournament, game or job; a plain insert, and a move to an end equal to its start, are refused;
+    a game across local midnight saves.
+  - All of them failed before the fix, except the past-midnight cases, which guard the valid path.
 
 ### TL-013 — Apply the selected location to games created with the tournament
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [tournament-create-form.ts, lines 88–93](https://github.com/jaredhagemann/lista/blob/23bd5d3786c1fc77e5fb14e0041ac7beea3f1548/apps/web/src/components/tournaments/tournament-create-form.tsx#L88-L93).
 
 The selected location is sent only as `p_location_id` for the tournament. Every entry in `p_games`
@@ -509,11 +529,22 @@ changes need not silently move existing games.
 **Regression coverage:** test existing and newly created tournament locations with initial games,
 verify persisted child locations as well as parent location, and keep the no-location case working.
 
-**Resolution and verification:** Open. Independently verified at both the form payload and database.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `a0642c8dd` (PR #117).
+- **The fix:** `tournamentGameFields` and `tournamentGamesPayload` take a location. The create form passes
+  the resolved tournament location, existing or new, so every initial game carries it, as Add a game
+  already did. Later venue changes to the tournament don't move existing games.
+- **Implementation verification:**
+  - `tests/tournament-manage.test.tsx` → "TL-013": an existing location reaches the tournament and both
+    games. A new location is inserted once, and its id reaches the tournament and the game.
+  - The no-location case sends `location_id: null` per game (the existing create test, and the helper test).
+  - `tests/rls/tournaments-manage.test.ts` → "TL-013": games created with a location are persisted at it
+    alongside the tournament, and with no location neither has one.
+  - The form tests failed before the fix. The database tests pass either way: `create_tournament` already
+    stored each game's own `location_id`, and the defect was the form leaving it out.
 
 ### TL-014 — Keep placement-only edits silent
 
-**Priority / status:** P3 / Open.
+**Priority / status:** P3 / Implemented — awaiting review.
 **Source:** [tournament-edit-form.ts, lines 120–124](https://github.com/jaredhagemann/lista/blob/23bd5d3786c1fc77e5fb14e0041ac7beea3f1548/apps/web/src/components/tournaments/tournament-edit-form.tsx#L120-L124).
 
 The form and PR describe placement changes as silent and the Notify switch as sending name/notes
@@ -531,8 +562,16 @@ scheduling notices unchanged and keep placement-only/no-op saves silent.
 **Regression coverage:** placement-only and unchanged saves with Notify on enqueue nothing; a name or
 notes change with Notify on still queues an update.
 
-**Resolution and verification:** Open. Independently reproduced in a handler-level probe with a mocked
-client; no outbound notice was sent.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `a0642c8dd` (PR #117).
+- **The fix:** the optional notice needs Notify on and an actual name or notes change, on an upcoming tournament
+  that isn't cancelled. Notices for new days or a new location are unchanged, since the database queues
+  them. The send ping follows the same condition.
+- **Implementation verification:** `tests/tournament-manage.test.tsx` → "TL-014":
+  - placement only, with Notify on, queues nothing
+  - an unchanged save, with Notify on, queues nothing
+  - a name change, and a notes change, with Notify on, each queue one `updated`
+
+  The first two failed before the fix.
 
 ## Review history
 
@@ -702,5 +741,25 @@ than reopen them implicitly. The source code review below is separate from accep
   availability in the UI, mobile tournament support and leagues are not completed by this PR.
 - **Review changes:** updated this log only; no application changes, commits, pushes, remote database
   writes or published GitHub comments. `git diff --check` passed.
+
+### 2026-10-06 — TL-012 to TL-014 fixes, PR #117
+
+- **Revision:** `a0642c8dd`, on `23bd5d378` (the reviewed head). The review round above was committed as
+  written in `a7f469681`.
+- **Scope:**
+  - `tournament-form.ts` (TL-012, TL-013)
+  - `tournament-game-rows.tsx`, `tournament-create-form.tsx` and `tournament-dialogs.tsx` (TL-012, TL-013)
+  - `tournament-edit-form.tsx` (TL-014)
+  - migration `20261006000000_tournament_game_times.sql` (TL-012)
+  - tests in `tournament-form`, `tournament-manage` and `tests/rls/tournaments-manage`
+- **Status changes:** TL-012 through TL-014, Open → Implemented — awaiting review.
+- **Decision recorded under TL-012:** the database invariant covers tournament games only, so existing
+  standalone events keep working on their next update.
+- **Local verification:**
+  - Before the fixes, 14 web tests and 3 RLS tests failed, and each failure reproduced its finding.
+  - With the fixes:
+    - web passes 1,382 of 1,382, and `tsc --noEmit` and eslint are clean
+    - after a local `db reset`, the tournament RLS files and `event-queries` pass, 81 of 81
+- **Release scope:** unchanged. Part 2c notices still have to ship with or before #117.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
