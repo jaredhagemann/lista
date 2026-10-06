@@ -87,8 +87,29 @@ export type TournamentGameDraft = {
   round: string;
 };
 
-/** A drafted game as an `events` row's fields: what create_tournament takes per game. */
-export function tournamentGameFields(draft: TournamentGameDraft, zone: string, teamName: string) {
+const WALL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+/**
+ * Why a drafted game can't be saved, or null. It has to end after it starts
+ * (review TL-012): the database refuses otherwise, and checking here means
+ * nothing is written first. Compared as typed, in the one zone both are in.
+ */
+export function gameTimesError(draft: Pick<TournamentGameDraft, "start" | "end">): string | null {
+  if (!WALL.test(draft.start) || !WALL.test(draft.end)) return "Enter when the game starts and ends.";
+  return draft.end > draft.start ? null : "A game has to end after it starts.";
+}
+
+/**
+ * A drafted game as an `events` row's fields: what create_tournament takes per
+ * game. It's at `locationId`, the tournament's (review TL-013): the forms have
+ * no venue per game.
+ */
+export function tournamentGameFields(
+  draft: TournamentGameDraft,
+  zone: string,
+  teamName: string,
+  locationId: string | null
+) {
   const opponent = draft.opponent.trim() || null;
   const homeAway = draft.homeAway || null;
   const round = draft.round.trim() || null;
@@ -100,16 +121,23 @@ export function tournamentGameFields(draft: TournamentGameDraft, zone: string, t
     home_away: homeAway,
     uniform: draft.uniform || null,
     round,
+    location_id: locationId,
   };
 }
 
-/** `p_games` for create_tournament. */
-export function tournamentGamesPayload(drafts: TournamentGameDraft[], zone: string, teamName: string) {
-  return drafts.map((d) => tournamentGameFields(d, zone, teamName));
+/** `p_games` for create_tournament, each at the tournament's location. */
+export function tournamentGamesPayload(
+  drafts: TournamentGameDraft[],
+  zone: string,
+  teamName: string,
+  locationId: string | null
+) {
+  return drafts.map((d) => tournamentGameFields(d, zone, teamName, locationId));
 }
 
 const MESSAGES: Record<string, string> = {
   INVALID_TOURNAMENT_DAYS: "The last day can't be before the first.",
+  INVALID_GAME_TIMES: "A game has to end after it starts.",
   NOT_AUTHORIZED: "Only a coach or manager can do that.",
   ALREADY_CANCELLED: "This tournament is already cancelled.",
   TOURNAMENT_NOT_FOUND: "This tournament no longer exists. Refresh to see the schedule.",

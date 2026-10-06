@@ -38,8 +38,10 @@ const mocks = vi.hoisted(() => {
   const refresh = vi.fn();
   const rpcResult: { error: { message: string } | null } = { error: null };
 
+  const locationInserts: Record<string, unknown>[] = [];
   const from = (table: string) => {
-    const result = () => Promise.resolve({ data: [], error: null, count: 0 });
+    const rows = table === "locations" ? [{ id: "loc-1", team_id: "team-1", name: "Del Mar Fields", address: null }] : [];
+    const result = () => Promise.resolve({ data: rows, error: null, count: 0 });
     const chain: Record<string, unknown> = {};
     for (const m of ["select", "eq", "or", "order", "in", "gte", "is", "limit"]) chain[m] = () => chain;
     chain.single = result;
@@ -57,9 +59,16 @@ const mocks = vi.hoisted(() => {
         return Promise.resolve({ error: null });
       };
     }
+    if (table === "locations") {
+      chain.insert = (row: Record<string, unknown>) => {
+        locationInserts.push(row);
+        return Promise.resolve({ error: null });
+      };
+    }
     return chain;
   };
   return {
+    locationInserts,
     rpcs,
     updates,
     inserts,
@@ -168,6 +177,7 @@ beforeEach(() => {
   mocks.rpcs.length = 0;
   mocks.updates.length = 0;
   mocks.inserts.length = 0;
+  mocks.locationInserts.length = 0;
   mocks.rpcResult.error = null;
   vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -238,6 +248,7 @@ describe("creating a tournament", () => {
           home_away: null,
           uniform: null,
           round: "Pool A",
+          location_id: null,
         },
         {
           title: "Final",
@@ -247,6 +258,7 @@ describe("creating a tournament", () => {
           home_away: null,
           uniform: null,
           round: "Final",
+          location_id: null,
         },
       ],
     });
@@ -602,5 +614,149 @@ describe("editing a game in a tournament", () => {
 
     expect(screen.queryByLabelText("Round")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Type" })).toBeTruthy();
+  });
+});
+
+// ── Review findings on PR #117 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──
+
+describe("TL-012: a game has to end after it starts", () => {
+  async function createWithGame(start: string, end: string) {
+    const user = await startTournament();
+    await user.type(screen.getByLabelText("Name"), "Surf Cup");
+    fireEvent.change(screen.getByLabelText("First day"), { target: { value: "2026-12-11" } });
+    fireEvent.change(screen.getByLabelText("Last day"), { target: { value: "2026-12-13" } });
+    await user.click(screen.getByRole("button", { name: "Add a game" }));
+    fireEvent.change(screen.getByLabelText("Game 1 start"), { target: { value: start } });
+    fireEvent.change(screen.getByLabelText("Game 1 end"), { target: { value: end } });
+    await user.click(screen.getByRole("button", { name: "Create tournament" }));
+    return user;
+  }
+
+  it("creating: a game ending before it starts saves nothing, and says which game", async () => {
+    await createWithGame("2026-12-11T10:00", "2026-12-11T09:00");
+
+    const game = screen.getByRole("group", { name: "Game 1" });
+    expect(within(game).getByText("A game has to end after it starts.")).toBeTruthy();
+    expect(rpc("create_tournament")).toHaveLength(0);
+  });
+
+  it("creating: a game ending as it starts saves nothing", async () => {
+    await createWithGame("2026-12-11T10:00", "2026-12-11T10:00");
+
+    expect(screen.getByText("A game has to end after it starts.")).toBeTruthy();
+    expect(rpc("create_tournament")).toHaveLength(0);
+  });
+
+  it("creating: nothing is written first, not even a new location", async () => {
+    const user = await startTournament();
+    await user.type(screen.getByLabelText("Name"), "Surf Cup");
+    await user.click(screen.getByRole("combobox", { name: "Location" }));
+    await user.click(await screen.findByRole("option", { name: "+ Add new location" }));
+    await user.type(screen.getByPlaceholderText("Location name"), "Polo Fields");
+    await user.click(screen.getByRole("button", { name: "Add a game" }));
+    fireEvent.change(screen.getByLabelText("Game 1 start"), { target: { value: "2026-12-11T10:00" } });
+    fireEvent.change(screen.getByLabelText("Game 1 end"), { target: { value: "2026-12-11T09:00" } });
+    await user.click(screen.getByRole("button", { name: "Create tournament" }));
+
+    expect(screen.getByText("A game has to end after it starts.")).toBeTruthy();
+    expect(mocks.locationInserts).toHaveLength(0);
+    expect(rpc("create_tournament")).toHaveLength(0);
+  });
+
+  it("creating: a game past midnight is fine", async () => {
+    await createWithGame("2026-12-12T23:30", "2026-12-13T00:45");
+
+    await waitFor(() => expect(rpc("create_tournament")).toHaveLength(1));
+  });
+
+  it("adding a game: one ending before it starts isn't inserted", async () => {
+    renderPage(SURF_CUP, { tournamentGames: GAMES });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Add a game" }));
+    fireEvent.change(screen.getByLabelText("Game 1 start"), { target: { value: "2026-12-13T16:00" } });
+    fireEvent.change(screen.getByLabelText("Game 1 end"), { target: { value: "2026-12-13T15:00" } });
+    await user.click(screen.getByRole("button", { name: "Add game" }));
+
+    expect(screen.getByText("A game has to end after it starts.")).toBeTruthy();
+    expect(mocks.inserts).toHaveLength(0);
+    expect(rpc("enqueue_event_notification")).toHaveLength(0);
+  });
+});
+
+describe("TL-013: games created with a tournament are at its location", () => {
+  it("an existing location goes to the tournament and each game", async () => {
+    const user = await startTournament();
+    await user.type(screen.getByLabelText("Name"), "Surf Cup");
+    await user.click(screen.getByRole("combobox", { name: "Location" }));
+    await user.click(await screen.findByRole("option", { name: "Del Mar Fields" }));
+    await user.click(screen.getByRole("button", { name: "Add a game" }));
+    await user.click(screen.getByRole("button", { name: "Add a game" }));
+    await user.click(screen.getByRole("button", { name: "Create tournament" }));
+
+    await waitFor(() => expect(rpc("create_tournament")).toHaveLength(1));
+    const args = rpc("create_tournament")[0].args;
+    expect(args.p_location_id).toBe("loc-1");
+    expect((args.p_games as { location_id: unknown }[]).map((g) => g.location_id)).toEqual(["loc-1", "loc-1"]);
+  });
+
+  it("a new location is saved once, and given to the tournament and its games", async () => {
+    const user = await startTournament();
+    await user.type(screen.getByLabelText("Name"), "Surf Cup");
+    await user.click(screen.getByRole("combobox", { name: "Location" }));
+    await user.click(await screen.findByRole("option", { name: "+ Add new location" }));
+    await user.type(screen.getByPlaceholderText("Location name"), "Polo Fields");
+    await user.click(screen.getByRole("button", { name: "Add a game" }));
+    await user.click(screen.getByRole("button", { name: "Create tournament" }));
+
+    await waitFor(() => expect(rpc("create_tournament")).toHaveLength(1));
+    expect(mocks.locationInserts).toHaveLength(1);
+    const newId = mocks.locationInserts[0].id;
+    const args = rpc("create_tournament")[0].args;
+    expect(args.p_location_id).toBe(newId);
+    expect((args.p_games as { location_id: unknown }[])[0].location_id).toBe(newId);
+  });
+});
+
+describe("TL-014: only a name or notes change is sent on request", () => {
+  async function editAndSave(change: (user: ReturnType<typeof userEvent.setup>) => Promise<void>) {
+    renderPage(SURF_CUP, { tournamentGames: GAMES });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Edit tournament" }));
+    await change(user);
+    await user.click(screen.getByRole("switch", { name: "Notify the team" }));
+    await user.click(screen.getByRole("button", { name: "Save tournament" }));
+    await waitFor(() => expect(mocks.updates).toHaveLength(1));
+  }
+
+  it("a placement-only change stays silent, even with Notify on", async () => {
+    await editAndSave(async (user) => {
+      await user.type(screen.getByLabelText("Place"), "2");
+    });
+
+    expect(rpc("enqueue_event_notification")).toHaveLength(0);
+  });
+
+  it("saving without changes stays silent", async () => {
+    await editAndSave(async () => {});
+
+    expect(rpc("enqueue_event_notification")).toHaveLength(0);
+  });
+
+  it("a name change with Notify on queues an update", async () => {
+    await editAndSave(async (user) => {
+      await user.type(screen.getByLabelText("Name"), " 2026");
+    });
+
+    expect(rpc("enqueue_event_notification")).toEqual([
+      { name: "enqueue_event_notification", args: { p_event_id: "t-1", p_action: "updated" } },
+    ]);
+  });
+
+  it("a notes change with Notify on queues an update", async () => {
+    await editAndSave(async (user) => {
+      await user.type(screen.getByLabelText("Notes"), "Check in at 8");
+    });
+
+    expect(rpc("enqueue_event_notification")).toHaveLength(1);
   });
 });

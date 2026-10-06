@@ -117,7 +117,12 @@ export function TournamentEditForm({
       Date.parse(row.end_time) !== Date.parse(tournament.end_time) ||
       row.location_id !== tournament.location_id;
 
-    if (!schedulingChanged && notifyTeam && upcoming && !tournament.is_cancelled) {
+    // Only what the switch is for: a name or notes change. A placement, or a
+    // save with nothing changed, stays silent (review TL-014).
+    const describedChanged = row.title !== tournament.title || row.notes !== (tournament.notes ?? null);
+    const askedNotice = notifyTeam && describedChanged && upcoming && !tournament.is_cancelled;
+
+    if (!schedulingChanged && askedNotice) {
       const { error: queueError } = await supabase.rpc("enqueue_event_notification", {
         p_event_id: tournament.id,
         p_action: "updated",
@@ -127,7 +132,7 @@ export function TournamentEditForm({
       }
     }
 
-    const summary = schedulingChanged || notifyTeam ? await drainNotifications() : null;
+    const summary = schedulingChanged || askedNotice ? await drainNotifications() : null;
     toast.success(withNotice("Tournament updated", summary));
     setSaving(false);
     onSave();

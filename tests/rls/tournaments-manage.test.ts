@@ -123,6 +123,124 @@ describe("adding a game to a tournament", () => {
   });
 });
 
+// ── Review findings on PR #117 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──
+
+describe("TL-012: a tournament game ends after it starts", () => {
+  /** A game ten days out, ending `endOffsetMinutes` after it starts. */
+  function timed(endOffsetMinutes: number) {
+    const start = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    return {
+      ...game(0),
+      start_time: start.toISOString(),
+      end_time: new Date(start.getTime() + endOffsetMinutes * 60 * 1000).toISOString(),
+    };
+  }
+
+  it("create_tournament refuses a game ending before it starts, and saves nothing", async () => {
+    const { coach, teamId } = await teamWithCoach();
+
+    const { error } = await coach.client.rpc("create_tournament", {
+      p_team_id: teamId,
+      p_title: "Surf Cup",
+      p_first_day: day(10),
+      p_last_day: day(12),
+      p_games: [timed(90), timed(-60)],
+      p_notify: true,
+    });
+
+    expect(error?.message).toMatch(/INVALID_GAME_TIMES/);
+    expect(await eventsOf(teamId)).toHaveLength(0);
+    expect(await jobsOf(teamId)).toHaveLength(0);
+  });
+
+  it("create_tournament refuses a game ending as it starts", async () => {
+    const { coach, teamId } = await teamWithCoach();
+
+    const { error } = await coach.client.rpc("create_tournament", {
+      p_team_id: teamId,
+      p_title: "Surf Cup",
+      p_first_day: day(10),
+      p_last_day: day(12),
+      p_games: [timed(0)],
+      p_notify: false,
+    });
+
+    expect(error?.message).toMatch(/INVALID_GAME_TIMES/);
+    expect(await eventsOf(teamId)).toHaveLength(0);
+  });
+
+  it("adding a game ending before it starts is refused; moving one there is too", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const id = await createTournament(coach, teamId, { games: [], notify: false });
+
+    const { error } = await coach.client.from("events").insert({
+      id: crypto.randomUUID(),
+      team_id: teamId,
+      tournament_id: id,
+      event_type: "game",
+      ...timed(-30),
+    });
+    expect(error?.message).toMatch(/INVALID_GAME_TIMES/);
+
+    const gameId = crypto.randomUUID();
+    await coach.client
+      .from("events")
+      .insert({ id: gameId, team_id: teamId, tournament_id: id, event_type: "game", ...timed(60) });
+    const { start_time } = (await eventsOf(teamId)).find((e) => e.id === gameId)!;
+    const { error: moveError } = await coach.client.from("events").update({ end_time: start_time }).eq("id", gameId);
+    expect(moveError?.message).toMatch(/INVALID_GAME_TIMES/);
+  });
+
+  it("a game running past midnight is fine", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const lateStart = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    // 06:30 UTC: 11:30 PM PDT or 10:30 PM PST, so two hours runs past local midnight either way.
+    lateStart.setUTCHours(6, 30, 0, 0);
+    const id = await createTournament(coach, teamId, {
+      games: [{ ...game(0), start_time: lateStart.toISOString(), end_time: new Date(lateStart.getTime() + 120 * 60 * 1000).toISOString() }],
+      notify: false,
+    });
+
+    expect((await eventsOf(teamId)).filter((e) => e.tournament_id === id)).toHaveLength(1);
+  });
+});
+
+describe("TL-013: games created with a tournament keep the location they're given", () => {
+  it("each initial game is saved at the tournament's location", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const locationId = crypto.randomUUID();
+    await coach.client.from("locations").insert({ id: locationId, team_id: teamId, name: "Del Mar Fields" });
+
+    const { data: id, error } = await coach.client.rpc("create_tournament", {
+      p_team_id: teamId,
+      p_title: "Surf Cup",
+      p_first_day: day(10),
+      p_last_day: day(12),
+      p_location_id: locationId,
+      // As the web sends them: each game carries the tournament's location.
+      p_games: [game(10 * 24 + 2, { location_id: locationId }), game(11 * 24 + 2, { location_id: locationId })],
+      p_notify: false,
+    });
+
+    expect(error).toBeNull();
+    const events = await eventsOf(teamId);
+    expect(events.find((e) => e.id === id)!.location_id).toBe(locationId);
+    expect(events.filter((e) => e.tournament_id === id).map((g) => g.location_id)).toEqual([locationId, locationId]);
+  });
+
+  it("without a location, neither has one", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const id = await createTournament(coach, teamId, { notify: false });
+
+    const events = await eventsOf(teamId);
+    expect(events.filter((e) => e.id === id || e.tournament_id === id).map((e) => e.location_id)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+  });
+});
+
 describe("a game's page", () => {
   it("reads its tournament's days through the embed, as a player", async () => {
     const { coach, teamId } = await teamWithCoach();

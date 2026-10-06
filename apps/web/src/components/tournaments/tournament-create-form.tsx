@@ -14,6 +14,7 @@ import { TimeZoneSelect } from "@/components/calendar/time-zone-select";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { TeamDisplay } from "@/lib/events/game-display";
 import {
+  gameTimesError,
   tournamentErrorMessage,
   tournamentGamesPayload,
   type TournamentGameDraft,
@@ -62,15 +63,16 @@ export function TournamentCreateForm({
   // D3: a new event notifies unless the coach says otherwise.
   const [notifyTeam, setNotifyTeam] = useState(true);
   const [daysError, setDaysError] = useState(false);
+  const [gameErrors, setGameErrors] = useState<(string | null)[]>([]);
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (lastDay < firstDay) {
-      setDaysError(true);
-      return;
-    }
-    setDaysError(false);
+    // Checked before anything is written, a new location included (TL-012).
+    const errors = games.map(gameTimesError);
+    setGameErrors(errors);
+    setDaysError(lastDay < firstDay);
+    if (lastDay < firstDay || errors.some(Boolean)) return;
     setSaving(true);
 
     const resolved = await resolveLocation(supabase, teamId, location);
@@ -89,7 +91,8 @@ export function TournamentCreateForm({
       // The generated types say `string | undefined`; null is what's meant.
       p_location_id: resolved.id as string,
       p_notes: (notes.trim() || null) as string,
-      p_games: tournamentGamesPayload(games, timeZone, team.name),
+      // Each game at the tournament's location: the form has no venue per game (TL-013).
+      p_games: tournamentGamesPayload(games, timeZone, team.name, resolved.id),
       p_notify: notifyTeam,
     });
     if (error) {
@@ -162,7 +165,12 @@ export function TournamentCreateForm({
 
         <TournamentGameRows
           games={games}
-          onChange={setGames}
+          onChange={(next) => {
+            setGames(next);
+            // Positions shift when a game is removed; errors are checked again on save.
+            setGameErrors([]);
+          }}
+          errors={gameErrors}
           zone={timeZone}
           firstDay={firstDay}
           lastDay={lastDay}

@@ -21,6 +21,7 @@ import { useNavigate } from "@/components/layout/navigation-progress";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { TeamDisplay } from "@/lib/events/game-display";
 import {
+  gameTimesError,
   tournamentDays,
   tournamentErrorMessage,
   tournamentGameFields,
@@ -250,9 +251,14 @@ export function AddTournamentGameDialog({
   // D3: a new event notifies unless the coach says otherwise.
   const [notifyTeam, setNotifyTeam] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [timesError, setTimesError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Before anything is written (TL-012).
+    const invalid = gameTimesError(draft);
+    setTimesError(invalid);
+    if (invalid) return;
     setBusy(true);
     const {
       data: { user },
@@ -265,7 +271,8 @@ export function AddTournamentGameDialog({
 
     // The id is generated here so the creation notice can name the game.
     const id = crypto.randomUUID();
-    const fields = tournamentGameFields(draft, zone, team.name);
+    // A game shares its tournament's location until it's given its own.
+    const fields = tournamentGameFields(draft, zone, team.name, tournament.location_id);
     const { error } = await supabase.from("events").insert({
       id,
       team_id: tournament.team_id,
@@ -273,8 +280,6 @@ export function AddTournamentGameDialog({
       event_type: "game",
       ...fields,
       timezone: zone,
-      // A game shares its tournament's location until it's given its own.
-      location_id: tournament.location_id,
       created_by: user.id,
     });
     if (error) {
@@ -315,7 +320,11 @@ export function AddTournamentGameDialog({
           <TournamentGameRow
             index={0}
             draft={draft}
-            onChange={setDraft}
+            onChange={(next) => {
+              setDraft(next);
+              setTimesError(null);
+            }}
+            error={timesError}
             zone={zone}
             firstDay={firstDay}
             lastDay={lastDay}

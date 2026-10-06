@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  gameTimesError,
   gamesOutsideDays,
   isWithinDays,
   tournamentBounds,
@@ -110,7 +111,8 @@ describe("tournamentGamesPayload", () => {
         { start: "2026-12-13T14:00", end: "2026-12-13T15:30", opponent: "", homeAway: "", uniform: "", round: " Final " },
       ],
       LA,
-      "U10 Girls"
+      "U10 Girls",
+      "loc-1"
     );
 
     expect(payload).toEqual([
@@ -122,6 +124,7 @@ describe("tournamentGamesPayload", () => {
         home_away: "home",
         uniform: "home",
         round: "Pool A",
+        location_id: "loc-1",
       },
       {
         title: "Final",
@@ -131,8 +134,34 @@ describe("tournamentGamesPayload", () => {
         home_away: null,
         uniform: null,
         round: "Final",
+        location_id: "loc-1",
       },
     ]);
+  });
+
+  // TL-013: the creation form has no venue per game, so each takes the tournament's.
+  it("gives each game the tournament's location, or none", () => {
+    const draft = { start: "2026-12-11T09:00", end: "2026-12-11T10:00", opponent: "", homeAway: "", uniform: "", round: "" };
+    expect(tournamentGamesPayload([draft], LA, "U10 Girls", null)[0].location_id).toBeNull();
+  });
+});
+
+// TL-012: a game that ends at or before its start was saved.
+describe("gameTimesError", () => {
+  const at = (start: string, end: string) => ({ start, end });
+
+  it("refuses a game that ends before it starts, or as it starts", () => {
+    expect(gameTimesError(at("2026-12-11T10:00", "2026-12-11T09:00"))).toBe("A game has to end after it starts.");
+    expect(gameTimesError(at("2026-12-11T10:00", "2026-12-11T10:00"))).toBe("A game has to end after it starts.");
+  });
+
+  it("accepts a game that ends after it starts, past midnight included", () => {
+    expect(gameTimesError(at("2026-12-11T09:00", "2026-12-11T10:30"))).toBeNull();
+    expect(gameTimesError(at("2026-12-11T23:30", "2026-12-12T00:45"))).toBeNull();
+  });
+
+  it("refuses a missing time", () => {
+    expect(gameTimesError(at("", "2026-12-11T10:00"))).toBe("Enter when the game starts and ends.");
   });
 });
 

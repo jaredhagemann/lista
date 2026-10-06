@@ -36,8 +36,11 @@ export function TournamentGameRow({
   firstDay,
   lastDay,
   team,
+  error,
 }: {
   index: number;
+  /** Why this game can't be saved, shown on it (review TL-012). */
+  error?: string | null;
   draft: TournamentGameDraft;
   onChange: (draft: TournamentGameDraft) => void;
   onRemove?: () => void;
@@ -58,7 +61,7 @@ export function TournamentGameRow({
     !isWithinDays(instantFromWallClock(draft.start, zone), firstDay, lastDay, zone);
 
   return (
-    <fieldset className="space-y-3 rounded-md border p-3">
+    <fieldset aria-label={`Game ${n}`} className="space-y-3 rounded-md border p-3">
       <div className="flex items-center justify-between">
         <legend className="text-sm font-medium">Game {n}</legend>
         {onRemove && (
@@ -101,6 +104,7 @@ export function TournamentGameRow({
           />
         </div>
       </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
       {outside && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
           This game is outside the tournament&apos;s days. It&apos;s saved anyway, in case the schedule slipped.
@@ -168,8 +172,11 @@ export function TournamentGameRows({
   firstDay,
   lastDay,
   team,
+  errors = [],
 }: {
   games: TournamentGameDraft[];
+  /** Each game's error, by position. */
+  errors?: (string | null)[];
   onChange: (games: TournamentGameDraft[]) => void;
   zone: string;
   firstDay: string;
@@ -195,6 +202,7 @@ export function TournamentGameRows({
           firstDay={firstDay}
           lastDay={lastDay}
           team={team}
+          error={errors[i]}
         />
       ))}
       <Button
