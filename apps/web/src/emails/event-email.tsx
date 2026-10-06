@@ -80,6 +80,7 @@ export function EventEmail({
   notes,
   previous,
   answers,
+  linkLabel = "View event",
 }: {
   eventTitle: string;
   eventType: string;
@@ -100,6 +101,8 @@ export function EventEmail({
   notes?: string | null;
   previous?: PreviousEvent | null;
   answers?: AnswerRow[];
+  /** The button's words: "View schedule" when it links there (BUG-032). */
+  linkLabel?: string;
 }) {
   const zone = resolveTimeZone(timeZone);
   const { label, tone } = ACTIONS[action];
@@ -180,7 +183,7 @@ export function EventEmail({
       {showAnswers && <Answers answers={answers!} />}
       {eventUrl && (
         <EmailButton href={eventUrl} brand={brand}>
-          View event
+          {linkLabel}
         </EmailButton>
       )}
     </EmailLayout>
