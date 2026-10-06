@@ -64,6 +64,7 @@ import { GameTitleHint } from "@/components/events/game-title-hint";
 import { UniformOptions } from "@/components/events/uniform-options";
 import { UniformLabel } from "@/components/events/uniform-label";
 import { gameTitle, homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
+import { isTournament, placementText, tournamentDates, tournamentRecord } from "@/lib/events/tournament";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
@@ -73,7 +74,27 @@ type Event = Database["public"]["Tables"]["events"]["Row"];
 type Location = Database["public"]["Tables"]["locations"]["Row"];
 type EventWithLocation = Event & {
   locations: { name: string; address: string | null } | null;
+  /** A game's tournament, for "Part of Surf Cup". */
+  tournament?: { id: string; title: string } | null;
 };
+/** A tournament's game, as its page lists it. */
+type TournamentGame = Pick<
+  Event,
+  | "id"
+  | "title"
+  | "event_type"
+  | "start_time"
+  | "end_time"
+  | "timezone"
+  | "opponent"
+  | "home_away"
+  | "round"
+  | "score_for"
+  | "score_against"
+  | "game_result"
+  | "is_cancelled"
+  | "tournament_id"
+>;
 type EditState = null | "prompt" | RecurringEditScope;
 
 // Start and end are wall-clock times in the event's zone, never the browser's (BUG-010).
@@ -604,11 +625,14 @@ export function EventDetail({
   answeringFor,
   availabilityRows,
   members,
+  tournamentGames = [],
 }: {
   event: EventWithLocation;
   isAdmin: boolean;
   creatorName: string;
   initialEdit?: boolean;
+  /** A tournament's games, in order (docs/specs/tournaments-and-leagues.md §4). */
+  tournamentGames?: TournamentGame[];
   /** The team's zone, for an event from before event zones. */
   teamTimeZone?: string | null;
   /** Names games and their uniforms (spec: game-display-and-uniform-colors). */
@@ -631,7 +655,9 @@ export function EventDetail({
     event.parent_event_id != null || event.recurrence_rule != null;
 
   const [editState, setEditState] = useState<EditState>(() => {
-    if (!initialEdit || !isAdmin || event.is_cancelled) return null;
+    // A tournament has no editor until part 2b: the single-event one would give it
+    // arbitrary times or another type (review TL-008).
+    if (!initialEdit || !isAdmin || event.is_cancelled || isTournament(event)) return null;
     return isRecurring ? "prompt" : "single";
   });
   // Every occurrence of this event's series, loaded for a bulk edit or delete.
@@ -648,6 +674,13 @@ export function EventDetail({
   // Shown and edited in the event's own zone, wherever the viewer is (BUG-010).
   const [viewerZone] = useState(() => browserTimeZone() ?? "UTC");
   const zone = eventTimeZone(event, teamTimeZone, viewerZone);
+  // A tournament spans whole days: dates, not times; past when it ends, not
+  // when it starts; and managed with its games in part 2b, not by the
+  // single-event controls, which would act on it alone.
+  const tournament = isTournament(event);
+  const isPast = tournament ? new Date(event.end_time) < new Date() : startDate < new Date();
+  const record = tournament ? tournamentRecord(event.id, tournamentGames) : null;
+  const placement = tournament ? placementText(event) : null;
 
   async function loadSeries(): Promise<Event[] | null> {
     const headId = event.parent_event_id ?? event.id;
@@ -791,7 +824,7 @@ export function EventDetail({
 
   // ── Edit mode ──────────────────────────────────────────────────────────────
   const bulkScope = editState === "following" || editState === "series" ? editState : null;
-  if (editState === "single" || (bulkScope && series)) {
+  if (!isTournament(event) && (editState === "single" || (bulkScope && series))) {
     return (
       <div className="mx-auto max-w-2xl space-y-6">
         <Link
@@ -857,8 +890,17 @@ export function EventDetail({
               >
                 {displayLabel(event.event_type)}
               </Badge>
+              {event.tournament && (
+                <p className="text-sm text-muted-foreground">
+                  Part of{" "}
+                  <Link href={`/dashboard/schedule/${event.tournament.id}`} className="font-medium text-foreground hover:underline">
+                    {event.tournament.title}
+                  </Link>
+                  {event.round?.trim() ? ` · ${event.round.trim()}` : ""}
+                </p>
+              )}
             </div>
-            {isAdmin && !event.is_cancelled && (
+            {isAdmin && !event.is_cancelled && !tournament && (
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -884,16 +926,18 @@ export function EventDetail({
           <div className="flex items-center gap-3 text-sm">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <span>
-              {formatEventDate(event.start_time, zone)}
+              {tournament ? tournamentDates(event, zone) : formatEventDate(event.start_time, zone)}
             </span>
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <span>
-              {formatEventTimeRange(event.start_time, event.end_time, zone)}
-            </span>
-          </div>
-          {event.arrival_time != null && (
+          {!tournament && (
+            <div className="flex items-center gap-3 text-sm">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span>
+                {formatEventTimeRange(event.start_time, event.end_time, zone)}
+              </span>
+            </div>
+          )}
+          {!tournament && event.arrival_time != null && (
             <div className="flex items-center gap-3 text-sm">
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span>
@@ -982,6 +1026,55 @@ export function EventDetail({
               </div>
             )}
 
+          {tournament && (
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-medium">Games</h3>
+                <div className="flex flex-wrap items-baseline gap-3 text-sm">
+                  {placement && <Badge variant="secondary">{placement}</Badge>}
+                  {record && (
+                    <span aria-label="Tournament record" className="tabular-nums text-muted-foreground">
+                      {record.wins}–{record.losses}–{record.ties}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {tournamentGames.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No games yet.</p>
+              ) : (
+                <ul aria-label="Games" className="divide-y rounded-md border text-sm">
+                  {tournamentGames.map((g) => (
+                    <li key={g.id}>
+                      <Link
+                        href={`/dashboard/schedule/${g.id}`}
+                        className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2 hover:bg-muted/50"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={g.is_cancelled ? "text-muted-foreground line-through" : "font-medium"}>
+                            {gameTitle(g, team.name)}
+                          </span>
+                          {/* The result on its own: it can be entered without a score (review TL-011). */}
+                          {g.game_result && (
+                            <Badge
+                              variant={g.game_result === "win" ? "default" : g.game_result === "loss" ? "destructive" : "secondary"}
+                            >
+                              {displayLabel(g.game_result)}
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {[g.round?.trim(), `${formatEventDate(g.start_time, zone)}, ${formatEventTime(g.start_time, zone)}`]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {event.notes && (
             <div className="border-t pt-4">
               <h3 className="mb-2 font-medium">Notes</h3>
@@ -991,7 +1084,7 @@ export function EventDetail({
             </div>
           )}
 
-          {isAdmin && (
+          {isAdmin && !tournament && (
             <div className="border-t pt-4">
               {!event.is_cancelled ? (
                 <Button variant="outline" onClick={() => setShowCancel(true)}>
@@ -1013,7 +1106,7 @@ export function EventDetail({
           <CardContent className="pt-6 space-y-6">
             <EventAvailability
               eventId={event.id}
-              isPast={new Date(event.start_time) < new Date()}
+              isPast={isPast}
               members={members}
               availabilityRows={availabilityRows}
               isAdmin={isAdmin}

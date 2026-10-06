@@ -77,13 +77,20 @@ const mocks = vi.hoisted(() => {
   const tables: Record<string, unknown> = {};
   const from = (table: string) => {
     let results = false;
+    // The latest placed tournament (D8, docs/specs/tournaments-and-leagues.md).
+    let tournaments = false;
     const chain: Record<string, unknown> = {};
     const data = () => {
+      if (table === "events" && tournaments) return tables.placed ?? [];
       if (table === "events") return results ? tables.results ?? [] : tables.upcoming ?? [];
       return tables[table] ?? null;
     };
     const result = () => Promise.resolve({ data: data(), error: null, count: tables.memberCount ?? 0 });
-    for (const m of ["select", "eq", "neq", "in", "gte", "lte", "order", "limit", "is"]) chain[m] = () => chain;
+    for (const m of ["select", "neq", "in", "gte", "gt", "lte", "order", "limit", "is", "or"]) chain[m] = () => chain;
+    chain.eq = (column: string, value: unknown) => {
+      if (column === "event_type" && value === "tournament") tournaments = true;
+      return chain;
+    };
     chain.not = (column: string) => {
       if (column === "game_result") results = true;
       return chain;

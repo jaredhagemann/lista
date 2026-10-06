@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-01, [PR #114 — Tournaments, part 1: database](https://github.com/jaredhagemann/lista/pull/114), commit `82005445befca94d176147a6b5a1c1a0a5960997`.
-**Current outcome:** TL-001 through TL-006 are resolved (verified at `82005445b`). TL-007 is implemented in `b80893172` and awaiting review.
+**Last reviewed:** 2026-10-05, [PR #116](https://github.com/jaredhagemann/lista/pull/116) at `f7f3e62cfcc39b6768ec303b98886c0f2e24721e`, reviewing fixes in `c5ca6d6f5acf780663309fdbffe305fadc770adf`.
+**Current outcome:** TL-001 through TL-011 are resolved. No new findings in the follow-up review of TL-008 through TL-011. PR #116 still needs the migration from PR #115 integrated to clear its staging check.
 
 ## Using this document as the feature changes
 
@@ -24,7 +24,11 @@
 | [TL-004](#tl-004--notify-when-deletion-removes-active-child-games) | P2 | Deleting a cancelled or ended tournament can silently remove active games | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
 | [TL-005](#tl-005--snapshot-retained-games-before-unlinking-them) | P2 | Cancellation loses the game details needed by its notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
 | [TL-006](#tl-006--suppress-creation-notices-for-completed-tournaments) | P2 | Historical tournament creation queues a notification | Resolved | Fix `5e00b4d06`; independently verified at `82005445b` |
-| [TL-007](#tl-007--revalidate-games-before-applying-a-tournament-cancellation) | P2 | Cancellation can change a game concurrently moved to another tournament | Implemented — awaiting review | Fix `b80893172`, migration `20261002000000`; reproduced at `82005445b` |
+| [TL-007](#tl-007--revalidate-games-before-applying-a-tournament-cancellation) | P2 | Cancellation can change a game concurrently moved to another tournament | Resolved | Fix `b80893172`; independently verified at `99bab47c` |
+| [TL-008](#tl-008--guard-the-edit-url-for-tournaments) | P2 | The edit URL still opens the single-event editor for tournaments | Resolved | Fix `c5ca6d6f5`; verified at `f7f3e62cf` on 2026-10-05 |
+| [TL-009](#tl-009--keep-the-tournament-zone-in-calendar-reads) | P2 | Travel tournaments show incorrect calendar date labels | Resolved | Fix `c5ca6d6f5`; verified at `f7f3e62cf` on 2026-10-05 |
+| [TL-010](#tl-010--name-a-tournament-where-its-visible-month-segment-begins) | P2 | A tournament crossing a month boundary can have no visible name | Resolved | Fix `c5ca6d6f5`; verified at `f7f3e62cf` on 2026-10-05 |
+| [TL-011](#tl-011--show-each-games-result-independently-of-its-score) | P2 | Tournament game rows omit results entered without scores | Resolved | Fix `c5ca6d6f5`; verified at `f7f3e62cf` on 2026-10-05 |
 
 ## Part 1 — database findings
 
@@ -248,7 +252,7 @@ Independent follow-up verification: historical creation with the default notific
 
 ### TL-007 — Revalidate games before applying a tournament cancellation
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [`cancel_tournament`, lines 350–360](https://github.com/jaredhagemann/lista/blob/82005445befca94d176147a6b5a1c1a0a5960997/supabase/migrations/20261001000001_tournaments_review_fixes.sql#L350-L360).
 
 The fix captures eligible game IDs and their summaries without locking those rows, then updates by ID
@@ -279,7 +283,7 @@ Assert either a coordinated rejection or preservation of the successfully moved 
 active status. Verify the notice excludes games not actually changed, and keep ordinary cancellation and
 retained-game snapshot cases passing.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `b80893172`, migration
+**Resolution and verification:** Resolved at `99bab47c` on 2026-10-02. Fixed in `b80893172`, migration
 `20261002000000_tournaments_lock_games.sql`. That's a new migration, because #114 had already merged with
 TL-007 open.
 - **The fix:** `cancel_tournament` checks the caller first, then locks the tournament (`FOR UPDATE`) and its
@@ -303,6 +307,136 @@ TL-007 open.
   - Ordinary cancellation still changes and lists its game.
   - All 44 tournament tests pass, and the full RLS suite passes after `supabase db reset` (47 files, 605
     tests).
+
+Independent verification on 2026-10-02: repeated the two-session move with both cancellation choices
+and deletion, using authenticated coach claims for both sessions against the local database. The moving
+transaction signalled after its update and held its lock while the action started. All three preserved
+the new tournament and active status, with exactly one notice containing zero affected games. Ordinary
+cancellation changed and listed exactly its game. Isolated fixtures were removed afterward.
+
+## Part 2a — web display findings
+
+These findings concern PR #116 at `6a10d65636eb04a82beb3d120e8d123d5b0b350b`. Creation and tournament
+management in part 2b, notices in part 2c, and later mobile work are deliberately outside this review.
+
+### TL-008 — Guard the edit URL for tournaments
+
+**Priority / status:** P2 / Resolved.
+**Source:** [event-detail.tsx, line 901](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/event-detail.tsx#L901), with the edit-state initializer at lines 657–660 and the edit form at lines 825–855.
+
+The new tournament guard hides the Edit button, but the existing `?edit=true` entry point still sets
+`editState` to `single` for an authenticated admin. The component returns `EventEditForm` before it
+reaches the guarded controls. That form offers ordinary event types and arbitrary start/end times; it
+can save a tournament with non-midnight bounds without the future tournament editor's game-date checks.
+For an empty tournament it can also change the event type away from tournament.
+
+**Reproduction / evidence:** trace an uncancelled standalone tournament through the page's
+`initialEdit={edit === "true"}` and the initializer. With `initialEdit=true` and `isAdmin=true`, it opens
+the ordinary editor. Existing new tests cover only the normal page with `initialEdit=false`.
+
+**Requested change:** guard edit-state initialization and rendering for tournaments until their editor
+is available. Add a regression case for `initialEdit=true`, retaining normal game editing.
+
+**Resolution and verification:** Resolved on 2026-10-05 at `f7f3e62cf`. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** both the edit-state initializer and the editor's render check `isTournament(event)`. A
+  tournament opened with `?edit=true` shows its page, not the single-event editor, until part 2b adds its
+  own editor.
+- **Implementation verification:** `tests/tournament-event-page.test.tsx` → "TL-008".
+  - A tournament with `initialEdit` shows its page and games, with no event editor. This failed before the
+    fix.
+  - A game with `initialEdit` still opens the editor.
+
+**Follow-up verification (2026-10-05):** Source review confirms both initialization and render guards. CI at the reviewed head passes the regression that opens a tournament with initialEdit=true and the control case that still opens a game editor.
+
+### TL-009 — Keep the tournament zone in calendar reads
+
+**Priority / status:** P2 / Resolved.
+**Source:** [schedule-calendar.tsx, line 434](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/schedule-calendar.tsx#L434), and [queries.ts, lines 122–123](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/lib/events/queries.ts#L122-L123).
+
+The new calendar tooltip calls `tournamentDates(event, gridZone)`, but the real calendar projection and
+its row type omit `timezone`. The helper therefore labels the tournament in the team's calendar zone
+instead of the tournament's own zone, contrary to D13 and the list/detail date labels.
+
+**Reproduction / evidence:** a New York tournament Dec 11–13, 2026 is stored from
+`2026-12-11T05:00:00Z` through `2026-12-14T05:00:00Z`. With a Los Angeles calendar, executing the
+actual helper on the projected row returns **Thu, Dec 10 – Sun, Dec 13**. Keeping its New York timezone
+returns the correct **Fri, Dec 11 – Sun, Dec 13**. Calendar component tests pass full event fixtures,
+including timezone, which the real query does not return.
+
+**Requested change:** include timezone in the calendar projection and its type, and verify calendar
+labels with a tournament whose zone differs from the team's. Decide day-cell placement separately from
+the tournament's own date label; the label must preserve the tournament dates.
+
+**Resolution and verification:** Resolved on 2026-10-05 at `f7f3e62cf`. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** the calendar projection and `CalendarEventRow` include `timezone`, so `tournamentDates`
+  reads the tournament's own zone.
+- **Day-cell placement, decided separately as asked:** a tournament is all-day, so it sits on its own dates,
+  `tournamentDayKeys(event, event.timezone ?? gridZone)`. A Fri–Sun tournament occupies the Fri–Sun cells
+  on any team's calendar, rather than shifting to Thu–Sun for a calendar in a zone to its west. Other events
+  are placed by the calendar's zone, as before.
+- **Implementation verification:**
+  - `tests/event-range.test.ts` asserts that the calendar projection selects `timezone`. It goes through the
+    real `fetchEventPage`, so it covers the query the component tests can't see.
+  - `tests/tournament-schedule.test.tsx` → "TL-009": your New York example on a Los Angeles calendar. The
+    label reads "Fri, Dec 11 – Sun, Dec 13" on the Fri–Sun cells, and nothing is on Thu Dec 10.
+  - Both failed before the fix.
+  - The projection runs against the local database.
+
+**Follow-up verification (2026-10-05):** Source review confirms timezone is present in both the actual projection and its row type. Independent execution using that projection preserves the New York Dec 11–13 label and day keys on a Los Angeles calendar. The projection and cross-zone component regressions pass in CI.
+
+### TL-010 — Name a tournament where its visible month segment begins
+
+**Priority / status:** P2 / Resolved.
+**Source:** [schedule-calendar.tsx, lines 427–439](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/schedule-calendar.tsx#L427-L439).
+
+A segment is named only on the tournament's actual first day or a Sunday. The calendar renders only
+the selected month's days, leaving earlier days as empty cells. If a tournament began in the previous
+month and ends before the first Sunday, none of its visible segments has text.
+
+**Reproduction / evidence:** a Nov 30–Dec 3, 2026 tournament in the December calendar has segments on
+Tuesday Dec 1 through Thursday Dec 3. All three evaluate `first || weekStart` to false. The event is
+fetched correctly by the new overlap query but appears only as an unnamed colored bar unless hovered.
+
+**Requested change:** label the first visible segment (including day 1) as well as new week rows. Add a
+month-boundary component test where the new month begins midweek and the tournament ends before Sunday.
+
+**Resolution and verification:** Resolved on 2026-10-05 at `f7f3e62cf`. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** a segment is named on the tournament's first day, at each week start, **and on day 1 of the
+  month shown**. A tournament that began last month is named where its visible run begins.
+- **Implementation verification:** `tests/tournament-schedule.test.tsx` → "TL-010", using your example: a
+  Nov 30 – Dec 3 tournament in December, which opens on a Tuesday. It's named on Dec 1 and not again on
+  Dec 2 or 3. This failed before the fix.
+
+**Follow-up verification (2026-10-05):** Independent execution of the current label predicate confirms that day 1 is named even when neither the tournament start nor a Sunday; subsequent week starts remain named. The Nov 30–Dec 3 component regression passes in CI.
+
+### TL-011 — Show each game's result independently of its score
+
+**Priority / status:** P2 / Resolved.
+**Source:** [event-detail.tsx, lines 1050–1056](https://github.com/jaredhagemann/lista/blob/6a10d65636eb04a82beb3d120e8d123d5b0b350b/apps/web/src/components/calendar/event-detail.tsx#L1050-L1056).
+
+The tournament's game list renders only `gameTitle`, round, and date/time. `gameTitle` does not read
+`game_result`; it can append two numeric scores but never Win/Loss/Tie. A supported result-only entry
+(e.g. a win with both scores blank) contributes to the tournament record yet appears indistinguishable
+from an unscored game in its list. The spec and PR description explicitly promise each game's result.
+
+**Reproduction / evidence:** a linked game with opponent Rivals, `game_result='win'`, and null scores
+renders only the team/opponent title and its round/time. Changing the result to loss or tie leaves the
+row unchanged. The new test called “round and result” asserts numeric scores only.
+
+**Requested change:** render the result separately from the optional score. Cover result-only games,
+scored games, and games with neither a result nor score.
+
+**Resolution and verification:** Resolved on 2026-10-05 at `f7f3e62cf`. Fixed in `c5ca6d6f5` (PR #116).
+- **The fix:** each game row shows its result as its own Win, Loss or Tie badge, beside the title. The score
+  stays in the title when both sides are entered.
+- **Implementation verification:** `tests/tournament-event-page.test.tsx` → "TL-011" covers:
+  - result-only games (Win, Loss and Tie, each with blank scores)
+  - a scored game, showing its result and its score
+  - a game with neither, showing no result
+
+  The first two failed before the fix.
+
+**Follow-up verification (2026-10-05):** Source review confirms Win/Loss/Tie renders independently of score fields. CI passes all three regression cases: result-only games, a scored game with its result, and an unanswered result with no badge.
 
 ## Review history
 
@@ -391,5 +525,65 @@ than reopen them implicitly. The source code review below is separate from accep
   - Against `main` (without the fix), the three overlap tests failed and the ordinary case passed.
   - With the fix, all 44 tournament tests pass, and the full RLS suite passes with the pinned CLI (2.78.1):
     47 files, 605 tests.
+
+### 2026-10-02 — PR #115 locking fix and PR #116 web display
+
+- **Revisions:** PR #115 `99bab47cda875b96dd004ec31506f04c7f52a4a0`; PR #116
+  `6a10d65636eb04a82beb3d120e8d123d5b0b350b`. Both based on main `46479e2b447b4b8771595c170701397d6e328359`.
+- **Outcome:** TL-007 → Resolved; no new findings in #115. Opened TL-008 through TL-011 in #116.
+- **Independent checks:** four local SQL probes (three concurrent move/action cases and ordinary
+  cancellation), plus direct execution of date helpers and the calendar label predicate. Source review
+  covered the changed queries, pages, components, tests and intended part boundaries.
+- **PR #115 CI:** web, unit, mobile, RLS and staging migration checks passed.
+- **PR #116 CI observed:** new tournament tests passed; the web job had 1,317 passing tests and one
+  failure in unchanged `leaderboard-pin.test.tsx` (“removes the pinned copy once the self row scrolls back
+  into view”, line 160). This is a check to resolve/rerun, not a demonstrated tournament regression.
+  Unit, mobile and Vercel passed; RLS was still running when checked.
+- **Staging dependency:** #116's staging migration job failed because remote version `20261002000000`
+  from #115 is absent from its branch. Integrate #115's migration before retrying #116 against shared
+  staging. No migration history repair or remote write was performed during review.
+- **Limitations:** the full test suite was not rerun locally; the local Vitest dependency tree was
+  missing `esbuild`. CI, independent probes and source inspection are separate evidence.
+- **Review log:** carried forward the latest history from #115 before adding this round, because #116
+  branched from main before that log update. Application code was not changed and no GitHub comments
+  were published.
+
+### 2026-10-03 — TL-008 to TL-011 fixes, PR #116
+
+- **Revision:** `c5ca6d6f5`, on `6a10d6563` (the reviewed head). The review round above was committed as
+  written in `b3ed5cd58`.
+- **Scope:** `event-detail.tsx` (TL-008, TL-011), `schedule-calendar.tsx` and `queries.ts` (TL-009,
+  TL-010), and tests in `tournament-event-page`, `tournament-schedule`, `event-range` and
+  `event-projection-types`.
+- **Status changes:** TL-008 through TL-011, Open → Implemented — awaiting review.
+- **Decision recorded under TL-009:** a tournament's calendar cells follow its own dates in its own zone.
+  It's all-day, so Fri–Sun sits on Fri–Sun on any team's calendar.
+- **Local verification:**
+  - Before the fixes, the six new tests failed, and each failure reproduced its finding.
+  - With the fixes, web passes 1,326 of 1,326, and `tsc --noEmit` is clean.
+  - The calendar projection, now with `timezone`, runs against the local database.
+- **Still open from the review notes:**
+  - **Staging:** #116's staging migration needs #115's `20261002000000` on its branch. That will be done by
+    updating #116 from `main` once #115 merges.
+  - **Flaky test:** the web job's `leaderboard-pin.test.tsx` failure is BUG-030, the known flaky test filed
+    on 2026-09-30, and isn't a tournament regression.
+
+### 2026-10-05 — Follow-up verification of TL-008 through TL-011, PR #116
+
+- **Revision:** `f7f3e62cfcc39b6768ec303b98886c0f2e24721e`; implementation fix
+  `c5ca6d6f5acf780663309fdbffe305fadc770adf`, committed 2026-10-03.
+- **Outcome:** TL-008 through TL-011 → Resolved. No new actionable findings in this focused review.
+- **Verification:** reviewed the implementation and regression tests, independently executed the
+  date helper with the real calendar projection's shape and the updated month-label predicate, and
+  inspected CI at the reviewed head. The four focused test files passed in CI: tournament-event-page
+  (13), tournament-schedule (10), event-range (9), and event-projection-types (3).
+- **CI:** all 98 web test files passed; unit, mobile, RLS integration and Vercel checks also passed.
+  The earlier leaderboard test failure is not present in this run.
+- **Local limitation:** attempted the four focused Vitest files; startup still fails because the local
+  dependency tree lacks esbuild. No successful local component-test run is claimed.
+- **Remaining integration check:** staging still rejects remote migration version `20261002000000`
+  because #116 lacks #115's migration. Both PRs remain open. Merge #115, update #116 from main, and rerun
+  its staging check. This is separate from the four resolved display findings.
+- **Changes made by this review:** review log only; no application changes, commits, pushes or PR comments.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.

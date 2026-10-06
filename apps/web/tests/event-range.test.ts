@@ -45,7 +45,7 @@ function stubClient(pages: { data: Row[] | null; error: { message: string } | nu
         then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
           Promise.resolve(page).then(resolve, reject),
       };
-      for (const method of ["select", "eq", "gte", "lt", "or", "order", "limit"]) {
+      for (const method of ["select", "eq", "gt", "gte", "lt", "or", "order", "limit"]) {
         chain[method] = () => chain;
       }
       return chain;
@@ -178,7 +178,7 @@ describe("what a cursor page asks for", () => {
       then: (resolve: (v: unknown) => unknown) =>
         Promise.resolve({ data: [], error: null }).then(resolve),
     };
-    for (const method of ["select", "eq", "gte", "lt", "or", "order", "limit"]) {
+    for (const method of ["select", "eq", "gt", "gte", "lt", "or", "order", "limit"]) {
       chain[method] = (...args: unknown[]) => {
         calls.push({ method, args });
         return chain;
@@ -204,9 +204,12 @@ describe("what a cursor page asks for", () => {
     const bounds = calls.filter((c) => c.method === "gte");
     const keyset = calls.find((c) => c.method === "or");
 
-    // The window's own lower bound, and the cursor's.
-    expect(bounds).toHaveLength(2);
-    expect(bounds.some((c) => String(c.args[1]).startsWith("2026-12-05T17:00:00"))).toBe(true);
+    // The window's own lower bound is by overlap (events ending after it); the
+    // cursor's is by start.
+    expect(calls.filter((c) => c.method === "gt").map((c) => c.args[0])).toEqual(["end_time"]);
+    expect(bounds).toHaveLength(1);
+    expect(bounds[0].args[0]).toBe("start_time");
+    expect(String(bounds[0].args[1]).startsWith("2026-12-05T17:00:00")).toBe(true);
 
     // And the keyset itself, which is what makes the boundary exact.
     expect(String(keyset?.args[0])).toContain("start_time.gt.");
@@ -218,7 +221,17 @@ describe("what a cursor page asks for", () => {
 
     await fetchEventPage(client, { query: RANGE, projection: "calendar", pageSize: 10, cursor: null });
 
-    expect(calls.filter((c) => c.method === "gte")).toHaveLength(1);
+    expect(calls.filter((c) => c.method === "gte")).toHaveLength(0);
+    expect(calls.filter((c) => c.method === "gt").map((c) => c.args[0])).toEqual(["end_time"]);
     expect(calls.some((c) => c.method === "or")).toBe(false);
+  });
+
+  it("the calendar asks for each event's zone, which a tournament's dates are read in (TL-009)", async () => {
+    const { client, calls } = recordingClient();
+
+    await fetchEventPage(client, { query: RANGE, projection: "calendar", pageSize: 10, cursor: null });
+
+    const columns = String(calls.find((c) => c.method === "select")?.args[0]).split(",").map((c) => c.trim());
+    expect(columns).toContain("timezone");
   });
 });

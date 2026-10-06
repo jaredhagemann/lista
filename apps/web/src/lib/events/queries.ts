@@ -36,6 +36,7 @@ export type CalendarEventRow = Pick<
   | "event_type"
   | "start_time"
   | "end_time"
+  | "timezone"
   | "is_cancelled"
   | "opponent"
   | "home_away"
@@ -44,9 +45,14 @@ export type CalendarEventRow = Pick<
   | "score_against"
 >;
 
-/** The list projection: the whole row, plus the joined location summary. */
+/**
+ * The list projection: the whole row, plus the joined location summary, a game's
+ * tournament (for "Surf Cup · Semifinal") and a tournament's game count.
+ */
 export type ListEventRow = EventRow & {
   locations: { name: string; address: string | null } | null;
+  tournament: { title: string } | null;
+  games: { count: number }[];
 };
 
 /** The row shape a projection returns. Callers do not get to choose it. */
@@ -57,13 +63,20 @@ export type RowFor<P extends EventProjection> = P extends "calendar"
 /** A position in the ordered result, carried between pages. */
 export type EventCursor = { startTime: string; id: string };
 
+/**
+ * The window is matched by **overlap**: an event is in it when it ends after the
+ * window starts and starts before the window ends. A multi-day tournament stays
+ * in "from now" while it's underway, and one crossing a month boundary is in
+ * both months (docs/specs/tournaments-and-leagues.md §4). Order is still by
+ * start, so an underway event comes first.
+ */
 export type EventQuery = {
   teamId: string;
-  /** UTC instant; absent means unbounded history. */
+  /** UTC instant: events ending after it. Absent means unbounded history. */
   fromInclusive?: string;
-  /** UTC instant, exclusive; absent means unbounded future. */
+  /** UTC instant, exclusive: events starting before it. Absent means unbounded future. */
   toExclusive?: string;
-  eventType?: "practice" | "game" | "other";
+  eventType?: "practice" | "game" | "other" | "tournament";
   includeCancelled: boolean;
 };
 
@@ -108,9 +121,9 @@ const PROJECTIONS: Record<EventProjection, string> = {
   // The grid needs placement and labelling, nothing else. A game is labelled by
   // its team and opponent, with its uniform (spec: game-display-and-uniform-colors).
   calendar:
-    "id, team_id, title, event_type, start_time, end_time, is_cancelled, opponent, home_away, uniform, score_for, score_against",
+    "id, team_id, title, event_type, start_time, end_time, timezone, is_cancelled, opponent, home_away, uniform, score_for, score_against",
   // The list needs what its rows and row actions read.
-  list: "*, locations(name, address)",
+  list: "*, locations(name, address), tournament:tournament_id(title), games:events!tournament_id(count)",
 };
 
 function assertValid(query: EventQuery, pageSize: number, cursor: EventCursor | null) {
@@ -134,7 +147,7 @@ function assertValid(query: EventQuery, pageSize: number, cursor: EventCursor | 
       throw new EventQueryError(`Not a timestamp for ${label}: ${value}`);
     }
   }
-  if (query.eventType && !["practice", "game", "other"].includes(query.eventType)) {
+  if (query.eventType && !["practice", "game", "other", "tournament"].includes(query.eventType)) {
     throw new EventQueryError(`Not an event type: ${query.eventType}`);
   }
   if (cursor) {
@@ -185,8 +198,9 @@ export async function fetchEventPage<P extends EventProjection>(
     .select(PROJECTIONS[projection])
     .eq("team_id", query.teamId);
 
-  if (query.fromInclusive) request = request.gte("start_time", query.fromInclusive);
-  // Half-open: an event at the next boundary belongs to the next range only.
+  // Overlap with the window. Half-open at both ends: an event ending exactly as
+  // the window starts, or starting exactly as it ends, belongs to the neighbour.
+  if (query.fromInclusive) request = request.gt("end_time", query.fromInclusive);
   if (query.toExclusive) request = request.lt("start_time", query.toExclusive);
   if (query.eventType) request = request.eq("event_type", query.eventType);
 

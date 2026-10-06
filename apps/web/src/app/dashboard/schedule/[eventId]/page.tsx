@@ -9,7 +9,13 @@ import type { Database } from "@/types/database";
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   profiles: { first_name: string; last_name: string } | null;
   locations: { name: string; address: string | null } | null;
+  /** A game's tournament, for "Part of Surf Cup". */
+  tournament: { id: string; title: string } | null;
 };
+
+/** What a tournament's page shows of each of its games. */
+const TOURNAMENT_GAME_COLUMNS =
+  "id, title, event_type, start_time, end_time, timezone, opponent, home_away, round, score_for, score_against, game_result, is_cancelled, tournament_id";
 
 type Team = Database["public"]["Tables"]["teams"]["Row"];
 
@@ -38,7 +44,7 @@ export default async function EventDetailPage({
 
   const { data: rawEvent, error } = await supabase
     .from("events")
-    .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address)")
+    .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address), tournament:tournament_id(id, title)")
     .eq("id", eventId)
     .single();
 
@@ -46,7 +52,10 @@ export default async function EventDetailPage({
     notFound();
   }
 
-  const event = rawEvent as Event;
+  // Through unknown: the typed client can't resolve `tournament_id(...)`, as
+  // events has two relationships to itself, though PostgREST embeds it by the
+  // column, as a single row.
+  const event = rawEvent as unknown as Event;
 
   // An event of another team: RLS has let the viewer read it, so they (or a
   // player they manage) are likely on it. Switch to that team and come back here
@@ -104,8 +113,8 @@ export default async function EventDetailPage({
   }
   const cleanPath = kept.size > 0 ? `/dashboard/schedule/${eventId}?${kept}` : `/dashboard/schedule/${eventId}`;
 
-  // Fetch availability rows and team members in parallel
-  const [{ data: availabilityRows }, { data: teamMembersRaw }] = await Promise.all([
+  // Fetch availability rows, team members and, for a tournament, its games in parallel
+  const [{ data: availabilityRows }, { data: teamMembersRaw }, { data: tournamentGames }] = await Promise.all([
     supabase
       .from("availability")
       .select("profile_id, status")
@@ -114,6 +123,14 @@ export default async function EventDetailPage({
       .from("team_members")
       .select("profile_id, role, profiles(first_name, last_name)")
       .eq("team_id", event.team_id!),
+    event.event_type === "tournament"
+      ? supabase
+          .from("events")
+          .select(TOURNAMENT_GAME_COLUMNS)
+          .eq("tournament_id", eventId)
+          .order("start_time", { ascending: true })
+          .order("id", { ascending: true })
+      : Promise.resolve({ data: [] }),
   ]);
 
   const availabilityData = (availabilityRows ?? [])
@@ -157,6 +174,7 @@ export default async function EventDetailPage({
         answeringFor={answeringFor}
         availabilityRows={availabilityData}
         members={membersData}
+        tournamentGames={tournamentGames ?? []}
       />
     </>
   );
