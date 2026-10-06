@@ -4,6 +4,8 @@ import { renderInviteEmail } from "@/emails/invite-email";
 import { renderEventEmail, type AnswerRow } from "@/emails/event-email";
 import { gameTitle } from "@/lib/events/game-display";
 import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
+import { renderTournamentEmail } from "@/emails/tournament-email";
+import { tournamentReminderSubject } from "@/lib/notifications/tournament-notice";
 import { renderConfirmationEmail } from "@/emails/confirmation-email";
 import { renderClubNoticeEmail } from "@/emails/club-notice-email";
 import { renderTeamDeletionEmail } from "@/emails/team-deletion-email";
@@ -101,6 +103,34 @@ const GAME_TITLE = gameTitle(
   GAME.teamName,
   { includeScore: false }
 );
+
+/** A tournament, Fri Oct 9 – Sun Oct 11, Pacific (docs/specs/tournaments-and-leagues.md §4). */
+const SURF_CUP = {
+  teamName: "12U Girls",
+  title: "Surf Cup",
+  start_time: "2026-10-09T07:00:00Z",
+  end_time: "2026-10-12T07:00:00Z",
+  timeZone: PACIFIC,
+  location: "Del Mar Polo Fields",
+  notes: "Check in at the tournament tent an hour before your first game.",
+  url: `${APP}/dashboard/schedule/t-1`,
+};
+const SURF_CUP_GAMES = [
+  ["2026-10-09T16:00:00Z", "Rivals FC", "home", "Pool A"],
+  ["2026-10-10T15:30:00Z", "Eagles SC", "away", "Pool A"],
+  ["2026-10-10T21:00:00Z", "Hawks", "home", "Quarterfinal"],
+  ["2026-10-11T17:00:00Z", null, null, "Semifinal"],
+].map(([start, opponent, homeAway, round], i) => ({
+  id: `g-${i}`,
+  title: opponent ? `12U Girls vs ${opponent}` : (round as string),
+  start_time: start as string,
+  end_time: new Date(Date.parse(start as string) + 80 * 60 * 1000).toISOString(),
+  timezone: PACIFIC,
+  opponent,
+  home_away: homeAway,
+  round,
+  is_cancelled: false,
+}));
 
 /** Answer rows as the senders build them: links to the event page, per person (spec §4.7). */
 function answerRows(rows: Array<Omit<AnswerRow, "links">>): AnswerRow[] {
@@ -322,7 +352,115 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
         }),
     },
 
+    // Tournaments: one notice per tournament-wide action, never the series template.
+    {
+      group: "Schedule changes",
+      name: "tournament-created-club",
+      title: "Tournament created with its four games, to a guardian of two players",
+      subject: eventNoticeSubject("created", SURF_CUP.title),
+      brand: club,
+      render: () =>
+        renderTournamentEmail({
+          ...SURF_CUP,
+          action: "created",
+          games: { total: 4, action: "created", list: SURF_CUP_GAMES },
+          answers: GUARDIAN,
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "tournament-moved-club",
+      title: "Tournament moved a day later (an edit to its dates)",
+      subject: eventNoticeSubject("updated", SURF_CUP.title),
+      brand: club,
+      render: () =>
+        renderTournamentEmail({
+          ...SURF_CUP,
+          start_time: "2026-10-10T07:00:00Z",
+          end_time: "2026-10-13T07:00:00Z",
+          action: "updated",
+          previous: { start_time: SURF_CUP.start_time, end_time: SURF_CUP.end_time, location: SURF_CUP.location, timeZone: PACIFIC },
+          answers: GUARDIAN,
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "tournament-cancelled-with-games-club",
+      title: "Tournament cancelled with its remaining games, after the first was played",
+      subject: eventNoticeSubject("cancelled", SURF_CUP.title),
+      brand: club,
+      render: () =>
+        renderTournamentEmail({
+          ...SURF_CUP,
+          action: "cancelled",
+          games: { total: 4, action: "cancelled", list: SURF_CUP_GAMES.slice(1) },
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "tournament-cancelled-kept-club",
+      title: "Tournament cancelled, its games kept on the schedule as standalone games",
+      subject: eventNoticeSubject("cancelled", SURF_CUP.title),
+      brand: club,
+      render: () =>
+        renderTournamentEmail({
+          ...SURF_CUP,
+          action: "cancelled",
+          games: { total: 4, action: "kept", list: SURF_CUP_GAMES },
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "tournament-deleted-club",
+      title: "Tournament deleted with its games: links to the schedule",
+      subject: eventNoticeSubject("deleted", SURF_CUP.title),
+      brand: club,
+      render: () =>
+        renderTournamentEmail({
+          ...SURF_CUP,
+          action: "deleted",
+          games: { total: 4, action: "deleted", list: SURF_CUP_GAMES },
+          url: `${APP}/dashboard/schedule`,
+          brand: club,
+        }),
+    },
+    {
+      group: "Schedule changes",
+      name: "tournament-game-moved-club",
+      title: "A game in a tournament moved: Part of Surf Cup · Semifinal",
+      subject: eventNoticeSubject("updated", GAME_TITLE),
+      brand: club,
+      render: () =>
+        renderEventEmail({
+          ...GAME,
+          action: "updated",
+          partOf: "Part of Surf Cup · Semifinal",
+          previous: { startTime: "2026-10-03T16:00:00Z", endTime: "2026-10-03T17:30:00Z", arrivalTime: 45, location: GAME.location, timeZone: PACIFIC },
+          answers: GUARDIAN,
+          brand: club,
+        }),
+    },
+
     // ── Reminders ───────────────────────────────────────────────────────────
+    {
+      group: "Reminders",
+      name: "reminder-tournament-guardian",
+      title: "Tournament starts tomorrow, with its games",
+      subject: tournamentReminderSubject(SURF_CUP.title, "tomorrow", "Fri, Oct 9"),
+      brand: club,
+      render: () =>
+        renderTournamentEmail({
+          ...SURF_CUP,
+          action: "reminder",
+          games: { total: 4, action: "created", list: SURF_CUP_GAMES },
+          answers: GUARDIAN,
+          brand: club,
+        }),
+    },
     {
       group: "Reminders",
       name: "reminder-game-guardian",

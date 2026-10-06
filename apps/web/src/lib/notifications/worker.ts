@@ -18,6 +18,13 @@ import { renderEventEmail, type AnswerRow } from "@/emails/event-email";
 import { answerRowsFor, loadAnswerContext, type AnswerContext } from "@/lib/notifications/answers";
 import { uniformOf, type TeamUniforms } from "@/lib/events/game-display";
 import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
+import { renderTournamentEmail } from "@/emails/tournament-email";
+import {
+  isTournamentSnapshot,
+  partOfLine,
+  tournamentNoticeUrl,
+  tournamentPushBody,
+} from "@/lib/notifications/tournament-notice";
 import { TEAM_BRAND_COLUMNS, teamEmailBrand } from "@/emails/brand";
 import type { RenderedEmail } from "@/emails/layout";
 import { sendPushNotification } from "@/lib/notifications/push";
@@ -27,6 +34,7 @@ import { resolveRecipients } from "@/lib/notifications/recipients";
 import {
   planDeliveries,
   summarizeDeliveries,
+  eventNoticeSubject,
   jobSubject,
   templateAction,
   seriesChanges,
@@ -79,7 +87,13 @@ async function runJob(db: Db, job: NotificationJob) {
     // The event's own zone, else the team's for events and jobs from before event zones (BUG-010).
     const timeZone = resolveTimeZone(isChat ? team.timezone : job.snapshot.timezone ?? team.timezone);
     const chat = isChat ? (job.snapshot as unknown as ChatSnapshot) : null;
-    const subject = chat ? chat.title : jobSubject(job, team.name);
+    // A tournament reads as one, whatever the job's count (spec §4, Notifications).
+    const tournament = !chat && isTournamentSnapshot(job.snapshot);
+    const subject = chat
+      ? chat.title
+      : tournament
+        ? eventNoticeSubject(job.action, job.snapshot.title)
+        : jobSubject(job, team.name);
 
     // Each recipient's email carries rows for just their own people, when it
     // asks for availability (§4.7, D8–D10); the answers are read once per job.
@@ -101,8 +115,12 @@ async function runJob(db: Db, job: NotificationJob) {
       ? { title: chat.title, body: chat.body, url: chat.url }
       : {
           title: subject,
-          body: buildPushBody(job, timeZone),
-          url: job.event_id ? `/dashboard/schedule/${job.event_id}` : "/dashboard/schedule",
+          body: tournament ? tournamentPushBody(job, timeZone) : buildPushBody(job, timeZone),
+          url: tournament
+            ? tournamentNoticeUrl(job, "")
+            : job.event_id
+              ? `/dashboard/schedule/${job.event_id}`
+              : "/dashboard/schedule",
         };
 
     const outcomes: DeliveryOutcome[] = [];
@@ -209,7 +227,8 @@ function appUrl() {
  */
 function asksForAnswers(job: NotificationJob): boolean {
   return (
-    job.occurrence_count <= 1 &&
+    // A tournament job is one notice for the tournament, whatever its count.
+    (job.occurrence_count <= 1 || isTournamentSnapshot(job.snapshot)) &&
     !job.snapshot.series_changes &&
     job.event_id != null &&
     (job.action === "created" || job.action === "updated" || job.action === "restored")
@@ -218,6 +237,7 @@ function asksForAnswers(job: NotificationJob): boolean {
 
 function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answers?: AnswerRow[]): Promise<RenderedEmail> {
   const { name: teamName, brand } = team;
+  if (isTournamentSnapshot(job.snapshot)) return buildTournamentEmail(job, team, timeZone, answers);
   // A bulk operation gets one summary for the team rather than one mail per
   // occurrence, so it uses the series template.
   if (job.occurrence_count > 1 || job.snapshot.series_changes) {
@@ -261,6 +281,39 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
           timeZone: resolveTimeZone(job.snapshot.previous.timezone ?? team.timezone),
         }
       : null,
+    answers,
+    partOf: partOfLine(job.snapshot),
+  });
+}
+
+/**
+ * A tournament's notice: its dates and the games it's about, linking to it,
+ * or to the schedule once it's deleted (spec §4, Notifications).
+ */
+function buildTournamentEmail(job: NotificationJob, team: Team, timeZone: string, answers?: AnswerRow[]) {
+  const { snapshot } = job;
+  const summary = snapshot.tournament;
+  const previous = job.action === "updated" ? snapshot.previous : null;
+  return renderTournamentEmail({
+    brand: team.brand,
+    teamName: team.name,
+    title: snapshot.title,
+    start_time: snapshot.start_time,
+    end_time: snapshot.end_time,
+    timeZone,
+    location: snapshot.location_name,
+    notes: snapshot.notes,
+    action: job.action === "message" ? "updated" : job.action,
+    games: summary ? { total: summary.games, action: summary.games_action, list: summary.affected_games ?? [] } : undefined,
+    previous: previous
+      ? {
+          start_time: previous.start_time,
+          end_time: previous.end_time,
+          location: previous.location_name,
+          timeZone: resolveTimeZone(previous.timezone ?? team.timezone),
+        }
+      : null,
+    url: tournamentNoticeUrl(job, appUrl()),
     answers,
   });
 }
