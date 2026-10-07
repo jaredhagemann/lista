@@ -303,6 +303,12 @@ functions. Checked against what 1.0.12 reads and writes:
   response", never the answer inherited from the tournament. Coaches on the web and on 1.1.0 see the
   inherited one. This ends when people update.
 
+### Added 2026-10-06: tournament fixes (`20261001000001`, `20261002000000`, `20261006000000`)
+
+Review fixes to the tournament functions and triggers (TL-001 to TL-007), and a check that a tournament game ends
+after it starts (TL-012). None of it reaches 1.0.12: they change database functions, which 1.0.12 never calls,
+and triggers on `events` writes, which it never makes (checked against `b3473c71b`).
+
 ## On the TestFlight build, before submitting for review
 
 Each of these is the check recorded on its ticket. They need a real build, so run them on the 1.1.0

@@ -7,9 +7,8 @@
  *     with its round and result
  *   - a game in a tournament says "Part of Surf Cup · Semifinal", linking back
  *   - people still answer for the tournament on its page (D2)
- *   - editing, cancelling and deleting a tournament come in part 2b, so its page
- *     offers none of the single-event controls, which would act on the
- *     tournament alone
+ *   - its page never offers the single-event controls, which would act on the
+ *     tournament alone; its own are in tournament-manage.test.tsx
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -185,7 +184,7 @@ describe("a tournament's page", () => {
     expect(screen.getByRole("group", { name: /availability/i })).toBeTruthy();
   });
 
-  it("offers none of the single-event edit, cancel or delete controls yet", () => {
+  it("offers none of the single-event edit, cancel or delete controls", () => {
     renderPage(SURF_CUP, { tournamentGames: GAMES });
 
     expect(screen.queryByRole("button", { name: "Edit event" })).toBeNull();

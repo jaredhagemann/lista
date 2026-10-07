@@ -27,6 +27,7 @@ import { buildRRule, untilEndOfDay } from "@/lib/utils/rrule";
 import { expandInZone, instantFromWallClock, isUsableTimeZone, wallClockIn } from "@/lib/events/event-timezone";
 import { browserTimeZone } from "@/lib/events/team-timezone";
 import { TimeZoneSelect } from "./time-zone-select";
+import { TournamentCreateForm } from "@/components/tournaments/tournament-create-form";
 import { GameTitleHint } from "@/components/events/game-title-hint";
 import { UniformOptions } from "@/components/events/uniform-options";
 import type { TeamDisplay } from "@/lib/events/game-display";
@@ -35,6 +36,8 @@ import type { Database } from "@/types/database";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
 type Location = Database["public"]["Tables"]["locations"]["Row"];
+
+type EventKind = "practice" | "game" | "other" | "tournament";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -73,7 +76,7 @@ export function EventFormDialog({
   const supabase = createClient();
 
   const [title, setTitle] = useState("");
-  const [eventType, setEventType] = useState<"practice" | "game" | "other">(
+  const [eventType, setEventType] = useState<EventKind>(
     "practice"
   );
   const [locationId, setLocationId] = useState("");
@@ -286,6 +289,47 @@ export function EventFormDialog({
 
   const startDayRRule = wallRRuleDay(startTime);
 
+  const typeField = (
+    <div className="space-y-2">
+      <Label htmlFor="eventType">Type</Label>
+      <Select value={eventType} onValueChange={(v) => setEventType(v as EventKind)}>
+        <SelectTrigger id="eventType">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="practice">Practice</SelectItem>
+          <SelectItem value="game">Game</SelectItem>
+          <SelectItem value="tournament">Tournament</SelectItem>
+          <SelectItem value="other">Other</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
+  // A tournament is whole days with its games, saved in one call: its own form
+  // (docs/specs/tournaments-and-leagues.md §4).
+  if (eventType === "tournament") {
+    return (
+      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create tournament</DialogTitle>
+          </DialogHeader>
+          <TournamentCreateForm
+            teamId={teamId}
+            team={team}
+            timeZone={timeZone}
+            onTimeZoneChange={setTimeZone}
+            teamTimeZone={teamTimeZone}
+            defaultDay={defaultDay}
+            typeField={typeField}
+            onClose={onClose}
+          />
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -312,24 +356,7 @@ export function EventFormDialog({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="eventType">Type</Label>
-              <Select
-                value={eventType}
-                onValueChange={(v) =>
-                  setEventType(v as "practice" | "game" | "other")
-                }
-              >
-                <SelectTrigger id="eventType">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="practice">Practice</SelectItem>
-                  <SelectItem value="game">Game</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {typeField}
 
             <div className="space-y-2">
               <Label>Location</Label>
