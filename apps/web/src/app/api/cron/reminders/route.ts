@@ -6,9 +6,18 @@ import { reminderSubject } from "@/lib/notifications/dispatch";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderEventEmail } from "@/emails/event-email";
-import { TEAM_BRAND_COLUMNS, teamEmailBrand, type BrandedTeam } from "@/emails/brand";
+import { renderTournamentEmail } from "@/emails/tournament-email";
+import {
+  REMINDER_EVENT_COLUMNS,
+  REMINDER_TOURNAMENT_GAME_COLUMNS,
+  partOfLine,
+  tournamentReminderSubject,
+} from "@/lib/notifications/tournament-notice";
+import type { TournamentGameSnapshot } from "@/lib/notifications/dispatch";
+import { teamEmailBrand, type BrandedTeam } from "@/emails/brand";
 import { answerRowsFor, loadAnswerContext } from "@/lib/notifications/answers";
 import { gameTitle, uniformOf, type TeamUniforms } from "@/lib/events/game-display";
+import { tournamentDates } from "@/lib/events/tournament";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
 import {
@@ -22,7 +31,10 @@ import type { Database } from "@/types/database";
 type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
   teams: ({ name: string; timezone: string | null } & BrandedTeam & TeamUniforms) | null;
   locations: { name: string } | null;
+  /** A game's tournament, for "Part of Surf Cup". */
+  tournament: { title: string } | null;
 };
+
 
 // Vercel Cron: runs daily, sends reminders for events happening in the next 24h
 export async function GET(request: Request) {
@@ -43,9 +55,7 @@ export async function GET(request: Request) {
   // Find events in the next 24 hours that aren't cancelled
   const { data: rawEvents, error } = await supabase
     .from("events")
-    .select(
-      `*, teams(name, timezone, home_uniform, away_uniform, home_uniform_color, away_uniform_color, ${TEAM_BRAND_COLUMNS}), locations(name)`
-    )
+    .select(REMINDER_EVENT_COLUMNS)
     .eq("is_cancelled", false)
     .gte("start_time", now.toISOString())
     .lte("start_time", in24h.toISOString());
@@ -57,10 +67,49 @@ export async function GET(request: Request) {
     );
   }
 
-  const events = rawEvents as EventWithTeam[];
+  // Through unknown: the typed client can't resolve the self-embed on tournament_id.
+  const events = rawEvents as unknown as EventWithTeam[];
   let sent = 0;
+  // Events whose reminder couldn't be built: reported, never sent incomplete (TL-015).
+  const failedEvents: { eventId: string; error: string }[] = [];
+
+  /**
+   * A tournament's games, tried twice: a statement timeout is usually brief. A
+   * read that fails is an error, never an empty schedule, which would send a
+   * reminder without its games. The next daily run is usually after the
+   * tournament has started, so it can't repair one.
+   */
+  async function readTournamentGames(
+    tournamentId: string
+  ): Promise<{ games: TournamentGameSnapshot[] } | { error: string }> {
+    let lastError = "unknown error";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await supabase
+        .from("events")
+        .select(REMINDER_TOURNAMENT_GAME_COLUMNS)
+        .eq("tournament_id", tournamentId)
+        .order("start_time", { ascending: true });
+      if (!error) return { games: (data ?? []) as TournamentGameSnapshot[] };
+      lastError = error.message;
+    }
+    return { error: lastError };
+  }
 
   for (const event of events) {
+    // A tournament reads as one, with its games (D6): "Surf Cup starts tomorrow · 5 games".
+    // Read first, so a failed read skips it before anything is sent.
+    const isTournament = event.event_type === "tournament";
+    let games: TournamentGameSnapshot[] = [];
+    if (isTournament) {
+      const read = await readTournamentGames(event.id);
+      if ("error" in read) {
+        console.error(`Reminder for tournament ${event.id} not sent: its games could not be read: ${read.error}`);
+        failedEvents.push({ eventId: event.id, error: read.error });
+        continue;
+      }
+      games = read.games;
+    }
+
     const teamName = event.teams?.name ?? "Unknown";
     // The server runs in UTC: format in the event's own zone (else the team's,
     // for events from before event zones), and name the event's actual day
@@ -96,31 +145,60 @@ export async function GET(request: Request) {
       event.id,
       recipients.flatMap((r) => r.coversProfileIds)
     );
-    const emailFor = (recipient: (typeof recipients)[number]) =>
-      renderEventEmail({
-        eventTitle: event.title,
-        eventType: event.event_type,
-        startTime: event.start_time,
-        endTime: event.end_time,
-        location: event.locations?.name ?? null,
-        teamName,
-        action: "reminder",
-        brand,
-        arrivalTime: event.arrival_time,
-        eventUrl,
-        timeZone,
-        opponent: event.opponent,
-        homeAway: event.home_away,
-        uniform: uniformOf(event.uniform, event.teams ?? {}),
-        notes: event.notes,
-        answers: answerRowsFor(recipient, answers, eventUrl),
-      });
+    const playing = games.filter((g) => !g.is_cancelled).length;
+    const gamesPhrase = playing > 0 ? `${playing} ${playing === 1 ? "game" : "games"}` : null;
 
-    const reminderPayload = {
-      title: `Reminder: ${title}`,
-      body: `${dayLabel.charAt(0).toUpperCase()}${dayLabel.slice(1)} at ${formatEventTime(event.start_time, timeZone)}${event.locations?.name ? ` — ${event.locations.name}` : ""}`,
-      url: `/dashboard/schedule/${event.id}`,
-    };
+    const emailFor = (recipient: (typeof recipients)[number]) =>
+      isTournament
+        ? renderTournamentEmail({
+            brand,
+            teamName,
+            title: event.title,
+            start_time: event.start_time,
+            end_time: event.end_time,
+            timeZone,
+            location: event.locations?.name ?? null,
+            notes: event.notes,
+            action: "reminder",
+            games: { total: playing, action: "created", list: games },
+            url: eventUrl,
+            answers: answerRowsFor(recipient, answers, eventUrl),
+          })
+        : renderEventEmail({
+            eventTitle: event.title,
+            eventType: event.event_type,
+            startTime: event.start_time,
+            endTime: event.end_time,
+            location: event.locations?.name ?? null,
+            teamName,
+            action: "reminder",
+            brand,
+            arrivalTime: event.arrival_time,
+            eventUrl,
+            timeZone,
+            opponent: event.opponent,
+            homeAway: event.home_away,
+            uniform: uniformOf(event.uniform, event.teams ?? {}),
+            notes: event.notes,
+            answers: answerRowsFor(recipient, answers, eventUrl),
+            partOf: partOfLine({ tournament_title: event.tournament?.title, round: event.round }),
+          });
+
+    const subject = isTournament
+      ? tournamentReminderSubject(event.title, relativeDay, dayLabel)
+      : reminderSubject(title, relativeDay, dayLabel);
+    const where = event.locations?.name ? ` — ${event.locations.name}` : "";
+    const reminderPayload = isTournament
+      ? {
+          title: subject,
+          body: `${gamesPhrase ?? tournamentDates(event, timeZone)}${where}`,
+          url: `/dashboard/schedule/${event.id}`,
+        }
+      : {
+          title: `Reminder: ${title}`,
+          body: `${dayLabel.charAt(0).toUpperCase()}${dayLabel.slice(1)} at ${formatEventTime(event.start_time, timeZone)}${where}`,
+          url: `/dashboard/schedule/${event.id}`,
+        };
 
     for (const recipient of recipients) {
       if (recipient.emailEnabled && recipient.emails.length > 0) {
@@ -129,7 +207,7 @@ export async function GET(request: Request) {
           try {
             await sendEmail({
               to: email,
-              subject: reminderSubject(title, relativeDay, dayLabel),
+              subject,
               ...message,
               brandName: brand.fromName,
             });
@@ -172,10 +250,15 @@ export async function GET(request: Request) {
     console.error("Notification drain failed:", err);
   }
 
-  return NextResponse.json({
-    success: true,
-    eventsProcessed: events.length,
-    notificationsSent: sent,
-    notificationJobsDrained: drained.claimed,
-  });
+  // A failed event fails the run, so the cron's monitoring sees it; the rest were still sent.
+  return NextResponse.json(
+    {
+      success: failedEvents.length === 0,
+      eventsProcessed: events.length - failedEvents.length,
+      notificationsSent: sent,
+      notificationJobsDrained: drained.claimed,
+      ...(failedEvents.length > 0 ? { failedEvents } : {}),
+    },
+    { status: failedEvents.length > 0 ? 500 : 200 }
+  );
 }

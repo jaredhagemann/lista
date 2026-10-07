@@ -80,6 +80,7 @@ export function EventEmail({
   notes,
   previous,
   answers,
+  partOf,
   linkLabel = "View event",
 }: {
   eventTitle: string;
@@ -101,6 +102,8 @@ export function EventEmail({
   notes?: string | null;
   previous?: PreviousEvent | null;
   answers?: AnswerRow[];
+  /** "Part of Surf Cup · Semifinal", for a game in a tournament. */
+  partOf?: string | null;
   /** The button's words: "View schedule" when it links there (BUG-032). */
   linkLabel?: string;
 }) {
@@ -177,7 +180,8 @@ export function EventEmail({
       }
     >
       <StatusBadge label={label} tone={tone} />
-      <EmailHeading spaced={players.length === 0}>{heading}</EmailHeading>
+      <EmailHeading spaced={players.length === 0 && !partOf}>{heading}</EmailHeading>
+      {partOf && <EmailText muted>{partOf}</EmailText>}
       {players.length > 0 && <EmailText muted>{`For ${joinNames(players)}`}</EmailText>}
       <DetailTable rows={rows} />
       {showAnswers && <Answers answers={answers!} />}
@@ -213,7 +217,7 @@ function UniformValue({ uniform }: { uniform: Uniform }) {
 }
 
 /** The availability section: a row per person, their answer, and the three links. */
-function Answers({ answers }: { answers: AnswerRow[] }) {
+export function Answers({ answers }: { answers: AnswerRow[] }) {
   // One title on every email, so it's plain what's being asked (2026-09-28).
   const prompt = "Availability";
 
@@ -271,12 +275,12 @@ function AnswerLink({ status, href, chosen }: { status: AvailabilityStatus; href
   );
 }
 
-function truncate(text: string, limit: number): string {
+export function truncate(text: string, limit: number): string {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
 
 /** "Ava", "Ava and Zoey", "Ava, Zoey and Mia". */
-function joinNames(names: string[]): string {
+export function joinNames(names: string[]): string {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
