@@ -3,7 +3,7 @@
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
 **Last reviewed:** 2026-10-07, [PR #121](https://github.com/jaredhagemann/lista/pull/121) at `e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f`, implementation `ce960e427`.
-**Current outcome:** TL-001 through TL-015 remain resolved. Effective availability is implemented in PR #121; three new P2 findings, TL-016–TL-018, are open. Normal inheritance, overrides, clearing, grid totals and D19 email rendering pass their existing tests.
+**Current outcome:** TL-001 through TL-015 remain resolved. Effective availability is implemented in PR #121; its three P2 findings, TL-016–TL-018, are implemented in `9d9995a22` and awaiting review. Normal inheritance, overrides, clearing, grid totals and D19 email rendering pass their existing tests.
 
 ## Using this document as the feature changes
 
@@ -33,9 +33,9 @@
 | [TL-013](#tl-013--apply-the-selected-location-to-games-created-with-the-tournament) | P2 | Games created with a tournament lose the selected venue | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-014](#tl-014--keep-placement-only-edits-silent) | P3 | Placement-only edits can queue an update notice | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-015](#tl-015--handle-tournament-game-read-errors-before-sending-reminders) | P2 | Failed game reads silently send incomplete tournament reminders | Resolved | Fix `3d2818211`; verified at `af20d2f66` and merged main `8793d6abe` |
-| [TL-016](#tl-016--recompute-inherited-responses-when-server-props-change) | P2 | Refreshed response lists retain stale tournament answers | Open | Two component rerender probes at `e2c1607d8` |
-| [TL-017](#tl-017--require-successful-answer-reads-before-resolving-inheritance) | P2 | Failed answer reads produce incorrect email availability | Open | Two worker/rendering probes at `e2c1607d8` |
-| [TL-018](#tl-018--resolve-current-tournament-membership-for-email-answers) | P2 | Queued game emails inherit from a tournament the game has left | Open | Worker probe plus local database reproduction at `e2c1607d8` |
+| [TL-016](#tl-016--recompute-inherited-responses-when-server-props-change) | P2 | Refreshed response lists retain stale tournament answers | Implemented — awaiting review | Fix `9d9995a22` (PR #121) |
+| [TL-017](#tl-017--require-successful-answer-reads-before-resolving-inheritance) | P2 | Failed answer reads produce incorrect email availability | Implemented — awaiting review | Fix `9d9995a22` (PR #121) |
+| [TL-018](#tl-018--resolve-current-tournament-membership-for-email-answers) | P2 | Queued game emails inherit from a tournament the game has left | Implemented — awaiting review | Fix `9d9995a22` (PR #121) |
 
 ## Implementation progress as of 2026-10-07
 
@@ -47,7 +47,7 @@
 | Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
 | Tournament notices, part 2c | Merged via #120 after #118 landed on its feature base; TL-015 resolved | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders |
 | Deleted standalone-event links, #119 / BUG-032 | Merged and reviewed | Deleted notices open the schedule in email and push; cancelled notices retain their event link; tournament routing remains intact |
-| Effective availability in web UI and email | Reviewed, PR #121; TL-016–TL-018 open, including D19 | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and game email/reminder answer labels; existing tournament bulk-fill database rules alone do not complete this |
+| Effective availability in web UI and email | Reviewed, PR #121; TL-016–TL-018 implemented, awaiting review, including D19 | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and game email/reminder answer labels; existing tournament bulk-fill database rules alone do not complete this |
 | Tournament mobile support | Pending | Dedicated display and inherited answers; existing 1.0.12 behavior remains the accepted rollout difference |
 | Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
 
@@ -657,7 +657,7 @@ else their tournament answer. This is built in the effective-availability part a
 
 ### TL-016 — Recompute inherited responses when server props change
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [response-list.tsx, lines 108–112](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/components/availability/response-list.tsx#L108-L112).
 
 The inherited-answer map is initialized once in state and never updated. When refreshed server props
@@ -677,11 +677,23 @@ and stop applying them when there is no linked tournament. Preserve game-specifi
 **Regression coverage:** changed parent answers, cleared parent answers, changed parent identity and
 unlinking on the same mounted component; assert picker, grouping, counts and inheritance labels agree.
 
-**Resolution and verification:** Open at `e2c1607d8`.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `9d9995a22` (PR #121).
+- **The fix:** `ResponseList` builds the tournament-answer map from its current props on every render, not
+  once into state. With no linked tournament (no `inheritedFrom`), it uses none. Answers set on the page for
+  the game are the component's own state, as before, and still win. The picker already read its props.
+- **Implementation verification:** `tests/effective-availability.test.tsx` → "TL-016", each re-rendering the
+  same mounted page with new props:
+  - a changed tournament answer regroups, recounts and keeps its mark
+  - a cleared one leaves no answer
+  - an unlinked game stops following
+  - a game moved to another tournament follows that one ("from Winter Cup")
+  - a game answer set on the page still wins (the control)
+
+  The first four failed before the fix.
 
 ### TL-017 — Require successful answer reads before resolving inheritance
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [answers.ts, lines 52–65](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/lib/notifications/answers.ts#L52-L65).
 
 loadAnswerContext ignores query errors and converts null answer data into empty maps. With inheritance,
@@ -705,11 +717,28 @@ handler's failure reporting coherent with this behavior.
 **Regression coverage:** fail each answer query independently; ensure no fabricated inherited/current
 answer is sent. Keep successful-empty, inherited and explicit-override controls.
 
-**Resolution and verification:** Open at `e2c1607d8`.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `9d9995a22` (PR #121).
+- **The fix:** `loadAnswerContext` throws `AnswerReadError` when the event's answers or its tournament's fail to
+  read. A successful empty read is still "no answers".
+  - **The worker:** the throw lands in its existing per-job handling. Nothing is sent, and the job goes back
+    to `pending` to be tried on the next drain, up to its five attempts.
+  - **The reminder cron:** it tries the read twice. Then it skips that event, sending neither email nor push,
+    and reports it in `failedEvents` with a 500, consistent with TL-015.
+  - This applies to every event's answers, not only tournament games. A failed read used to render "No
+    answer yet", which was never true either.
+- **Implementation verification:** `tests/tournament-notice-wiring.test.ts` → "TL-017":
+  - **Worker:** the game's answers failing, the tournament's failing, and a tournament job's own failing.
+    In each, no email is sent and the job is marked `pending`.
+  - **Reminder:** a game whose tournament answers fail is not reminded, with status 500 and `failedEvents`
+    naming it.
+  - **Controls:** successful-empty ("No answer yet"), inherited, and explicit-override tests are unchanged
+    and pass.
+
+  All four failed before the fix.
 
 ### TL-018 — Resolve current tournament membership for email answers
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [worker.ts, lines 107–110](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/lib/notifications/worker.ts#L107-L110).
 
 The worker chooses the tournament for current availability from the historical notification snapshot.
@@ -733,7 +762,25 @@ current parent for a reassigned game. Handle failure to read that relationship e
 **Regression coverage:** enqueue while linked, unlink or reassign before draining, and verify the answer
 label matches the game's current relationship; include an explicit game override as a control.
 
-**Resolution and verification:** Open at `e2c1607d8`.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `9d9995a22` (PR #121).
+- **The fix:** `currentTournamentOf` in the worker reads the game's `tournament_id` and title as it sends,
+  and uses that for the answers. The snapshot still describes the change, including its "Part of" line,
+  as queued.
+  - An unlinked game falls back to nothing (D15).
+  - A reassigned game follows its new tournament.
+  - A failed read throws, so the job is retried.
+  - The reminder cron already reads the current row.
+- **Implementation verification:**
+  - `tests/tournament-notice-wiring.test.ts` → "TL-018":
+    - a game taken out since shows "No answer yet", not "from Surf Cup"
+    - a game moved to Winter Cup shows "? Maybe · from Winter Cup"
+    - an explicit game answer still wins (the control)
+
+    The first two failed before the fix.
+  - `tests/rls/effective-availability.test.ts` → "TL-018" runs the worker's select against the database:
+    - it returns the tournament while the game is linked
+    - after an update is queued and `cancel_tournament(..., false)` unlinks the game, the queued snapshot
+      still names Surf Cup, while the read returns no tournament
 
 ## Review history
 
@@ -1042,5 +1089,23 @@ than reopen them implicitly. The source code review below is separate from accep
   separate own row and are not findings. Mobile effective availability remains the planned next part.
 - **Review changes:** this log only. No application edits, commits, pushes or published GitHub comments;
   no outbound notifications. `git diff --check` passed. No production/browser smoke test claimed.
+
+### 2026-10-07 — TL-016 to TL-018 fixes, PR #121
+
+- **Revision:** `9d9995a22`, on `103b078e6`. The review round above was committed as written in `103b078e6`.
+- **Scope:**
+  - `response-list.tsx` (TL-016)
+  - `notifications/answers.ts` and `api/cron/reminders/route.ts` (TL-017)
+  - `notifications/worker.ts` (TL-017, TL-018)
+  - tests in `effective-availability`, `tournament-notice-wiring` and `tests/rls/effective-availability`
+- **Status changes:** TL-016 through TL-018, Open → Implemented — awaiting review.
+- **Local verification:**
+  - Before the fixes, 10 new tests failed, and each failure reproduced its finding. Three new controls passed
+    before and after.
+  - With the fixes:
+    - web passes 1,448 of 1,448, and `tsc --noEmit` and eslint are clean
+    - the RLS file `effective-availability` passes 6 of 6, including the TL-018 reproduction
+- **Behavior change to note:** under TL-017, a failed answer read now withholds any event's notice or
+  reminder, not only a tournament game's. Before this PR such a read rendered "No answer yet".
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
