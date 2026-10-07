@@ -29,6 +29,19 @@ export type AnswerContext = {
 
 type Answer = { profile_id: string | null; status: string };
 
+/**
+ * Answers that couldn't be read. Never treated as "nobody answered": with a
+ * tournament, a missing game answer would show the tournament's instead, and a
+ * missing tournament answer "No answer yet" (review TL-017). Callers retry, or
+ * send nothing.
+ */
+export class AnswerReadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnswerReadError";
+  }
+}
+
 function statusMap(answers: Answer[] | null): Map<string, AvailabilityStatus> {
   const map = new Map<string, AvailabilityStatus>();
   for (const answer of answers ?? []) {
@@ -49,7 +62,7 @@ export async function loadAnswerContext(
   const ids = [...new Set(profileIds)];
   if (ids.length === 0) return { statusOf: new Map(), nameOf: new Map() };
 
-  const [{ data: answers }, { data: profiles }, tournamentAnswers] = await Promise.all([
+  const [answers, { data: profiles }, tournamentAnswers] = await Promise.all([
     db.from("availability").select("profile_id, status").eq("event_id", eventId).in("profile_id", ids),
     db.from("profiles").select("id, first_name").in("id", ids),
     tournament
@@ -57,9 +70,12 @@ export async function loadAnswerContext(
       : Promise.resolve(null),
   ]);
 
+  if (answers.error) throw new AnswerReadError(answers.error.message);
+  if (tournamentAnswers?.error) throw new AnswerReadError(tournamentAnswers.error.message);
+
   const nameOf = new Map((profiles ?? []).map((p) => [p.id, p.first_name?.trim() || "Player"]));
   return {
-    statusOf: statusMap(answers),
+    statusOf: statusMap(answers.data),
     nameOf,
     ...(tournament && tournamentAnswers
       ? { tournament: { title: tournament.title, statusOf: statusMap(tournamentAnswers.data) } }

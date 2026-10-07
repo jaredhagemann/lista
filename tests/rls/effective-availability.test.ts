@@ -84,6 +84,40 @@ describe("a tournament game's answers", () => {
   });
 });
 
+describe("TL-018: the tournament a game is in when its notice is sent", () => {
+  // The worker's read: the game's current tournament, not its queued snapshot's.
+  const currentTournament = (gameId: string) =>
+    adminClient.from("events").select("tournament_id, tournament:tournament_id(title)").eq("id", gameId).maybeSingle();
+
+  it("is the tournament while the game is in it", async () => {
+    const { tournamentId, gameId } = await setting();
+
+    const { data, error } = await currentTournament(gameId);
+
+    expect(error).toBeNull();
+    expect(data).toEqual({ tournament_id: tournamentId, tournament: { title: "Surf Cup" } });
+  });
+
+  it("is none once \"cancel the tournament only\" has kept the game, with its update still queued", async () => {
+    const { coach, teamId, tournamentId, gameId } = await setting();
+    // An update to the game, queued while it's in Surf Cup.
+    const { data: game } = await adminClient.from("events").select("arrival_time").eq("id", gameId).single();
+    await coach.client.from("events").update({ arrival_time: (game!.arrival_time ?? 0) + 15 }).eq("id", gameId);
+
+    await coach.client.rpc("cancel_tournament", { p_tournament_id: tournamentId, p_cancel_games: false });
+
+    const { data: queued } = await adminClient
+      .from("notification_jobs")
+      .select("snapshot")
+      .eq("team_id", teamId)
+      .eq("event_id", gameId)
+      .eq("action", "updated");
+    expect(queued?.[0]?.snapshot.tournament_id).toBe(tournamentId);
+    const { data } = await currentTournament(gameId);
+    expect(data).toEqual({ tournament_id: null, tournament: null });
+  });
+});
+
 describe("the availability grid's events", () => {
   it("carry each game's tournament", async () => {
     const { coach, teamId, tournamentId } = await setting();

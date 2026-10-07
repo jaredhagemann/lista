@@ -105,9 +105,10 @@ export function ResponseList({
     profileId === currentUserId && currentUserStatus !== undefined
       ? currentUserStatus
       : (statusMap.get(profileId) ?? null);
-  const [inherited] = useState(
-    () => new Map((inheritedFrom ? (inheritedRows ?? []) : []).map((r) => [r.profileId, r.status]))
-  );
+  // From the current props, every render: a refresh can change the tournament's
+  // answers, or the game's tournament, or take it out of one (review TL-016).
+  // Answers set here for the game are the statusMap above, and stay.
+  const inherited = new Map((inheritedFrom ? (inheritedRows ?? []) : []).map((r) => [r.profileId, r.status]));
   // The answer shown and counted: their own, else the tournament's.
   const answerOf = (profileId: string) => effectiveAnswer(ownStatusOf(profileId), inherited.get(profileId));
   const statusOf = (profileId: string) => answerOf(profileId).status;

@@ -105,9 +105,7 @@ async function runJob(db: Db, job: NotificationJob) {
             job.event_id!,
             recipients.flatMap((r) => r.coversProfileIds),
             // A game in a tournament shows the tournament answer it follows (D19).
-            job.snapshot.tournament_id && job.snapshot.tournament_title
-              ? { id: job.snapshot.tournament_id, title: job.snapshot.tournament_title }
-              : null
+            await currentTournamentOf(db, job)
           )
         : null;
     const emails = new Map<string, Promise<RenderedEmail>>();
@@ -182,6 +180,25 @@ async function runJob(db: Db, job: NotificationJob) {
       .eq("id", job.id);
     return { jobId: job.id, status: "failed", sent: 0, failed: 0, skipped: 0 };
   }
+}
+
+/**
+ * The tournament a game is in now, whose answers it follows. Not the snapshot's:
+ * that describes the change as queued, and the game may have left the
+ * tournament, or moved to another, before the notice is sent (review TL-018).
+ * A failed read throws, so the job is tried again rather than guessing.
+ */
+async function currentTournamentOf(db: Db, job: NotificationJob): Promise<{ id: string; title: string } | null> {
+  if (job.snapshot.event_type !== "game" || !job.event_id) return null;
+  const { data, error } = await db
+    .from("events")
+    .select("tournament_id, tournament:tournament_id(title)")
+    .eq("id", job.event_id)
+    .maybeSingle();
+  if (error) throw new Error(`Could not read the game's tournament: ${error.message}`);
+  // Through unknown: the typed client can't resolve the self-embed on tournament_id.
+  const game = data as unknown as { tournament_id: string | null; tournament: { title: string } | null } | null;
+  return game?.tournament_id && game.tournament ? { id: game.tournament_id, title: game.tournament.title } : null;
 }
 
 function toRow(item: { profile_id: string; channel: "email" | "push"; target: string }) {

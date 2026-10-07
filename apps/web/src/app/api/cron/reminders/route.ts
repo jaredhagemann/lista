@@ -15,7 +15,7 @@ import {
 } from "@/lib/notifications/tournament-notice";
 import type { TournamentGameSnapshot } from "@/lib/notifications/dispatch";
 import { teamEmailBrand, type BrandedTeam } from "@/emails/brand";
-import { answerRowsFor, loadAnswerContext } from "@/lib/notifications/answers";
+import { answerRowsFor, loadAnswerContext, type AnswerContext } from "@/lib/notifications/answers";
 import { gameTitle, uniformOf, type TeamUniforms } from "@/lib/events/game-display";
 import { tournamentDates } from "@/lib/events/tournament";
 import { sendPushNotification } from "@/lib/notifications/push";
@@ -140,13 +140,29 @@ export async function GET(request: Request) {
 
     // Each person's current answer, read once for the event; every recipient's
     // email then carries rows for just their own people (§4.7, D9–D10).
-    const answers = await loadAnswerContext(
-      supabase,
-      event.id,
-      recipients.flatMap((r) => r.coversProfileIds),
-      // A game in a tournament shows the tournament answer it follows (D19).
-      event.tournament_id && event.tournament ? { id: event.tournament_id, title: event.tournament.title } : null
-    );
+    // Answers that can't be read are never shown as "no answer" (review TL-017):
+    // tried twice, then this event's reminder isn't sent, and the run reports it.
+    let answers: AnswerContext | null = null;
+    let answersError = "unknown error";
+    for (let attempt = 0; attempt < 2 && !answers; attempt++) {
+      try {
+        answers = await loadAnswerContext(
+          supabase,
+          event.id,
+          recipients.flatMap((r) => r.coversProfileIds),
+          // A game in a tournament shows the tournament answer it follows (D19).
+          event.tournament_id && event.tournament ? { id: event.tournament_id, title: event.tournament.title } : null
+        );
+      } catch (err) {
+        answersError = err instanceof Error ? err.message : "unknown error";
+      }
+    }
+    if (!answers) {
+      console.error(`Reminder for event ${event.id} not sent: its answers could not be read: ${answersError}`);
+      failedEvents.push({ eventId: event.id, error: answersError });
+      continue;
+    }
+    const answerContext = answers;
     const playing = games.filter((g) => !g.is_cancelled).length;
     const gamesPhrase = playing > 0 ? `${playing} ${playing === 1 ? "game" : "games"}` : null;
 
@@ -164,7 +180,7 @@ export async function GET(request: Request) {
             action: "reminder",
             games: { total: playing, action: "created", list: games },
             url: eventUrl,
-            answers: answerRowsFor(recipient, answers, eventUrl),
+            answers: answerRowsFor(recipient, answerContext, eventUrl),
           })
         : renderEventEmail({
             eventTitle: event.title,
@@ -182,7 +198,7 @@ export async function GET(request: Request) {
             homeAway: event.home_away,
             uniform: uniformOf(event.uniform, event.teams ?? {}),
             notes: event.notes,
-            answers: answerRowsFor(recipient, answers, eventUrl),
+            answers: answerRowsFor(recipient, answerContext, eventUrl),
             partOf: partOfLine({ tournament_title: event.tournament?.title, round: event.round }),
           });
 

@@ -337,3 +337,78 @@ describe("unchanged outside a tournament's games", () => {
     expect(pressed(yourPicker())).toEqual(["Available"]);
   });
 });
+
+// ── TL-016 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──
+
+describe("TL-016: a refreshed page shows the tournament answers it was given", () => {
+  // A refresh re-renders the same mounted page with new server props.
+  function page(ev: unknown, tournamentAnswers: Answer[], gameAnswers: Answer[] = []) {
+    return (
+      <EventDetail
+        event={ev as never}
+        isAdmin={false}
+        creatorName="Coach Kim"
+        team={TEAM}
+        teamTimeZone={LA}
+        currentUserId="mia"
+        availabilityRows={gameAnswers}
+        tournamentAnswers={tournamentAnswers}
+        members={MEMBERS}
+      />
+    );
+  }
+
+  it("a changed tournament answer moves the row, and the count", () => {
+    const { rerender } = render(page(event({}), [{ profileId: "ava", status: "available" }]));
+    expect(groupOf("Ava Smith")).toBe("available");
+
+    rerender(page(event({}), [{ profileId: "ava", status: "unavailable" }]));
+
+    expect(groupOf("Ava Smith")).toBe("unavailable");
+    expect(within(rowOf("Ava Smith")).getByText("from Surf Cup")).toBeTruthy();
+    expect(screen.getByText("1 unavailable")).toBeTruthy();
+  });
+
+  it("a cleared tournament answer leaves no answer", () => {
+    const { rerender } = render(page(event({}), [{ profileId: "ava", status: "available" }]));
+
+    rerender(page(event({}), []));
+
+    expect(groupOf("Ava Smith")).toBe("none");
+    expect(within(rowOf("Ava Smith")).queryByText("from Surf Cup")).toBeNull();
+  });
+
+  it("a game taken out of its tournament stops following it", () => {
+    const { rerender } = render(page(event({}), [{ profileId: "ava", status: "available" }]));
+
+    rerender(page(event({ tournament_id: null, tournament: null, round: null }), []));
+
+    expect(groupOf("Ava Smith")).toBe("none");
+    expect(screen.queryByText(/from Surf Cup/)).toBeNull();
+  });
+
+  it("a game moved to another tournament follows that one", () => {
+    const { rerender } = render(page(event({}), [{ profileId: "ava", status: "available" }]));
+
+    rerender(
+      page(event({ tournament_id: "t-2", tournament: { id: "t-2", title: "Winter Cup" } }), [
+        { profileId: "ava", status: "maybe" },
+      ])
+    );
+
+    expect(groupOf("Ava Smith")).toBe("maybe");
+    expect(within(rowOf("Ava Smith")).getByText("from Winter Cup")).toBeTruthy();
+  });
+
+  it("a game answer set on the page still wins after a refresh", async () => {
+    const { rerender } = render(page(event({}), [{ profileId: "mia", status: "available" }]));
+    const user = userEvent.setup();
+    await user.click(within(yourPicker()).getByRole("button", { name: "Unavailable" }));
+    await waitFor(() => expect(groupOf("Mia Chen")).toBe("unavailable"));
+
+    rerender(page(event({}), [{ profileId: "mia", status: "maybe" }]));
+
+    expect(groupOf("Mia Chen")).toBe("unavailable");
+    expect(within(rowOf("Mia Chen")).queryByText("from Surf Cup")).toBeNull();
+  });
+});
