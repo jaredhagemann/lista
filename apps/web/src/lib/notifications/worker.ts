@@ -116,11 +116,7 @@ async function runJob(db: Db, job: NotificationJob) {
       : {
           title: subject,
           body: tournament ? tournamentPushBody(job, timeZone) : buildPushBody(job, timeZone),
-          url: tournament
-            ? tournamentNoticeUrl(job, "")
-            : job.event_id
-              ? `/dashboard/schedule/${job.event_id}`
-              : "/dashboard/schedule",
+          url: tournament ? tournamentNoticeUrl(job, "") : eventPathOf(job),
         };
 
     const outcomes: DeliveryOutcome[] = [];
@@ -264,6 +260,8 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
     action: templateAction(job.action),
     arrivalTime: job.snapshot.arrival_time,
     eventUrl: eventUrlOf(job),
+    // A deleted event's page is gone (BUG-032).
+    linkLabel: job.action === "deleted" ? "View schedule" : "View event",
     timeZone,
     opponent: job.snapshot.opponent,
     homeAway: job.snapshot.home_away,
@@ -318,8 +316,16 @@ function buildTournamentEmail(job: NotificationJob, team: Team, timeZone: string
   });
 }
 
+/**
+ * Where a notice links: the event's page, or the schedule when there's no page
+ * to open. The job keeps a deleted event's id, but its page is gone (BUG-032).
+ */
+function eventPathOf(job: NotificationJob) {
+  return job.event_id && job.action !== "deleted" ? `/dashboard/schedule/${job.event_id}` : "/dashboard/schedule";
+}
+
 function eventUrlOf(job: NotificationJob) {
-  return job.event_id ? `${appUrl()}/dashboard/schedule/${job.event_id}` : `${appUrl()}/dashboard/schedule`;
+  return `${appUrl()}${eventPathOf(job)}`;
 }
 
 function buildPushBody(job: NotificationJob, timeZone: string): string {

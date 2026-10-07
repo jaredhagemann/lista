@@ -81,6 +81,7 @@ export function EventEmail({
   previous,
   answers,
   partOf,
+  linkLabel = "View event",
 }: {
   eventTitle: string;
   eventType: string;
@@ -103,6 +104,8 @@ export function EventEmail({
   answers?: AnswerRow[];
   /** "Part of Surf Cup · Semifinal", for a game in a tournament. */
   partOf?: string | null;
+  /** The button's words: "View schedule" when it links there (BUG-032). */
+  linkLabel?: string;
 }) {
   const zone = resolveTimeZone(timeZone);
   const { label, tone } = ACTIONS[action];
@@ -184,7 +187,7 @@ export function EventEmail({
       {showAnswers && <Answers answers={answers!} />}
       {eventUrl && (
         <EmailButton href={eventUrl} brand={brand}>
-          View event
+          {linkLabel}
         </EmailButton>
       )}
     </EmailLayout>
