@@ -144,6 +144,8 @@ People answer the tournament, and can answer a game to override it ("can't make 
   - **A game's response list:** answers for that game. Inherited ones are marked "from the tournament".
   - **The coach's availability grid:** a column for the tournament, and one per game showing the resulting
     answer, with overrides marked.
+  - **Emails and reminders for a game (D19):** each person's current answer is the game's resulting answer. With
+    no answer of their own for the game, it's the tournament's. The buttons still answer the game, as an override.
 - **Clearing a game's answer** goes back to the tournament's answer. It doesn't mean "no answer".
 - **Bulk "Set my unanswered events to…"** (`set_unanswered_availability`, BUG-014; D16):
   - When a tournament and its games are all unanswered, it answers **only the tournament**. The games then
@@ -317,6 +319,7 @@ Display and answering only. Creating events stays on the web (D11).
 | D16b | The bulk fill's `'game'` filter and tournament games | Standalone games only. Tournament games are answered through their tournament |
 | D17 | One league per season, archiving, and the old `teams.league` fields | Per season, and archiving keeps records. The old fields stay for now, relabeled as display text and unused for records; retiring them is a later, separate change |
 | D18 | Tournaments and recurring series | A tournament and its games are always standalone. A trigger refuses series links |
+| D19 | The current answer shown in a game's email or reminder (decided 2026-10-07) | The game's resulting answer: its own, else the tournament's. Built with effective availability, the part after 2c, not in #118 |
 
 ## 7. Compatibility with the installed 1.0.12 (D4 of the mobile spec)
 

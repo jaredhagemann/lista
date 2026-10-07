@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-06, [PR #117](https://github.com/jaredhagemann/lista/pull/117) at `a3baa09c670db829cdf11486c6c6cac74340764e`, reviewing fixes in `a0642c8dd`.
-**Current outcome:** TL-001 through TL-014 are resolved. No new findings in the follow-up review of TL-012 through TL-014. All current CI checks pass, including staging. Part 2c tournament notices remain a release dependency for #117.
+**Last reviewed:** 2026-10-06, [PR #118](https://github.com/jaredhagemann/lista/pull/118) at `19e3bca5e16277e9d05f8102874e8ed67af3ba90`, stacked on #117 at `2d81379fc`.
+**Current outcome:** TL-001 through TL-014 remain resolved. PR #118 implements part 2c tournament notices; its one finding, TL-015 (P2), is implemented in `3d2818211` and awaiting review. Email answer inheritance is recorded below as a scope question for the separately planned availability work.
 
 ## Using this document as the feature changes
 
@@ -32,6 +32,7 @@
 | [TL-012](#tl-012--reject-games-that-end-at-or-before-their-start) | P2 | New game forms save invalid time ranges | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-013](#tl-013--apply-the-selected-location-to-games-created-with-the-tournament) | P2 | Games created with a tournament lose the selected venue | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-014](#tl-014--keep-placement-only-edits-silent) | P3 | Placement-only edits can queue an update notice | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
+| [TL-015](#tl-015--handle-tournament-game-read-errors-before-sending-reminders) | P2 | Failed game reads silently send incomplete tournament reminders | Implemented — awaiting review | Fix `3d2818211` (PR #118) |
 
 ## Implementation progress as of 2026-10-06
 
@@ -41,8 +42,8 @@
 | Tournament database, #114 and #115 | Merged | Tournament/game links, placement and rounds, indexes, atomic create/cancel/delete, bulk-answer rules, durable notification snapshots and concurrency fixes |
 | Tournament web display, #116 | Merged | Overlap queries, schedule rows and calendar bars, tournament/game detail links, placement and record display, dashboard treatment |
 | Tournament web management, #117 | Reviewed; release waits for part 2c | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
-| Tournament notices, part 2c | Pending | Worker/template rendering and tournament-aware reminders. #117 explicitly requires shipping with this work |
-| Effective availability in web UI | Pending | Inherited answers, game overrides and clearing, response lists and coach grid; existing tournament bulk-fill database rules alone do not complete this |
+| Tournament notices, part 2c | Reviewed, PR #118; TL-015 implemented, awaiting review (stacked on #117) | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders. #117 explicitly requires shipping with this work |
+| Effective availability in web UI | Pending; its own part after 2c (decided 2026-10-06) | Inherited answers, game overrides and clearing, response lists and coach grid; existing tournament bulk-fill database rules alone do not complete this |
 | Tournament mobile support | Pending | Dedicated display and inherited answers; existing 1.0.12 behavior remains the accepted rollout difference |
 | Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
 
@@ -579,6 +580,71 @@ notes change with Notify on still queues an update.
 
 **Independent follow-up verification:** Independently executed the actual edit handler with Notify enabled: placement-only and unchanged saves produced zero enqueue calls; title and notes changes each produced exactly one. No outbound notices were sent.
 
+## Part 2c — tournament notification findings
+
+### TL-015 — Handle tournament game read errors before sending reminders
+
+**Priority / status:** P2 / Implemented — awaiting review.
+**Source:** [reminder cron, lines 113–119](https://github.com/jaredhagemann/lista/blob/19e3bca5e16277e9d05f8102874e8ed67af3ba90/apps/web/src/app/api/cron/reminders/route.ts#L113-L119).
+
+The new child-game query reads only `data` and coalesces null to an empty array. If Supabase returns
+an error (for example, a statement timeout), the cron treats the tournament as having no games.
+It sends the reminder without the game count or schedule, and its push falls back to the date range.
+The endpoint still reports success, hiding the failed read. A later successful daily run will normally
+be outside this tournament's pre-start reminder window, so it does not repair the incomplete notice.
+
+**Reproduction and observed result:** ran the actual reminder handler and HTML/plain-text renderers
+with mocked database and delivery functions. The initial event query returned one tournament;
+the child query returned `{ data: null, error: { code: "57014", message: "statement timeout" } }`.
+The handler returned HTTP 200 with `success: true`, one event processed and two notifications sent
+(email and push). The rendered email had no schedule. The existing successful-read control lists both games.
+No real notification was sent.
+
+**Requested change:** inspect the child-query error before constructing or sending that tournament's
+reminder. Surface the failure and provide a retry/defer path; do not treat an unavailable schedule as
+an empty one or count the tournament as successfully processed. Preserve legitimate zero-game tournaments.
+
+**Regression coverage:** simulate the child read failing after the initial event query succeeds;
+assert that a normal, incomplete reminder is not sent and the failure remains visible/retryable.
+Keep successful nonempty and genuinely empty schedule cases covered.
+
+**Resolution and verification:** Implemented — awaiting review. Fixed in `3d2818211` (PR #118).
+- **The fix:**
+  - The cron reads a tournament's games first, before recipients, answers or anything sent.
+  - **Retry:** a failed read is tried once more, since a statement timeout is usually brief.
+  - **When it still fails:** that tournament's reminder isn't sent, by email or push. It's logged, and listed in
+    the response as `failedEvents: [{ eventId, error }]`. `eventsProcessed` excludes it.
+  - **The run:** it returns HTTP 500 with `success: false`, so the cron's monitoring sees the failure. Every
+    other event's reminder still goes out, and so does the notice sweep.
+  - **Zero games:** a tournament with no games is a successful empty read, and is still reminded without a
+    schedule.
+- **Retry and defer, as built:** the retry is the immediate second read. Reminders have no queue of their own,
+  and a later daily run is usually after the tournament has started, so nothing defers it past this run. The
+  failure is surfaced rather than replaced with an incomplete reminder. A durable deferral would need a
+  reminder queue; that wasn't added here.
+- **Implementation verification:** `tests/tournament-notice-wiring.test.ts` → "TL-015":
+  - one failed read, then a good one, sends the whole reminder (2 games listed), status 200
+  - a read failing twice sends no Surf Cup email or push. A standalone practice in the same run is still
+    reminded, and the notice sweep still runs. Status 500, with `failedEvents` naming `t-1` and the error.
+  - a tournament with no games is reminded without them, status 200
+
+  The first two failed before the fix. The third passed before it too, and guards the legitimate path.
+
+### Availability scope question for the next part
+
+A game email/reminder still loads only the game's direct availability row. If a person has answered
+Available on the tournament and has no game override, its game reminder renders **"No answer yet"**.
+Independently reproduced with the real reminder handler and rendered email. Its answer links correctly
+target the game, but its displayed current answer does not reflect inheritance.
+
+Effective availability in the web UI is already deferred to its own part after 2c. Asked whether that
+follow-up should also cover email/reminder answer labels or whether those labels belong in #118.
+Pending clarification, this review treats the labels as follow-up scope, not a new blocking finding
+or an accepted permanent discrepancy. Include both tournament fallback and explicit game override cases.
+
+**Decided 2026-10-07 (spec D19):** yes. A game's email and reminder show the person's answer for the game,
+else their tournament answer. This is built in the effective-availability part after 2c, not in #118.
+
 ## Review history
 
 ### 2026-10-01 — Specification, PR #111
@@ -785,5 +851,40 @@ than reopen them implicitly. The source code review below is separate from accep
   independent handler/SQL probes are separate evidence; no successful local Vitest run is claimed.
 - **Release dependency:** unchanged: tournament notices in part 2c must ship with or before #117.
 - **Review changes:** this log only; no application changes, commits, pushes or published PR comments.
+
+### 2026-10-06 — Part 2c tournament notices, PR #118
+
+- **Revision:** `19e3bca5e16277e9d05f8102874e8ed67af3ba90`; base #117 at `2d81379fcd02f54529b964eec3ea6e7b9ce9fc98`.
+- **Scope:** all 11 changed files; tournament email and push routing, snapshots and per-action links,
+  answer eligibility, affected-game lists, game tournament/round labels, reminder queries and new tests.
+- **Outcome:** TL-015 opened (P2); TL-001–TL-014 remain resolved. Availability answer labels recorded
+  separately as a scope question for the next part.
+- **Completed:** a dedicated tournament template using whole-day dates and game schedules; update
+  comparisons; cancellation/kept/deleted game summaries; schedule links after deletion; action-appropriate
+  answer buttons; tournament context in game emails; tournament reminders with active-game counts.
+- **Independent verification:** the full web suite passed locally: 1,405 tests in 102 files, including
+  all 23 new tests with actual HTML/plain-text rendering. All three new RLS integration tests passed against localhost Supabase with fixture cleanup. TypeScript
+  `tsc --noEmit --incremental false` passed. Two additional probes reproduced TL-015 and the inherited
+  answer-label behavior using mocked delivery. Temporary probe tests were removed afterward.
+- **CI:** only Vercel deployment/preview checks are present and passing at this head. The test workflow
+  targets PRs into main and has not run on this stacked PR. Recheck CI after retargeting/merging its base.
+- **Limitations:** no visual inbox/browser QA or real email/push delivery performed. The earlier local
+  dependency-access problem was overcome by reusing the installed dependencies with approved access in
+  an isolated review worktree; the local test results above were independently executed.
+- **Review changes:** this log only in the isolated `pr118-review` worktree; no application changes,
+  commits, pushes or published GitHub review comments. `git diff --check` passed.
+
+### 2026-10-06 — TL-015 fix, PR #118
+
+- **Revision:** `3d2818211`, on `8faf4d6e3`. The review round above was committed as written in `8faf4d6e3`,
+  copied from the `pr118-review` worktree.
+- **Scope:** `app/api/cron/reminders/route.ts` and `tests/tournament-notice-wiring.test.ts`.
+- **Status changes:** TL-015, Open → Implemented — awaiting review.
+- **Local verification:**
+  - Before the fix, two of the three new tests failed, and each failure reproduced the finding.
+  - With the fix, web passes 1,408 of 1,408, and `tsc --noEmit` and eslint are clean.
+- **The availability scope question:** not decided in this round. It's put to the user, with the recommendation
+  that email and reminder answer labels go with the effective-availability part, alongside the web, since they
+  need the same `effectiveAnswer` rule.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.

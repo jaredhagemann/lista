@@ -42,6 +42,34 @@ export type EventSnapshot = {
    * review): the recurrence, time, zone and fields, as the coach confirmed them.
    */
   series_changes?: FieldChange[] | null;
+  /** A game's round and tournament (docs/specs/tournaments-and-leagues.md §4). */
+  round?: string | null;
+  tournament_id?: string | null;
+  tournament_title?: string | null;
+  /** A tournament-wide action's summary of its games (enqueue_tournament_notice). */
+  tournament?: TournamentGamesSummary | null;
+};
+
+/** A game as a tournament notice captured it, before the action changed it (TL-005). */
+export type TournamentGameSnapshot = {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  timezone: string | null;
+  opponent: string | null;
+  home_away: string | null;
+  round: string | null;
+  is_cancelled: boolean | null;
+};
+
+export type TournamentGamesSummary = {
+  /** How many games it has, or had. */
+  games: number;
+  /** How many this action changed. */
+  affected: number;
+  games_action: "created" | "cancelled" | "kept" | "deleted";
+  affected_games: TournamentGameSnapshot[];
 };
 
 export type NotificationJob = {
