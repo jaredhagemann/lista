@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-07, merged `main` at `8793d6abe69009b84886dba017990541784d9470`, including PRs #117–#120.
-**Current outcome:** TL-001 through TL-015 are resolved. No new actionable findings in the merged-code review. Tournament notices and BUG-032 are present together on main. D19 settles email answer inheritance as part of the upcoming effective-availability implementation.
+**Last reviewed:** 2026-10-07, [PR #121](https://github.com/jaredhagemann/lista/pull/121) at `e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f`, implementation `ce960e427`.
+**Current outcome:** TL-001 through TL-015 remain resolved. Effective availability is implemented in PR #121; three new P2 findings, TL-016–TL-018, are open. Normal inheritance, overrides, clearing, grid totals and D19 email rendering pass their existing tests.
 
 ## Using this document as the feature changes
 
@@ -33,6 +33,9 @@
 | [TL-013](#tl-013--apply-the-selected-location-to-games-created-with-the-tournament) | P2 | Games created with a tournament lose the selected venue | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-014](#tl-014--keep-placement-only-edits-silent) | P3 | Placement-only edits can queue an update notice | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-015](#tl-015--handle-tournament-game-read-errors-before-sending-reminders) | P2 | Failed game reads silently send incomplete tournament reminders | Resolved | Fix `3d2818211`; verified at `af20d2f66` and merged main `8793d6abe` |
+| [TL-016](#tl-016--recompute-inherited-responses-when-server-props-change) | P2 | Refreshed response lists retain stale tournament answers | Open | Two component rerender probes at `e2c1607d8` |
+| [TL-017](#tl-017--require-successful-answer-reads-before-resolving-inheritance) | P2 | Failed answer reads produce incorrect email availability | Open | Two worker/rendering probes at `e2c1607d8` |
+| [TL-018](#tl-018--resolve-current-tournament-membership-for-email-answers) | P2 | Queued game emails inherit from a tournament the game has left | Open | Worker probe plus local database reproduction at `e2c1607d8` |
 
 ## Implementation progress as of 2026-10-07
 
@@ -44,7 +47,7 @@
 | Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
 | Tournament notices, part 2c | Merged via #120 after #118 landed on its feature base; TL-015 resolved | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders |
 | Deleted standalone-event links, #119 / BUG-032 | Merged and reviewed | Deleted notices open the schedule in email and push; cancelled notices retain their event link; tournament routing remains intact |
-| Effective availability in web UI and email | Implemented — awaiting review, PR #121 (`ce960e427`), including D19 | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and game email/reminder answer labels; existing tournament bulk-fill database rules alone do not complete this |
+| Effective availability in web UI and email | Reviewed, PR #121; TL-016–TL-018 open, including D19 | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and game email/reminder answer labels; existing tournament bulk-fill database rules alone do not complete this |
 | Tournament mobile support | Pending | Dedicated display and inherited answers; existing 1.0.12 behavior remains the accepted rollout difference |
 | Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
 
@@ -650,6 +653,88 @@ fallback and explicit game override cases.
 **Decided 2026-10-07 (spec D19):** yes. A game's email and reminder show the person's answer for the game,
 else their tournament answer. This is built in the effective-availability part after 2c, not in #118.
 
+## Effective availability — web and email findings
+
+### TL-016 — Recompute inherited responses when server props change
+
+**Priority / status:** P2 / Open.
+**Source:** [response-list.tsx, lines 108–112](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/components/availability/response-list.tsx#L108-L112).
+
+The inherited-answer map is initialized once in state and never updated. When refreshed server props
+contain changed tournament answers, the RSVP picker reads the new props but the response groups and
+counts keep the old map. If the game is unlinked, the old answer still contributes even though its
+"from tournament" marker disappears. A soft refresh preserves this component's state.
+
+**Reproduction / observed:** rendered the actual EventAvailability component with Ava inheriting
+Available, then rerendered with the tournament answer Unavailable. The picker selected Unavailable,
+but Ava remained in the Available response group. A second probe rerendered with no tournament and
+no tournament answers: Ava still remained in Available instead of No response. Both expected-behavior
+assertions failed. This models updated server props after a refresh, not an automatic live subscription.
+
+**Requested change:** derive inherited answers from the current props (or explicitly synchronize them)
+and stop applying them when there is no linked tournament. Preserve game-specific local edits separately.
+
+**Regression coverage:** changed parent answers, cleared parent answers, changed parent identity and
+unlinking on the same mounted component; assert picker, grouping, counts and inheritance labels agree.
+
+**Resolution and verification:** Open at `e2c1607d8`.
+
+### TL-017 — Require successful answer reads before resolving inheritance
+
+**Priority / status:** P2 / Open.
+**Source:** [answers.ts, lines 52–65](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/lib/notifications/answers.ts#L52-L65).
+
+loadAnswerContext ignores query errors and converts null answer data into empty maps. With inheritance,
+a failed game-answer query is now treated as proof that no override exists. A person with an explicit
+Unavailable game answer can consequently receive "Available · from Surf Cup" if the tournament read
+succeeds. Conversely, a failed tournament-answer read produces "No answer yet" when an inherited answer
+exists. The worker sends these rendered emails rather than treating the read as failed. The helper is
+also used by reminders.
+
+**Reproduction / observed:** two real-worker/rendering probes, with database and delivery mocked:
+(1) stored game Unavailable plus tournament Available, game query returns a statement-timeout error;
+the email says Available from Surf Cup. (2) only tournament Available, parent query returns that error;
+the email says No answer yet. Both expected-behavior assertions failed; the 15 existing wiring tests
+passed in the same harness.
+
+**Requested change:** distinguish a successful empty result from a failed read before calculating any
+fallback. Surface/retry the failure or explicitly render an unknown state; do not claim a concrete
+answer or absence of an answer from incomplete reads. Keep the worker's retry handling and the reminder
+handler's failure reporting coherent with this behavior.
+
+**Regression coverage:** fail each answer query independently; ensure no fabricated inherited/current
+answer is sent. Keep successful-empty, inherited and explicit-override controls.
+
+**Resolution and verification:** Open at `e2c1607d8`.
+
+### TL-018 — Resolve current tournament membership for email answers
+
+**Priority / status:** P2 / Open.
+**Source:** [worker.ts, lines 107–110](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/lib/notifications/worker.ts#L107-L110).
+
+The worker chooses the tournament for current availability from the historical notification snapshot.
+A game update may remain pending until after "cancel tournament, keep games" has unlinked that game.
+The old tournament answer still exists, so the later email incorrectly says the now-standalone game
+inherits it. D15 explicitly says inherited answers do not transfer to retained standalone games.
+Reading current answer rows using an old relationship also affects games moved to another tournament.
+
+**Reproduction / observed:** the worker probe supplied an old game-update snapshot with Surf Cup,
+a current game row with tournament_id null, no game answer, and Available on Surf Cup. Its email still
+said "Available · from Surf Cup". Separately, a local database test created a tournament, answered it,
+changed a game's arrival time to enqueue an update, then called cancel_tournament with p_cancel_games
+false. The game was unlinked, its update job remained pending with the old tournament ID in its snapshot,
+and the parent answer remained. This confirms the database can produce the state used by the worker probe.
+Fixtures were cleaned up; no notification was delivered.
+
+**Requested change:** resolve current game membership when loading current answers, independently of the
+historical snapshot used to describe the schedule change. Use no fallback for an unlinked game, and the
+current parent for a reassigned game. Handle failure to read that relationship explicitly.
+
+**Regression coverage:** enqueue while linked, unlink or reassign before draining, and verify the answer
+label matches the game's current relationship; include an explicit game override as a control.
+
+**Resolution and verification:** Open at `e2c1607d8`.
+
 ## Review history
 
 ### 2026-10-01 — Specification, PR #111
@@ -932,5 +1017,30 @@ than reopen them implicitly. The source code review below is separate from accep
   were verified through CI; local execution was limited to affected tests and TypeScript checking.
 - **Review changes:** updated this review log on main only, including the previously unmerged TL-015
   resolution. No application edits, commits, pushes or published GitHub comments. `git diff --check` passed.
+
+### 2026-10-07 — Effective availability, PR #121
+
+- **Revision:** `e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f`; implementation `ce960e427`, based on reviewed main `8793d6abe`.
+- **Scope:** all 19 changed files, tracing the shared rule through the server page, RSVP controls,
+  response groups/counts, matrix queries and edits, worker, reminder cron, templates and new tests.
+- **Outcome:** opened TL-016–TL-018 (P2). Prior TL-001–TL-015 remain resolved.
+- **Completed behavior:** own answer wins over tournament fallback; clearing removes the override;
+  inherited responses are labeled; the grid reads parent answers off-page and counts effective answers;
+  D19 email/reminder labels inherit while their buttons still answer the game. No migration.
+- **Independent verification:** 87 tests passed locally across seven files: effective-availability (14),
+  effective-availability-matrix (7), tournament-notice-wiring (15), event-projection-types (3),
+  availability-matrix (26), availability-responses (15), availability-own-answer (7).
+  TypeScript `tsc --noEmit --incremental false` passed.
+- **Additional probes:** five expected-behavior assertions failed across the three findings, using real
+  components/worker/renderers with mocked reads and delivery. The 15 wiring controls passed alongside
+  them. All four new RLS integration tests passed locally. A further local database test confirmed the
+  pending-notice/unlinked-game state for TL-018. Temporary probes and database fixtures were cleaned up.
+- **CI:** PR checks report passing web, unit, mobile, RLS, staging migration and Vercel checks. Existing
+  green tests do not cover the new findings. Full suites were not repeated locally after focused checks.
+- **Scope decisions:** the PR explicitly describes tapping an inherited value as creating an override,
+  and cycling the grid's own answer from Available. These choices are consistent with preserving a
+  separate own row and are not findings. Mobile effective availability remains the planned next part.
+- **Review changes:** this log only. No application edits, commits, pushes or published GitHub comments;
+  no outbound notifications. `git diff --check` passed. No production/browser smoke test claimed.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
