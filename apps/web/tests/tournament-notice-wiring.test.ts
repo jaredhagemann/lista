@@ -261,6 +261,67 @@ describe("the worker, for a game in a tournament", () => {
     // Its own answers: an override for this game (spec §4, Notifications).
     expect(sent().html).toContain(`${APP}/dashboard/schedule/g-2?answer=available`);
   });
+
+  // ── D19: the answer shown is the game's resulting answer ──
+
+  function queueGameUpdate() {
+    mocks.jobs.push({
+      id: "job-g",
+      team_id: "team-1",
+      event_id: "g-2",
+      action: "updated",
+      kind: "event",
+      occurrence_count: 1,
+      attempts: 1,
+      recipient_profile_ids: null,
+      snapshot: {
+        title: "Final",
+        event_type: "game",
+        start_time: "2026-12-13T22:00:00.000Z",
+        end_time: "2026-12-13T23:30:00.000Z",
+        timezone: LA,
+        arrival_time: null,
+        location_id: null,
+        location_name: null,
+        is_cancelled: false,
+        opponent: "Hawks",
+        home_away: "home",
+        round: "Final",
+        tournament_id: "t-1",
+        tournament_title: "Surf Cup",
+      },
+    });
+  }
+
+  it("D19: with no answer for the game, shows the tournament's, and says so", async () => {
+    mocks.tables.availability = [{ event_id: "t-1", profile_id: "p1", status: "available" }];
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("✓ Available · from Surf Cup");
+    expect(sent().text).not.toContain("No answer yet");
+    // Its buttons still answer the game.
+    expect(sent().html).toContain(`${APP}/dashboard/schedule/g-2?answer=maybe`);
+  });
+
+  it("D19: the game's own answer wins, unmarked", async () => {
+    mocks.tables.availability = [
+      { event_id: "t-1", profile_id: "p1", status: "available" },
+      { event_id: "g-2", profile_id: "p1", status: "maybe" },
+    ];
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("? Maybe");
+    expect(sent().text).not.toContain("from Surf Cup");
+  });
+
+  it("D19: with neither, no answer yet", async () => {
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("No answer yet");
+  });
 });
 
 describe("the reminder cron", () => {
@@ -316,6 +377,17 @@ describe("the reminder cron", () => {
     await remind();
 
     expect(sent().text).toContain("Part of Surf Cup · Pool A");
+  });
+
+  it("D19: a game's reminder shows the tournament answer it follows", async () => {
+    vi.setSystemTime(new Date("2026-12-11T12:00:00.000Z"));
+    mocks.tables.events = [
+      { ...GAMES[0], teams: TEAM, locations: null, uniform: null, notes: null, arrival_time: null, tournament: { title: "Surf Cup" } },
+    ];
+    mocks.tables.availability = [{ event_id: "t-1", profile_id: "p1", status: "unavailable" }];
+    await remind();
+
+    expect(sent().text).toContain("✗ Unavailable · from Surf Cup");
   });
 
   // ── TL-015 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──

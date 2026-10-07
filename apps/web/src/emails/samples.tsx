@@ -431,7 +431,7 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
     {
       group: "Schedule changes",
       name: "tournament-game-moved-club",
-      title: "A game in a tournament moved: Part of Surf Cup · Semifinal",
+      title: "A game in a tournament moved: Part of Surf Cup · Semifinal; Zoey follows her tournament answer (D19)",
       subject: eventNoticeSubject("updated", GAME_TITLE),
       brand: club,
       render: () =>
@@ -440,7 +440,8 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
           action: "updated",
           partOf: "Part of Surf Cup · Semifinal",
           previous: { startTime: "2026-10-03T16:00:00Z", endTime: "2026-10-03T17:30:00Z", arrivalTime: 45, location: GAME.location, timeZone: PACIFIC },
-          answers: GUARDIAN,
+          // Whoever hasn't answered the game follows their tournament answer.
+          answers: GUARDIAN.map((row) => (row.status ? row : { ...row, status: "available" as const, inheritedFrom: "Surf Cup" })),
           brand: club,
         }),
     },

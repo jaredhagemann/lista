@@ -113,8 +113,14 @@ export default async function EventDetailPage({
   }
   const cleanPath = kept.size > 0 ? `/dashboard/schedule/${eventId}?${kept}` : `/dashboard/schedule/${eventId}`;
 
-  // Fetch availability rows, team members and, for a tournament, its games in parallel
-  const [{ data: availabilityRows }, { data: teamMembersRaw }, { data: tournamentGames }] = await Promise.all([
+  // Fetch availability rows, team members, a tournament's games and a tournament
+  // game's tournament answers (which it follows until answered) in parallel
+  const [
+    { data: availabilityRows },
+    { data: teamMembersRaw },
+    { data: tournamentGames },
+    { data: tournamentAnswerRows },
+  ] = await Promise.all([
     supabase
       .from("availability")
       .select("profile_id, status")
@@ -131,7 +137,16 @@ export default async function EventDetailPage({
           .order("start_time", { ascending: true })
           .order("id", { ascending: true })
       : Promise.resolve({ data: [] }),
+    event.tournament_id
+      ? supabase.from("availability").select("profile_id, status").eq("event_id", event.tournament_id)
+      : Promise.resolve({ data: [] }),
   ]);
+
+  const toAnswers = (rows: { profile_id: string | null; status: string }[] | null) =>
+    (rows ?? [])
+      .filter((r): r is typeof r & { profile_id: string } => r.profile_id != null)
+      .map((r) => ({ profileId: r.profile_id, status: r.status as "available" | "maybe" | "unavailable" }));
+  const tournamentAnswers = toAnswers(tournamentAnswerRows);
 
   const availabilityData = (availabilityRows ?? [])
     .filter((r): r is typeof r & { profile_id: string } => r.profile_id != null)
@@ -175,6 +190,7 @@ export default async function EventDetailPage({
         availabilityRows={availabilityData}
         members={membersData}
         tournamentGames={tournamentGames ?? []}
+        tournamentAnswers={tournamentAnswers}
       />
     </>
   );

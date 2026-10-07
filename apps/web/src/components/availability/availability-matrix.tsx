@@ -40,6 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { displayLabel } from "@/lib/labels";
+import { effectiveAnswer } from "@/lib/availability/effective";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 type EventType = "practice" | "game" | "other";
@@ -49,7 +50,15 @@ type MatrixEvent = {
   title: string;
   event_type: string;
   start_time: string;
+  /** A game's tournament: its cells follow the tournament's answers until set (spec §4, Availability). */
+  tournament_id?: string | null;
 };
+
+/**
+ * A cell as shown: its resulting answer, and for a tournament's game whether
+ * that answer is inherited from the tournament or set for the game.
+ */
+type CellAnswer = { status: CellStatus; marker: "inherited" | "own" | null };
 
 /** What a cell knows. `undefined` is "not read yet", `null` is "no response". */
 type CellStatus = AvailabilityStatus | null | undefined;
@@ -92,7 +101,7 @@ const eventTypeBadge: Record<string, string> = {
  * is still loading. Rendering an unread cell as "no response" is the defect this
  * whole ticket is about (BUG-014, spec §7.3).
  */
-function StatusChip({ status }: { status: CellStatus }) {
+function StatusChip({ status, marker = null }: { status: CellStatus; marker?: CellAnswer["marker"] }) {
   if (status === undefined) {
     return (
       <span
@@ -113,12 +122,26 @@ function StatusChip({ status }: { status: CellStatus }) {
     );
   }
   const cfg = statusConfig[status];
+  // A tournament game's answer says where it comes from: faded and dashed when
+  // it's the tournament's, solid with a dot when set for the game.
+  const title =
+    marker === "inherited"
+      ? `${cfg.label} · from the tournament`
+      : marker === "own"
+        ? `${cfg.label} · set for this game`
+        : cfg.label;
   return (
     <span
-      className={`inline-block rounded px-2 py-0.5 text-sm leading-none font-semibold ${cfg.bg} ${cfg.text}`}
-      title={cfg.label}
+      className={`relative inline-block rounded px-2 py-0.5 text-sm leading-none font-semibold ${cfg.bg} ${cfg.text} ${
+        marker === "inherited" ? "opacity-60 outline outline-1 outline-dashed outline-current" : ""
+      }`}
+      title={title}
+      aria-label={title}
     >
       {cfg.symbol}
+      {marker === "own" && (
+        <span aria-hidden className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-foreground" />
+      )}
     </span>
   );
 }
@@ -294,21 +317,24 @@ export function AvailabilityMatrix({
         });
 
         const displayed = eventPage.items;
+        // A game on screen follows its tournament's answers, so those are read
+        // too, even when the tournament's own column is on another page.
+        const shownIds = displayed.map((e) => e.id);
+        const tournamentIds = [
+          ...new Set(displayed.map((e) => e.tournament_id).filter((id): id is string => !!id)),
+        ].filter((id) => !shownIds.includes(id));
         // Responses for what is on screen, and the roster, together: the page is
         // ready only when all three have succeeded (spec §7.1). The roster comes
         // from its own cache, so paging through events does not read it again.
         const [responses, roster] = await Promise.all([
-          fetchResponsesForEvents(
-            supabase,
-            displayed.map((e) => e.id)
-          ),
+          fetchResponsesForEvents(supabase, [...shownIds, ...tournamentIds]),
           rosterCache.load(teamId),
         ]);
 
         if (generation !== requestGeneration.current || readContext !== contextRef.current) return;
 
         const map = new Map<string, Map<string, AvailabilityStatus | null>>();
-        for (const event of displayed) map.set(event.id, new Map());
+        for (const id of [...shownIds, ...tournamentIds]) map.set(id, new Map());
         for (const row of responses) {
           const inner = map.get(row.event_id) ?? new Map();
           inner.set(row.profile_id, row.status);
@@ -369,6 +395,18 @@ export function AvailabilityMatrix({
     const inner = fetched.get(eventId);
     if (!inner) return undefined;
     return inner.get(profileId) ?? null;
+  }
+
+  /**
+   * What a cell shows: the event's own answer, or for a tournament's game its
+   * resulting answer, the tournament's while it has none of its own.
+   */
+  function answerFor(event: MatrixEvent, profileId: string): CellAnswer {
+    const own = statusFor(event.id, profileId);
+    if (!event.tournament_id || own === undefined) return { status: own, marker: null };
+    const result = effectiveAnswer(own, statusFor(event.tournament_id, profileId));
+    if (!result.status) return { status: null, marker: null };
+    return { status: result.status, marker: result.inherited ? "inherited" : "own" };
   }
 
   function setCell(eventId: string, profileId: string, next: AvailabilityStatus | null) {
@@ -777,6 +815,7 @@ export function AvailabilityMatrix({
                   bulkRecovering={bulkRecovering}
                   onBulk={(status) => setBulk({ status, identity })}
                   statusFor={statusFor}
+                  answerFor={answerFor}
                   onSet={setCell}
                 />
                 {players.length > 0 && (
@@ -786,7 +825,7 @@ export function AvailabilityMatrix({
                     </td>
                     {events.map((event) => {
                       const counted = players.filter(
-                        (p) => statusFor(event.id, p.profileId) === "available"
+                        (p) => answerFor(event, p.profileId).status === "available"
                       ).length;
                       return (
                         <td
@@ -812,6 +851,7 @@ export function AvailabilityMatrix({
                   bulkRecovering={bulkRecovering}
                   onBulk={(status) => setBulk({ status, identity })}
                   statusFor={statusFor}
+                  answerFor={answerFor}
                   onSet={setCell}
                 />
               </tbody>
@@ -863,6 +903,7 @@ function MemberRows({
   bulkRecovering,
   onBulk,
   statusFor,
+  answerFor,
   onSet,
 }: {
   label: string;
@@ -878,6 +919,7 @@ function MemberRows({
   bulkRecovering: boolean;
   onBulk: (status: AvailabilityStatus) => void;
   statusFor: (eventId: string, profileId: string) => CellStatus;
+  answerFor: (event: MatrixEvent, profileId: string) => CellAnswer;
   onSet: (eventId: string, profileId: string, next: AvailabilityStatus | null) => void;
 }) {
   if (group.length === 0) return null;
@@ -935,7 +977,9 @@ function MemberRows({
               )}
             </td>
             {events.map((event) => {
+              // A cell changes the event's own answer; it shows the resulting one.
               const status = statusFor(event.id, member.profileId);
+              const shown = answerFor(event, member.profileId);
               // Eligibility is decided when the row renders, not once at import.
               const isPast = new Date(event.start_time) < new Date();
               // Editable while a refresh is in flight: what is on screen came
@@ -957,10 +1001,10 @@ function MemberRows({
                         onSet(event.id, member.profileId, next);
                       }}
                     >
-                      <StatusChip status={status} />
+                      <StatusChip status={shown.status} marker={shown.marker} />
                     </button>
                   ) : (
-                    <StatusChip status={status} />
+                    <StatusChip status={shown.status} marker={shown.marker} />
                   )}
                 </td>
               );

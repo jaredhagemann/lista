@@ -20,6 +20,8 @@ export function EventAvailability({
   isAdmin,
   currentUserId,
   answeringFor,
+  tournamentRows,
+  tournamentTitle,
 }: {
   eventId: string;
   isPast: boolean;
@@ -30,6 +32,12 @@ export function EventAvailability({
   currentUserId: string;
   /** That player's first name, when it's another of the viewer's players than the one they're viewing as. */
   answeringFor?: string | null;
+  /**
+   * For a game in a tournament: everyone's tournament answers, which they follow
+   * here until they answer the game itself (spec §4, Availability).
+   */
+  tournamentRows?: { profileId: string; status: AvailabilityStatus }[];
+  tournamentTitle?: string | null;
 }) {
   const [ownStatus, setOwnStatus] = useState<AvailabilityStatus | null>(
     () => availabilityRows.find((r) => r.profileId === currentUserId)?.status ?? null
@@ -44,6 +52,8 @@ export function EventAvailability({
           initialStatus={ownStatus}
           onStatusChange={setOwnStatus}
           answeringFor={answeringFor}
+          inheritedFrom={tournamentTitle}
+          inheritedStatus={tournamentRows?.find((r) => r.profileId === currentUserId)?.status ?? null}
         />
       )}
       {isPast && (
@@ -59,6 +69,8 @@ export function EventAvailability({
           isAdmin={isAdmin}
           currentUserId={currentUserId}
           currentUserStatus={ownStatus}
+          inheritedRows={tournamentRows}
+          inheritedFrom={tournamentTitle}
         />
       </div>
     </>

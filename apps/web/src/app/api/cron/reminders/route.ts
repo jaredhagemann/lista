@@ -143,7 +143,9 @@ export async function GET(request: Request) {
     const answers = await loadAnswerContext(
       supabase,
       event.id,
-      recipients.flatMap((r) => r.coversProfileIds)
+      recipients.flatMap((r) => r.coversProfileIds),
+      // A game in a tournament shows the tournament answer it follows (D19).
+      event.tournament_id && event.tournament ? { id: event.tournament_id, title: event.tournament.title } : null
     );
     const playing = games.filter((g) => !g.is_cancelled).length;
     const gamesPhrase = playing > 0 ? `${playing} ${playing === 1 ? "game" : "games"}` : null;

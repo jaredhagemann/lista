@@ -10,6 +10,7 @@ import {
   saveAvailability,
   type AvailabilityStatus,
 } from "./availability-picker";
+import { effectiveAnswer } from "@/lib/availability/effective";
 
 interface Member {
   profileId: string;
@@ -69,6 +70,8 @@ export function ResponseList({
   isAdmin,
   currentUserId,
   currentUserStatus,
+  inheritedRows,
+  inheritedFrom,
 }: {
   eventId: string;
   members: Member[];
@@ -80,6 +83,13 @@ export function ResponseList({
    * row shows it, so answering there is reflected here at once.
    */
   currentUserStatus?: AvailabilityStatus | null;
+  /**
+   * For a game in a tournament: the tournament's answers, which a member's row
+   * follows until they have one for the game (spec §4, Availability), and the
+   * tournament's name, marking those rows "from Surf Cup".
+   */
+  inheritedRows?: AvailabilityRow[];
+  inheritedFrom?: string | null;
 }) {
   const supabase = createClient();
   const [statusMap, setStatusMap] = useState<Map<string, AvailabilityStatus | null>>(() => {
@@ -90,10 +100,21 @@ export function ResponseList({
   });
   const [saving, setSaving] = useState<Set<string>>(new Set());
 
-  const statusOf = (profileId: string): AvailabilityStatus | null =>
+  // A member's own answer for this event.
+  const ownStatusOf = (profileId: string): AvailabilityStatus | null =>
     profileId === currentUserId && currentUserStatus !== undefined
       ? currentUserStatus
       : (statusMap.get(profileId) ?? null);
+  const [inherited] = useState(
+    () => new Map((inheritedFrom ? (inheritedRows ?? []) : []).map((r) => [r.profileId, r.status]))
+  );
+  // The answer shown and counted: their own, else the tournament's.
+  const answerOf = (profileId: string) => effectiveAnswer(ownStatusOf(profileId), inherited.get(profileId));
+  const statusOf = (profileId: string) => answerOf(profileId).status;
+  const inheritedMark = (profileId: string) =>
+    inheritedFrom && answerOf(profileId).inherited ? (
+      <span className="shrink-0 text-xs text-muted-foreground">from {inheritedFrom}</span>
+    ) : null;
 
   function setStatus(profileId: string, status: AvailabilityStatus | null) {
     setStatusMap((prev) => new Map(prev).set(profileId, status));
@@ -175,6 +196,7 @@ export function ResponseList({
                   <StatusIcon status={status} />
                 )}
                 <span className="min-w-0 truncate text-sm">{m.name}</span>
+                {inheritedMark(m.profileId)}
               </div>
             );
           })}
@@ -213,6 +235,7 @@ export function ResponseList({
               <StatusIcon status={statusOf(m.profileId)} />
               <span className="min-w-0 truncate">{m.name}</span>
               <span className="text-muted-foreground">{roleLabel(m.role)}</span>
+              {inheritedMark(m.profileId)}
             </div>
           ))}
         </section>

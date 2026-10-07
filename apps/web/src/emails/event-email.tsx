@@ -45,6 +45,8 @@ export type AnswerRow = {
   name: string;
   isRecipient: boolean;
   status: AvailabilityStatus | null;
+  /** The tournament this answer comes from, when the game has none of its own (tournaments D19). */
+  inheritedFrom?: string | null;
   /** The event page, recording that answer for this person (D7). */
   links: Record<AvailabilityStatus, string>;
 };
@@ -231,7 +233,7 @@ export function Answers({ answers }: { answers: AnswerRow[] }) {
           <Text style={{ margin: 0, fontSize: "14px", lineHeight: 1.5, color: "#111827" }}>
             <strong>{row.isRecipient ? "You" : row.name}</strong>
             <br />
-            <CurrentAnswer status={row.status} />
+            <CurrentAnswer status={row.status} inheritedFrom={row.inheritedFrom} />
           </Text>
           <Text style={{ margin: "4px 0 0" }}>
             {(Object.keys(ANSWERS) as AvailabilityStatus[]).map((status, i) => (
@@ -247,10 +249,16 @@ export function Answers({ answers }: { answers: AnswerRow[] }) {
   );
 }
 
-function CurrentAnswer({ status }: { status: AvailabilityStatus | null }) {
+function CurrentAnswer({ status, inheritedFrom }: { status: AvailabilityStatus | null; inheritedFrom?: string | null }) {
   if (!status) return <span style={{ fontSize: "13px", color: "#6b7280" }}>No answer yet</span>;
   const { symbol, label, text } = ANSWERS[status];
-  return <span style={{ fontSize: "13px", color: text, fontWeight: 600 }}>{`${symbol} ${label}`}</span>;
+  return (
+    <span style={{ fontSize: "13px", color: text, fontWeight: 600 }}>
+      {`${symbol} ${label}`}
+      {/* An answer given for the whole tournament, which this game follows (D19). */}
+      {inheritedFrom && <span style={{ color: "#6b7280", fontWeight: 400 }}>{` · from ${inheritedFrom}`}</span>}
+    </span>
+  );
 }
 
 function AnswerLink({ status, href, chosen }: { status: AvailabilityStatus; href: string; chosen: boolean }) {

@@ -100,7 +100,15 @@ async function runJob(db: Db, job: NotificationJob) {
     const byProfile = new Map(recipients.map((r) => [r.profileId, r]));
     const answers: AnswerContext | null =
       !chat && asksForAnswers(job)
-        ? await loadAnswerContext(db, job.event_id!, recipients.flatMap((r) => r.coversProfileIds))
+        ? await loadAnswerContext(
+            db,
+            job.event_id!,
+            recipients.flatMap((r) => r.coversProfileIds),
+            // A game in a tournament shows the tournament answer it follows (D19).
+            job.snapshot.tournament_id && job.snapshot.tournament_title
+              ? { id: job.snapshot.tournament_id, title: job.snapshot.tournament_title }
+              : null
+          )
         : null;
     const emails = new Map<string, Promise<RenderedEmail>>();
     const emailFor = (profileId: string) => {
