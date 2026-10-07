@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-06, [PR #118](https://github.com/jaredhagemann/lista/pull/118) at `19e3bca5e16277e9d05f8102874e8ed67af3ba90`, stacked on #117 at `2d81379fc`.
-**Current outcome:** TL-001 through TL-014 remain resolved. PR #118 implements part 2c tournament notices; its one finding, TL-015 (P2), is implemented in `3d2818211` and awaiting review. Email answer inheritance is recorded below as a scope question for the separately planned availability work.
+**Last reviewed:** 2026-10-07, merged `main` at `8793d6abe69009b84886dba017990541784d9470`, including PRs #117–#120.
+**Current outcome:** TL-001 through TL-015 are resolved. No new actionable findings in the merged-code review. Tournament notices and BUG-032 are present together on main. D19 settles email answer inheritance as part of the upcoming effective-availability implementation.
 
 ## Using this document as the feature changes
 
@@ -32,18 +32,19 @@
 | [TL-012](#tl-012--reject-games-that-end-at-or-before-their-start) | P2 | New game forms save invalid time ranges | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-013](#tl-013--apply-the-selected-location-to-games-created-with-the-tournament) | P2 | Games created with a tournament lose the selected venue | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-014](#tl-014--keep-placement-only-edits-silent) | P3 | Placement-only edits can queue an update notice | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
-| [TL-015](#tl-015--handle-tournament-game-read-errors-before-sending-reminders) | P2 | Failed game reads silently send incomplete tournament reminders | Implemented — awaiting review | Fix `3d2818211` (PR #118) |
+| [TL-015](#tl-015--handle-tournament-game-read-errors-before-sending-reminders) | P2 | Failed game reads silently send incomplete tournament reminders | Resolved | Fix `3d2818211`; verified at `af20d2f66` and merged main `8793d6abe` |
 
-## Implementation progress as of 2026-10-06
+## Implementation progress as of 2026-10-07
 
 | Area | Status | Completed behavior / remaining scope |
 | --- | --- | --- |
-| Specification | Decided | Tournament and league design, D1–D18 |
+| Specification | Decided | Tournament and league design, D1–D19 |
 | Tournament database, #114 and #115 | Merged | Tournament/game links, placement and rounds, indexes, atomic create/cancel/delete, bulk-answer rules, durable notification snapshots and concurrency fixes |
 | Tournament web display, #116 | Merged | Overlap queries, schedule rows and calendar bars, tournament/game detail links, placement and record display, dashboard treatment |
-| Tournament web management, #117 | Reviewed; release waits for part 2c | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
-| Tournament notices, part 2c | Reviewed, PR #118; TL-015 implemented, awaiting review (stacked on #117) | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders. #117 explicitly requires shipping with this work |
-| Effective availability in web UI | Pending; its own part after 2c (decided 2026-10-06) | Inherited answers, game overrides and clearing, response lists and coach grid; existing tournament bulk-fill database rules alone do not complete this |
+| Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
+| Tournament notices, part 2c | Merged via #120 after #118 landed on its feature base; TL-015 resolved | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders |
+| Deleted standalone-event links, #119 / BUG-032 | Merged and reviewed | Deleted notices open the schedule in email and push; cancelled notices retain their event link; tournament routing remains intact |
+| Effective availability in web UI and email | Pending; next part, including D19 | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and game email/reminder answer labels; existing tournament bulk-fill database rules alone do not complete this |
 | Tournament mobile support | Pending | Dedicated display and inherited answers; existing 1.0.12 behavior remains the accepted rollout difference |
 | Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
 
@@ -584,7 +585,7 @@ notes change with Notify on still queues an update.
 
 ### TL-015 — Handle tournament game read errors before sending reminders
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [reminder cron, lines 113–119](https://github.com/jaredhagemann/lista/blob/19e3bca5e16277e9d05f8102874e8ed67af3ba90/apps/web/src/app/api/cron/reminders/route.ts#L113-L119).
 
 The new child-game query reads only `data` and coalesces null to an empty array. If Supabase returns
@@ -608,7 +609,7 @@ an empty one or count the tournament as successfully processed. Preserve legitim
 assert that a normal, incomplete reminder is not sent and the failure remains visible/retryable.
 Keep successful nonempty and genuinely empty schedule cases covered.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `3d2818211` (PR #118).
+**Resolution and verification:** Resolved. Fixed in `3d2818211` (PR #118); independently verified at `af20d2f66` on 2026-10-06 and on merged main `8793d6abe` on 2026-10-07.
 - **The fix:**
   - The cron reads a tournament's games first, before recipients, answers or anything sent.
   - **Retry:** a failed read is tried once more, since a statement timeout is usually brief.
@@ -630,17 +631,21 @@ Keep successful nonempty and genuinely empty schedule cases covered.
 
   The first two failed before the fix. The third passed before it too, and guards the legitimate path.
 
-### Availability scope question for the next part
+**Independent verification:** the 2026-10-06 follow-up passed 34 focused tests and TypeScript checking.
+The 2026-10-07 merged-code review passed 53 affected tests and TypeScript checking, including the same
+retry, persistent-failure, continued-processing and zero-game cases. Notifications were mocked.
+
+### Availability scope decision for the next part
 
 A game email/reminder still loads only the game's direct availability row. If a person has answered
 Available on the tournament and has no game override, its game reminder renders **"No answer yet"**.
 Independently reproduced with the real reminder handler and rendered email. Its answer links correctly
 target the game, but its displayed current answer does not reflect inheritance.
 
-Effective availability in the web UI is already deferred to its own part after 2c. Asked whether that
-follow-up should also cover email/reminder answer labels or whether those labels belong in #118.
-Pending clarification, this review treats the labels as follow-up scope, not a new blocking finding
-or an accepted permanent discrepancy. Include both tournament fallback and explicit game override cases.
+The initial review asked whether the availability follow-up should also cover email/reminder answer
+labels or whether those labels belonged in #118. This is now settled by D19 below; it is follow-up
+scope, not a new blocking finding or an accepted permanent discrepancy. Include both tournament
+fallback and explicit game override cases.
 
 **Decided 2026-10-07 (spec D19):** yes. A game's email and reminder show the person's answer for the game,
 else their tournament answer. This is built in the effective-availability part after 2c, not in #118.
@@ -886,5 +891,46 @@ than reopen them implicitly. The source code review below is separate from accep
 - **The availability scope question:** not decided in this round. It's put to the user, with the recommendation
   that email and reminder answer labels go with the effective-availability part, alongside the web, since they
   need the same `effectiveAnswer` rule.
+
+### 2026-10-06 — Independent follow-up on TL-015, PR #118
+
+- **Revision:** `af20d2f66278e8f98b3ce85e5a3d445c4eb34d0d`; fix `3d2818211`.
+- **Outcome:** TL-015 → Resolved; no new actionable findings. This result was originally recorded in
+  the isolated `pr118-review` worktree and is carried into the main review log in the next round.
+- **Independent verification:** all 34 tests across `tournament-notice-wiring`, `tournament-notice-email`,
+  `reminders-cron` and `notifications-cron` passed, plus `tsc --noEmit --incremental false`.
+- **Scope:** verified successful retry, persistent failure without sending an incomplete notice,
+  continued processing of other events and the notice sweep, and valid zero-game reminders.
+- **Limitation:** retries consist of one immediate second read. Persistent failures are reported, not queued.
+
+### 2026-10-07 — Merged-code review before effective availability
+
+- **Revision:** `8793d6abe69009b84886dba017990541784d9470`, matching remote main at review time.
+- **Scope:** all changes since reviewed `af20d2f66`, plus integration of PRs #117–#120. The application
+  delta is BUG-032 in `worker.ts` and `event-email.tsx`; other additions are its regression tests/ticket
+  and the D19 specification decision. The reviewed tournament management, database and TL-015 code
+  remains intact.
+- **Outcome:** no new actionable findings. TL-001–TL-015 remain resolved. No code-review blocker to
+  starting effective availability; D19 explicitly includes game email/reminder answer inheritance.
+- **Merge integration:** #118 initially merged to its feature base after #117 had merged. #120 brought
+  the notices onto main. #119 then added the standalone deleted-event fix. The final worker keeps
+  tournament-specific rendering and URLs, routes deleted standalone notices to the schedule, and
+  keeps live/cancelled events linked to their detail page. Deleted notices do not acquire answer buttons.
+- **Independent local verification:** 53 tests passed in `deleted-event-notice-link` (3),
+  `tournament-notice-wiring` (11), `tournament-notice-email` (15), `email-wiring` (16),
+  `reminders-cron` (4), and `notifications-cron` (4). These exercise the real renderers/worker with
+  mocked delivery. `tsc --noEmit --incremental false` passed.
+- **CI at the exact main revision:** [Tests](https://github.com/jaredhagemann/lista/actions/runs/37684883034)
+  passed web, unit, mobile and RLS integration jobs. The
+  [production migration job](https://github.com/jaredhagemann/lista/actions/runs/37684883093) passed;
+  staging was skipped for the main push. The earlier stacked-PR CI gap is resolved.
+- **Next-part scope:** preserve the existing override/clear/bulk-fill decisions and implement D19
+  alongside UI inheritance. A game's own response takes precedence, clearing reveals its tournament
+  response, and email buttons continue to write game overrides. The current raw-answer behavior is
+  known, planned work, not a regression introduced by these merges.
+- **Limitations:** no real outbound email/push or production UI smoke test performed. Full suites
+  were verified through CI; local execution was limited to affected tests and TypeScript checking.
+- **Review changes:** updated this review log on main only, including the previously unmerged TL-015
+  resolution. No application edits, commits, pushes or published GitHub comments. `git diff --check` passed.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
