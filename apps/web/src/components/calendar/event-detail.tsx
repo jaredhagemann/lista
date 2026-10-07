@@ -66,6 +66,14 @@ import { UniformLabel } from "@/components/events/uniform-label";
 import { gameTitle, homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import { isTournament, placementText, tournamentDates, tournamentRecord } from "@/lib/events/tournament";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
+import { isWithinDays, tournamentDays } from "@/lib/events/tournament-form";
+import { TournamentEditForm } from "@/components/tournaments/tournament-edit-form";
+import {
+  AddTournamentGameDialog,
+  CancelTournamentDialog,
+  DeleteTournamentDialog,
+  RestoreTournamentDialog,
+} from "@/components/tournaments/tournament-dialogs";
 import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
 import { useNavigate } from "@/components/layout/navigation-progress";
@@ -74,9 +82,10 @@ type Event = Database["public"]["Tables"]["events"]["Row"];
 type Location = Database["public"]["Tables"]["locations"]["Row"];
 type EventWithLocation = Event & {
   locations: { name: string; address: string | null } | null;
-  /** A game's tournament, for "Part of Surf Cup". */
-  tournament?: { id: string; title: string } | null;
+  /** A game's tournament, for "Part of Surf Cup", and its days, to warn about a game outside them. */
+  tournament?: GameTournament | null;
 };
+type GameTournament = { id: string; title: string } & Partial<Pick<Event, "start_time" | "end_time" | "timezone">>;
 /** A tournament's game, as its page lists it. */
 type TournamentGame = Pick<
   Event,
@@ -95,7 +104,7 @@ type TournamentGame = Pick<
   | "is_cancelled"
   | "tournament_id"
 >;
-type EditState = null | "prompt" | RecurringEditScope;
+type EditState = null | "prompt" | "tournament" | RecurringEditScope;
 
 // Start and end are wall-clock times in the event's zone, never the browser's (BUG-010).
 const wallMs = (wall: string) => Date.parse(`${wall}:00.000Z`);
@@ -109,10 +118,13 @@ export function EventEditForm({
   timeZone: eventZone,
   teamTimeZone,
   team,
+  tournament,
   onSave,
   onCancel,
 }: {
   editingEvent: Event;
+  /** A tournament game's tournament: its round is edited, and its days warned about. */
+  tournament?: GameTournament | null;
   teamId: string;
   /** The zone the event is in now: its own, or the team's for an event from before event zones. */
   timeZone: string;
@@ -160,6 +172,19 @@ export function EventEditForm({
   const [arrivalTime, setArrivalTime] = useState(
     editingEvent.arrival_time?.toString() ?? ""
   );
+  // A tournament game stays a game, with its round (docs/specs/tournaments-and-leagues.md §4).
+  const inTournament = editingEvent.tournament_id != null;
+  const [round, setRound] = useState(editingEvent.round ?? "");
+  const tournamentZone = tournament?.timezone ?? eventZone;
+  const tournamentSpan =
+    tournament?.start_time && tournament.end_time
+      ? tournamentDays({ start_time: tournament.start_time, end_time: tournament.end_time }, tournamentZone)
+      : null;
+  const outsideTournament =
+    tournamentSpan != null &&
+    !!startTime &&
+    !Number.isNaN(Date.parse(`${startTime}:00.000Z`)) &&
+    !isWithinDays(instantFromWallClock(startTime, timeZone), tournamentSpan.firstDay, tournamentSpan.lastDay, tournamentZone);
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [showNewLocation, setShowNewLocation] = useState(false);
@@ -242,6 +267,7 @@ export function EventEditForm({
           ? parseInt(scoreAgainst, 10)
           : null,
       arrival_time: arrivalTime !== "" ? parseInt(arrivalTime, 10) : null,
+      ...(inTournament ? { round: round.trim() || null } : {}),
     };
 
     // A series head carries the pattern. Pin its start before this occurrence
@@ -309,7 +335,8 @@ export function EventEditForm({
             />
           </div>
 
-          {/* Event type */}
+          {/* Event type: a tournament game stays a game (the database refuses otherwise) */}
+          {!inTournament && (
           <div className="space-y-2">
             <Label htmlFor="eventType">Type</Label>
             <Select
@@ -328,6 +355,7 @@ export function EventEditForm({
               </SelectContent>
             </Select>
           </div>
+          )}
 
           {/* Location */}
           <div className="space-y-2">
@@ -429,6 +457,12 @@ export function EventEditForm({
             </div>
           </div>
 
+          {outsideTournament && tournament && (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              This game is outside {tournament.title}&apos;s days. It&apos;s saved anyway, in case the schedule slipped.
+            </p>
+          )}
+
           <TimeZoneSelect value={timeZone} onChange={setTimeZone} teamTimeZone={teamTimeZone} />
 
           {/* Notes */}
@@ -454,6 +488,17 @@ export function EventEditForm({
                   onChange={(e) => setOpponent(e.target.value)}
                 />
               </div>
+              {inTournament && (
+                <div className="space-y-2">
+                  <Label htmlFor="round">Round</Label>
+                  <Input
+                    id="round"
+                    placeholder="e.g. Pool A, Semifinal"
+                    value={round}
+                    onChange={(e) => setRound(e.target.value)}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Home / Away</Label>
@@ -650,13 +695,16 @@ export function EventDetail({
   const [deleting, setDeleting] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
   const [showRestore, setShowRestore] = useState(false);
+  // A tournament's own actions (D5, D15): they reach its games too.
+  const [tournamentDialog, setTournamentDialog] = useState<null | "cancel" | "restore" | "delete" | "addGame">(null);
+  const closeTournamentDialog = (open: boolean) => !open && setTournamentDialog(null);
 
   const isRecurring =
     event.parent_event_id != null || event.recurrence_rule != null;
 
   const [editState, setEditState] = useState<EditState>(() => {
-    // A tournament has no editor until part 2b: the single-event one would give it
-    // arbitrary times or another type (review TL-008).
+    // Never the single-event editor for a tournament: it would give it arbitrary
+    // times or another type (review TL-008). Its own opens from its page.
     if (!initialEdit || !isAdmin || event.is_cancelled || isTournament(event)) return null;
     return isRecurring ? "prompt" : "single";
   });
@@ -675,8 +723,8 @@ export function EventDetail({
   const [viewerZone] = useState(() => browserTimeZone() ?? "UTC");
   const zone = eventTimeZone(event, teamTimeZone, viewerZone);
   // A tournament spans whole days: dates, not times; past when it ends, not
-  // when it starts; and managed with its games in part 2b, not by the
-  // single-event controls, which would act on it alone.
+  // when it starts; and managed with its games, not by the single-event
+  // controls, which would act on it alone.
   const tournament = isTournament(event);
   const isPast = tournament ? new Date(event.end_time) < new Date() : startDate < new Date();
   const record = tournament ? tournamentRecord(event.id, tournamentGames) : null;
@@ -823,6 +871,29 @@ export function EventDetail({
   };
 
   // ── Edit mode ──────────────────────────────────────────────────────────────
+  if (tournament && editState === "tournament") {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6">
+        <Link
+          href="/dashboard/schedule"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to schedule
+        </Link>
+        <TournamentEditForm
+          tournament={event}
+          zone={zone}
+          games={tournamentGames}
+          teamName={team.name}
+          teamTimeZone={teamTimeZone}
+          onSave={handleEditSave}
+          onCancel={handleEditCancel}
+        />
+      </div>
+    );
+  }
+
   const bulkScope = editState === "following" || editState === "series" ? editState : null;
   if (!isTournament(event) && (editState === "single" || (bulkScope && series))) {
     return (
@@ -853,6 +924,7 @@ export function EventDetail({
             timeZone={zone}
             teamTimeZone={teamTimeZone}
             team={team}
+            tournament={event.tournament}
             onSave={handleEditSave}
             onCancel={handleEditCancel}
           />
@@ -900,6 +972,28 @@ export function EventDetail({
                 </p>
               )}
             </div>
+            {isAdmin && tournament && (
+              <div className="flex gap-2">
+                {!event.is_cancelled && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Edit tournament"
+                    onClick={() => setEditState("tournament")}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Delete tournament"
+                  onClick={() => setTournamentDialog("delete")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
             {isAdmin && !event.is_cancelled && !tournament && (
               <div className="flex gap-2">
                 <Button
@@ -1037,6 +1131,11 @@ export function EventDetail({
                       {record.wins}–{record.losses}–{record.ties}
                     </span>
                   )}
+                  {isAdmin && !event.is_cancelled && (
+                    <Button variant="outline" size="sm" onClick={() => setTournamentDialog("addGame")}>
+                      Add a game
+                    </Button>
+                  )}
                 </div>
               </div>
               {tournamentGames.length === 0 ? (
@@ -1084,6 +1183,20 @@ export function EventDetail({
             </div>
           )}
 
+          {isAdmin && tournament && (
+            <div className="border-t pt-4">
+              {!event.is_cancelled ? (
+                <Button variant="outline" onClick={() => setTournamentDialog("cancel")}>
+                  Cancel this tournament
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => setTournamentDialog("restore")}>
+                  Restore this tournament
+                </Button>
+              )}
+            </div>
+          )}
+
           {isAdmin && !tournament && (
             <div className="border-t pt-4">
               {!event.is_cancelled ? (
@@ -1115,6 +1228,36 @@ export function EventDetail({
             />
           </CardContent>
         </Card>
+      )}
+
+      {/* A tournament's own actions */}
+      {isAdmin && tournament && (
+        <>
+          <CancelTournamentDialog
+            open={tournamentDialog === "cancel"}
+            onOpenChange={closeTournamentDialog}
+            tournament={event}
+            games={tournamentGames}
+          />
+          <RestoreTournamentDialog
+            open={tournamentDialog === "restore"}
+            onOpenChange={closeTournamentDialog}
+            tournament={event}
+          />
+          <DeleteTournamentDialog
+            open={tournamentDialog === "delete"}
+            onOpenChange={closeTournamentDialog}
+            tournament={event}
+            gameCount={tournamentGames.length}
+          />
+          <AddTournamentGameDialog
+            open={tournamentDialog === "addGame"}
+            onOpenChange={closeTournamentDialog}
+            tournament={event}
+            zone={zone}
+            team={team}
+          />
+        </>
       )}
 
       {/* Cancel confirmation */}

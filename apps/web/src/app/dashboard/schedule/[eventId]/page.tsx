@@ -9,8 +9,8 @@ import type { Database } from "@/types/database";
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   profiles: { first_name: string; last_name: string } | null;
   locations: { name: string; address: string | null } | null;
-  /** A game's tournament, for "Part of Surf Cup". */
-  tournament: { id: string; title: string } | null;
+  /** A game's tournament, for "Part of Surf Cup", and its days, for the game editor's warning. */
+  tournament: { id: string; title: string; start_time: string; end_time: string; timezone: string | null } | null;
 };
 
 /** What a tournament's page shows of each of its games. */
@@ -44,7 +44,7 @@ export default async function EventDetailPage({
 
   const { data: rawEvent, error } = await supabase
     .from("events")
-    .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address), tournament:tournament_id(id, title)")
+    .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address), tournament:tournament_id(id, title, start_time, end_time, timezone)")
     .eq("id", eventId)
     .single();
 
