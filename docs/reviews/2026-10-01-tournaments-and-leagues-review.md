@@ -642,6 +642,9 @@ follow-up should also cover email/reminder answer labels or whether those labels
 Pending clarification, this review treats the labels as follow-up scope, not a new blocking finding
 or an accepted permanent discrepancy. Include both tournament fallback and explicit game override cases.
 
+**Decided 2026-10-07 (spec D19):** yes. A game's email and reminder show the person's answer for the game,
+else their tournament answer. This is built in the effective-availability part after 2c, not in #118.
+
 ## Review history
 
 ### 2026-10-01 — Specification, PR #111
