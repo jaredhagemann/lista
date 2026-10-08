@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-07, [PR #121](https://github.com/jaredhagemann/lista/pull/121) at `e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f`, implementation `ce960e427`.
-**Current outcome:** TL-001 through TL-015 remain resolved. Effective availability is implemented in PR #121; its three P2 findings, TL-016–TL-018, are implemented in `9d9995a22` and awaiting review. Normal inheritance, overrides, clearing, grid totals and D19 email rendering pass their existing tests.
+**Last reviewed:** 2026-10-08, [PR #122](https://github.com/jaredhagemann/lista/pull/122) at `be9fa7b670d824375b4c7aa5b841d66b25623402` and [PR #123](https://github.com/jaredhagemann/lista/pull/123) at `5c7a3fb2756da8b61dc69d0bea4d89044177c669`, based on merged main `fe4a1ea3d24db437740e91c9f62535e4eef21f43`.
+**Current outcome:** TL-001 through TL-018 are resolved, including independent follow-up review of the effective-availability fixes. Mobile support in #122 has four new P2 findings, TL-019–TL-022. No actionable finding in the color changes in #122/#123; visual/device testing remains outstanding.
 
 ## Using this document as the feature changes
 
@@ -33,11 +33,15 @@
 | [TL-013](#tl-013--apply-the-selected-location-to-games-created-with-the-tournament) | P2 | Games created with a tournament lose the selected venue | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-014](#tl-014--keep-placement-only-edits-silent) | P3 | Placement-only edits can queue an update notice | Resolved | Fix `a0642c8dd`; verified at `a3baa09c6` |
 | [TL-015](#tl-015--handle-tournament-game-read-errors-before-sending-reminders) | P2 | Failed game reads silently send incomplete tournament reminders | Resolved | Fix `3d2818211`; verified at `af20d2f66` and merged main `8793d6abe` |
-| [TL-016](#tl-016--recompute-inherited-responses-when-server-props-change) | P2 | Refreshed response lists retain stale tournament answers | Implemented — awaiting review | Fix `9d9995a22` (PR #121) |
-| [TL-017](#tl-017--require-successful-answer-reads-before-resolving-inheritance) | P2 | Failed answer reads produce incorrect email availability | Implemented — awaiting review | Fix `9d9995a22` (PR #121) |
-| [TL-018](#tl-018--resolve-current-tournament-membership-for-email-answers) | P2 | Queued game emails inherit from a tournament the game has left | Implemented — awaiting review | Fix `9d9995a22` (PR #121) |
+| [TL-016](#tl-016--recompute-inherited-responses-when-server-props-change) | P2 | Refreshed response lists retain stale tournament answers | Resolved | Fix `9d9995a22`; independently verified at `be9fa7b67` |
+| [TL-017](#tl-017--require-successful-answer-reads-before-resolving-inheritance) | P2 | Failed answer reads produce incorrect email availability | Resolved | Fix `9d9995a22`; independently verified at `be9fa7b67` |
+| [TL-018](#tl-018--resolve-current-tournament-membership-for-email-answers) | P2 | Queued game emails inherit from a tournament the game has left | Resolved | Fix `9d9995a22`; independently verified at `be9fa7b67` |
+| [TL-019](#tl-019--require-successful-mobile-answer-reads) | P2 | Failed mobile reads fabricate inherited or missing answers | Open | Reproduced at `be9fa7b67` |
+| [TL-020](#tl-020--refresh-game-answers-on-return-from-the-tournament) | P2 | Returning from the tournament leaves game availability stale | Open | Lifecycle probe at `be9fa7b67` |
+| [TL-021](#tl-021--keep-past-events-before-the-today-divider) | P2 | Underway tournaments put completed events below Today | Open | Reproduced at `be9fa7b67` |
+| [TL-022](#tl-022--show-placement-without-individual-game-results) | P2 | A placement-only tournament is missing from the dashboard | Open | Reproduced at `be9fa7b67` |
 
-## Implementation progress as of 2026-10-07
+## Implementation progress as of 2026-10-08
 
 | Area | Status | Completed behavior / remaining scope |
 | --- | --- | --- |
@@ -47,8 +51,9 @@
 | Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
 | Tournament notices, part 2c | Merged via #120 after #118 landed on its feature base; TL-015 resolved | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders |
 | Deleted standalone-event links, #119 / BUG-032 | Merged and reviewed | Deleted notices open the schedule in email and push; cancelled notices retain their event link; tournament routing remains intact |
-| Effective availability in web UI and email | Reviewed, PR #121; TL-016–TL-018 implemented, awaiting review, including D19 | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and game email/reminder answer labels; existing tournament bulk-fill database rules alone do not complete this |
-| Tournament mobile support | Implemented — awaiting review, PR #122 (`225903863`) | Dedicated display and inherited answers; existing 1.0.12 behavior remains the accepted rollout difference |
+| Effective availability in web UI and email | Merged via #121; TL-016–TL-018 resolved | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and D19 game email/reminder answer labels |
+| Tournament mobile support | Reviewed, PR #122; TL-019–TL-022 open | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
+| Event-type colors | Reviewed, #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
 
 ## Part 1 — database findings
@@ -657,7 +662,7 @@ else their tournament answer. This is built in the effective-availability part a
 
 ### TL-016 — Recompute inherited responses when server props change
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [response-list.tsx, lines 108–112](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/components/availability/response-list.tsx#L108-L112).
 
 The inherited-answer map is initialized once in state and never updated. When refreshed server props
@@ -677,7 +682,9 @@ and stop applying them when there is no linked tournament. Preserve game-specifi
 **Regression coverage:** changed parent answers, cleared parent answers, changed parent identity and
 unlinking on the same mounted component; assert picker, grouping, counts and inheritance labels agree.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `9d9995a22` (PR #121).
+**Resolution and verification:** Resolved on 2026-10-08. Fixed in `9d9995a22` (PR #121).
+Independent inspection and all 19 `effective-availability` tests passed at `be9fa7b67`, including changed,
+cleared, unlinked and reassigned parent answers and preservation of local game overrides.
 - **The fix:** `ResponseList` builds the tournament-answer map from its current props on every render, not
   once into state. With no linked tournament (no `inheritedFrom`), it uses none. Answers set on the page for
   the game are the component's own state, as before, and still win. The picker already read its props.
@@ -693,7 +700,7 @@ unlinking on the same mounted component; assert picker, grouping, counts and inh
 
 ### TL-017 — Require successful answer reads before resolving inheritance
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [answers.ts, lines 52–65](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/lib/notifications/answers.ts#L52-L65).
 
 loadAnswerContext ignores query errors and converts null answer data into empty maps. With inheritance,
@@ -717,7 +724,9 @@ handler's failure reporting coherent with this behavior.
 **Regression coverage:** fail each answer query independently; ensure no fabricated inherited/current
 answer is sent. Keep successful-empty, inherited and explicit-override controls.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `9d9995a22` (PR #121).
+**Resolution and verification:** Resolved on 2026-10-08. Fixed in `9d9995a22` (PR #121).
+Independent inspection and all 22 `tournament-notice-wiring` tests passed at `be9fa7b67`, including
+failed answer reads, worker retry and reminder failure reporting. TL-019 records the separate mobile defect.
 - **The fix:** `loadAnswerContext` throws `AnswerReadError` when the event's answers or its tournament's fail to
   read. A successful empty read is still "no answers".
   - **The worker:** the throw lands in its existing per-job handling. Nothing is sent, and the job goes back
@@ -738,7 +747,7 @@ answer is sent. Keep successful-empty, inherited and explicit-override controls.
 
 ### TL-018 — Resolve current tournament membership for email answers
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [worker.ts, lines 107–110](https://github.com/jaredhagemann/lista/blob/e2c1607d8b04ff9d86e9f5c0e20af477120dcc8f/apps/web/src/lib/notifications/worker.ts#L107-L110).
 
 The worker chooses the tournament for current availability from the historical notification snapshot.
@@ -762,7 +771,10 @@ current parent for a reassigned game. Handle failure to read that relationship e
 **Regression coverage:** enqueue while linked, unlink or reassign before draining, and verify the answer
 label matches the game's current relationship; include an explicit game override as a control.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `9d9995a22` (PR #121).
+**Resolution and verification:** Resolved on 2026-10-08. Fixed in `9d9995a22` (PR #121).
+Independent inspection confirmed current membership is loaded separately from the historical snapshot.
+All 22 `tournament-notice-wiring` tests passed at `be9fa7b67`, including unlink, reassign and override
+controls. The PR's RLS CI job passed; its database tests were not repeated locally this round.
 - **The fix:** `currentTournamentOf` in the worker reads the game's `tournament_id` and title as it sends,
   and uses that for the answers. The snapshot still describes the change, including its "Part of" line,
   as queued.
@@ -781,6 +793,102 @@ label matches the game's current relationship; include an explicit game override
     - it returns the tournament while the game is linked
     - after an update is queued and `cancel_tournament(..., false)` unlinks the game, the queued snapshot
       still names Surf Cup, while the read returns no tournament
+
+## Part 3 — mobile findings
+
+### TL-019 — Require successful mobile answer reads
+
+**Priority / status:** P2 / Open.
+**Source:** [event detail, lines 419–425](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/schedule/%5BeventId%5D.tsx#L419-L425), together with lines 436–437.
+
+The new inherited-answer read ignores errors and converts null data into an empty map. The game's
+own read does the same. A failed own read is therefore treated as proof that no override exists, while
+a failed parent read is treated as no tournament answer. The picker and response counts claim concrete
+answers from incomplete data, including showing Available when the stored game override is Unavailable.
+
+**Reproduction / observed:** rendered the actual detail screen with mocked Supabase reads. With game
+Unavailable and tournament Available, a statement-timeout response from the game-answer query selected
+Available and displayed the inheritance label. With only a tournament Available answer, failing the
+parent query put everyone in No response. Both expected-behavior assertions failed; the successful-read
+override control passed.
+
+**Requested change:** validate both reads before resolving inheritance. Show a retry/error state or
+preserve the last complete state without treating failed reads as empty answers. Apply the same care
+to the new child-game read, which currently also renders a failed read as an empty list.
+
+**Regression coverage:** each answer query failing independently, successful empty reads, parent
+inheritance and explicit overrides; assert the picker and response groups agree.
+
+**Resolution and verification:** Open at `be9fa7b67`; no fix reviewed.
+
+### TL-020 — Refresh game answers on return from the tournament
+
+**Priority / status:** P2 / Open.
+**Source:** [new parent link, lines 577–581](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/schedule/%5BeventId%5D.tsx#L577-L581), and the fetch effect at lines 451–454.
+
+The link pushes another detail screen onto the stack. Returning retains the mounted game screen, but
+its data effect only depends on membership and event ID; focus does not reload the tournament answers.
+Changing a parent answer through this link leaves the game's inherited picker and roster counts stale
+until the user manually refreshes.
+
+**Reproduction / observed:** load a game inheriting Available, follow its tournament link, set the
+tournament to Unavailable, then go back. Inspection of the stack and fetch lifecycle predicts the old
+Available state. A component probe changed the mocked parent answer and emitted a focus callback on
+the retained screen: Unavailable was not selected. This is a lifecycle simulation, not a native-device run.
+
+**Requested change:** refresh detail data on focus or invalidate the game screen when the tournament
+answer changes. Preserve explicit game overrides and guard against stale asynchronous responses.
+
+**Regression coverage:** parent answer changed/cleared during navigation, back to the same mounted
+game, including an explicit game override control; check the picker, inheritance label and counts.
+
+**Resolution and verification:** Open at `be9fa7b67`; no fix reviewed.
+
+### TL-021 — Keep past events before the Today divider
+
+**Priority / status:** P2 / Open.
+**Source:** [schedule, lines 103–110](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/schedule/index.tsx#L103-L110).
+
+Events remain sorted by original start time, but an underway tournament now causes Today to be
+inserted immediately before it. Completed games/practices that started after that tournament then
+appear below Today. For a Friday–Sunday tournament on Sunday, Saturday's events are incorrectly on
+the current/upcoming side of the divider; initial auto-scroll also lands ahead of those past events.
+
+**Reproduction / observed:** supplied a tournament starting three days ago and ending tomorrow,
+yesterday's completed practice, and a future game. The real screen's list data placed Today at index 0
+and yesterday's practice at index 2. The assertion that the past event precedes Today failed.
+
+**Requested change:** partition or order the display by the same effective date used for the divider,
+keeping completed past events before Today and underway tournaments with current events. Treat
+cancelled tournaments consistently with the existing cancelled/Now presentation.
+
+**Regression coverage:** underway tournaments mixed with past and future games/practices, multiple
+overlapping tournaments, cancelled tournaments and the auto-scroll target.
+
+**Resolution and verification:** Open at `be9fa7b67`; no fix reviewed.
+
+### TL-022 — Show placement without individual game results
+
+**Priority / status:** P2 / Open.
+**Source:** [home, lines 145–150](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/index.tsx#L145-L150), and the record-only render guard at line 349.
+
+The last tournament is only set when `teamRecord(results)` is non-null, and the card itself also
+requires that record. A team can record a tournament placement without entering individual game
+results; in that valid state D8's last result disappears from Home entirely. Tournament placement is
+independent of per-game results, and the detail view already supports it without a record.
+
+**Reproduction / observed:** rendered Home with a finished tournament placed second and its game
+without a result, with no other game results. No Last tournament content rendered; the expected
+placement-card assertion failed. The existing positive tests include game results and miss this case.
+
+**Requested change:** allow the latest placed tournament to populate and render the card without an
+overall game record. Compare against a newer game result only when one exists, and omit unavailable
+record statistics. The web dashboard shares this guard and should be considered when fixing parity.
+
+**Regression coverage:** placement-only tournament with no recorded game results, tournament with a
+record, and a newer game result replacing the tournament summary.
+
+**Resolution and verification:** Open at `be9fa7b67`; no fix reviewed.
 
 ## Review history
 
@@ -1107,5 +1215,37 @@ than reopen them implicitly. The source code review below is separate from accep
     - the RLS file `effective-availability` passes 6 of 6, including the TL-018 reproduction
 - **Behavior change to note:** under TL-017, a failed answer read now withholds any event's notice or
   reminder, not only a tournament game's. Before this PR such a read rendered "No answer yet".
+
+### 2026-10-08 — Mobile support, colors and effective-availability follow-up
+
+- **Revisions:** #122 `be9fa7b670d824375b4c7aa5b841d66b25623402` (mobile implementation
+  `225903863`, color update `be9fa7b67`); #123 `5c7a3fb2756da8b61dc69d0bea4d89044177c669`
+  (web colors). Both are based on merged main `fe4a1ea3d24db437740e91c9f62535e4eef21f43`,
+  including #121's fixes in `9d9995a22`.
+- **Scope:** all 14 changed files in #122 and six in #123; mobile Home, Schedule, detail, RecordCard,
+  tournament/effective-answer/color helpers and tests; web event colors across list, calendar, detail
+  and availability matrix. Independently inspected the merged TL-016–TL-018 fixes.
+- **Outcome:** TL-016–TL-018 → Resolved. Opened four mobile P2 findings, TL-019–TL-022. No actionable
+  finding in the color changes. Previous TL-001–TL-015 remain resolved.
+- **Completed behavior:** mobile tournament date spans and game counts, underway visibility/Now,
+  tournament/game navigation, placement and record display, game lists, inherited availability with
+  explicit overrides and clearing, and latest placed tournament summaries when game results exist.
+  Create/manage remains on web. Purple tournament and yellow other-event colors are centralized on
+  each platform; web includes light/dark variants.
+- **Independent local checks:** all 181 mobile tests in 22 suites passed. The installed dependency layout
+  initially could not resolve `@babel/runtime`; reran with `NODE_ENV=test` and a temporary in-memory
+  Jest mapping to the already installed runtime. No dependency/configuration files changed. Mobile
+  TypeScript passed. The merged fixes' web suites passed 41 tests (effective-availability 19,
+  tournament-notice-wiring 22), with web TypeScript passing. In an isolated #123 checkout, 30 tests
+  passed (event-type-colors 7, tournament-schedule 10, tournament-event-page 13), and TypeScript passed.
+- **Additional probes:** five expected-behavior assertions failed across TL-019–TL-022; a successful-read
+  explicit-override control passed. These exercised real mobile components with mocked reads and focus
+  events. Temporary probe file removed after review; no production data or notifications used.
+- **CI:** both PRs report passing unit, mobile, web, RLS integration, staging migration and Vercel checks.
+  Production migration is skipped for these PRs. RLS was checked via CI, not repeated locally this round.
+- **Limitations:** no native-device/emulator run or visual browser light/dark smoke test. Color review
+  covers source consistency and automated checks, not a visual/accessibility certification.
+- **Review changes:** this log only; no application edits, commits, pushes or published GitHub comments.
+  `git diff --check` passed. The pre-existing untracked screenshot was left alone.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
