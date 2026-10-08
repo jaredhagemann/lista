@@ -19,6 +19,7 @@ import { displayLabel } from "../../../lib/labels";
 import { gameTitle } from "../../../lib/game-display";
 import { gameCount, isTournament, isUnderway, tournamentDates, tournamentLine } from "../../../lib/tournament";
 import { effectiveAnswer } from "../../../lib/availability";
+import { eventTypeColors, PART_OF_COLOR } from "../../../lib/event-type-colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,14 +55,6 @@ type ListItem =
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-function eventTypeBadge(type: string) {
-  switch (type) {
-    case "game":     return { bg: "#dcfce7", text: "#15803d" };
-    case "practice": return { bg: "#dbeafe", text: "#1d4ed8" };
-    case "tournament": return { bg: "#fef3c7", text: "#92400e" };
-    default:         return { bg: "#f3e8ff", text: "#7e22ce" };
-  }
-}
 
 const RSVP_STYLE: Record<
   AvailabilityStatus,
@@ -299,7 +292,7 @@ export default function ScheduleScreen() {
           }
 
           const { event } = item;
-          const badge = eventTypeBadge(event.event_type);
+          const badge = eventTypeColors(event.event_type);
           // A game's own answer, else its tournament's (spec §4, Availability).
           const rsvp = effectiveAnswer(
             myAvailability.get(event.id),
@@ -444,7 +437,7 @@ const styles = StyleSheet.create({
   },
   nowPill: { backgroundColor: "#0f172a", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99 },
   nowPillText: { color: "#ffffff", fontSize: 10, fontWeight: "700" },
-  partOf: { fontSize: 12, color: "#92400e", marginTop: 1 },
+  partOf: { fontSize: 12, color: PART_OF_COLOR, marginTop: 1 },
   cardBody: {
     flexDirection: "row",
     alignItems: "flex-start",

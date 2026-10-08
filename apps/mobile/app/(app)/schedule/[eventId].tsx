@@ -18,6 +18,7 @@ import { displayLabel } from "../../../lib/labels";
 import { gameTitle, homeAwayLabel, scoreLine, uniformOf, type TeamUniforms } from "../../../lib/game-display";
 import { UniformLabel } from "../../../components/UniformLabel";
 import { isTournament, isUnderway, placementText, tournamentDates, tournamentLine, tournamentRecord } from "../../../lib/tournament";
+import { eventTypeColors } from "../../../lib/event-type-colors";
 import {
   answerersFor,
   effectiveAnswer,
@@ -535,7 +536,7 @@ export default function EventDetailScreen() {
             <View
               style={{
                 backgroundColor:
-                  event.event_type === "game" ? "#dcfce7" : event.event_type === "practice" ? "#dbeafe" : "#f3e8ff",
+                  eventTypeColors(event.event_type).bg,
                 paddingHorizontal: 8,
                 paddingVertical: 2,
                 borderRadius: 99,
@@ -543,7 +544,7 @@ export default function EventDetailScreen() {
             >
               <Text
                 style={{
-                  color: event.event_type === "game" ? "#15803d" : event.event_type === "practice" ? "#1d4ed8" : "#7e22ce",
+                  color: eventTypeColors(event.event_type).text,
                   fontSize: 12,
                   fontWeight: "600",
                 }}

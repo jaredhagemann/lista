@@ -19,6 +19,7 @@ import { gameTitle } from "../../lib/game-display";
 import { teamRecord, type ResultGame, type TeamRecord } from "../../lib/team-record";
 import { TeamCard, type TeamCardMember } from "../../components/TeamCard";
 import { RecordCard, type LastTournament } from "../../components/RecordCard";
+import { eventTypeColors, PART_OF_COLOR } from "../../lib/event-type-colors";
 import {
   gameCount,
   isTournament,
@@ -76,18 +77,6 @@ function formatEventTime(event: Event) {
   return `${formatEventDay(event.start_time, zone)}, ${formatEventClock(event.start_time, zone)}`;
 }
 
-function eventTypeBadgeClass(type: string) {
-  switch (type) {
-    case "game":
-      return { bg: "#dcfce7", text: "#15803d" };
-    case "practice":
-      return { bg: "#dbeafe", text: "#1d4ed8" };
-    case "tournament":
-      return { bg: "#fef3c7", text: "#92400e" };
-    default:
-      return { bg: "#f3e8ff", text: "#7e22ce" };
-  }
-}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -274,7 +263,7 @@ export default function HomeScreen() {
           ) : (
             <>
               {events.map((event, i) => {
-                const badge = eventTypeBadgeClass(event.event_type);
+                const badge = eventTypeColors(event.event_type);
                 const tournament = isTournament(event);
                 const partOf = tournamentLine(event);
                 return (
@@ -315,7 +304,7 @@ export default function HomeScreen() {
                       </View>
                     </View>
                     {partOf ? (
-                      <Text style={{ fontSize: 12, color: "#92400e", marginTop: 1 }}>{partOf}</Text>
+                      <Text style={{ fontSize: 12, color: PART_OF_COLOR, marginTop: 1 }}>{partOf}</Text>
                     ) : null}
                     <View className="flex-row items-center gap-2 mt-0.5">
                       <Text className="text-sm text-gray-500 flex-shrink">

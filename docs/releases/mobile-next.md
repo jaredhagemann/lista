@@ -222,7 +222,7 @@ Files: `components/TeamCard.tsx`, `components/RecordCard.tsx`, `components/Remot
 
 **New build:** display and answering only. Creating and managing stays on the web (D11).
 - **Home and schedule:**
-  - A tournament is one amber card with its dates ("Fri, Dec 11 – Sun, Dec 13") and game count, never times.
+  - A tournament is one purple card with its dates ("Fri, Dec 11 – Sun, Dec 13") and game count, never times.
     It's marked **Now** while it's underway.
   - Upcoming is by end time, so a tournament stays listed until its last day ends. On the schedule, an
     underway tournament sits under Today.
@@ -237,13 +237,18 @@ Files: `components/TeamCard.tsx`, `components/RecordCard.tsx`, `components/Remot
 - **Schedule answer badges:** a game's badge is its resulting answer. An inherited one is dashed and faded.
 - **Record card (D8):** after a tournament with a placement, it shows "Last tournament", with its name,
   placement, record (W–L–T) and dates, until a game starts after it.
+- **Type colors, as on the web (2026-10-08):**
+  - Practice blue, game green, tournament purple, and **other yellow** (other was purple).
+  - They're defined once, in `lib/event-type-colors.ts`.
+  - The "Surf Cup · Semifinal" line is the tournament's purple.
+  - On 1.0.12, other events and tournaments both stay purple until people update.
 
 These are the web's rules, copied (`lib/tournament.ts` and `effectiveAnswer` in `lib/availability.ts`).
 No server change: the columns, embeds and rows are part 1's.
 
-Files: `lib/tournament.ts`, `lib/availability.ts`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx`,
+Files: `lib/tournament.ts`, `lib/availability.ts`, `lib/event-type-colors.ts`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx`,
 `app/(app)/schedule/[eventId].tsx`, `components/RecordCard.tsx`, `__tests__/tournament.test.ts`,
-`__tests__/TournamentScreens.test.tsx`.
+`__tests__/TournamentScreens.test.tsx`, `__tests__/event-type-colors.test.tsx`.
 
 ---
 
