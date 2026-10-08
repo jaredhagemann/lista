@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-08, [PR #122](https://github.com/jaredhagemann/lista/pull/122) at `be9fa7b670d824375b4c7aa5b841d66b25623402` and [PR #123](https://github.com/jaredhagemann/lista/pull/123) at `5c7a3fb2756da8b61dc69d0bea4d89044177c669`, based on merged main `fe4a1ea3d24db437740e91c9f62535e4eef21f43`.
-**Current outcome:** TL-001 through TL-018 are resolved, including independent follow-up review of the effective-availability fixes. Mobile support in #122 has four P2 findings, TL-019–TL-022, implemented in `f10444bcc` and awaiting review. No actionable finding in the color changes in #122/#123; visual/device testing remains outstanding.
+**Last reviewed:** 2026-10-08, [PR #122](https://github.com/jaredhagemann/lista/pull/122) at `dc8f7885a546775e0a7619cc44cc1d3e62cf09c9`, fixes in `f10444bcc`. [PR #123](https://github.com/jaredhagemann/lista/pull/123) remains unchanged at its reviewed `5c7a3fb2756da8b61dc69d0bea4d89044177c669`.
+**Current outcome:** TL-001 through TL-022 are resolved. Independent follow-up review verified all four mobile fixes, including placement-only dashboard results on both platforms, with no new actionable findings. The prior color review remains unchanged; visual/device testing remains outstanding.
 
 ## Using this document as the feature changes
 
@@ -36,10 +36,10 @@
 | [TL-016](#tl-016--recompute-inherited-responses-when-server-props-change) | P2 | Refreshed response lists retain stale tournament answers | Resolved | Fix `9d9995a22`; independently verified at `be9fa7b67` |
 | [TL-017](#tl-017--require-successful-answer-reads-before-resolving-inheritance) | P2 | Failed answer reads produce incorrect email availability | Resolved | Fix `9d9995a22`; independently verified at `be9fa7b67` |
 | [TL-018](#tl-018--resolve-current-tournament-membership-for-email-answers) | P2 | Queued game emails inherit from a tournament the game has left | Resolved | Fix `9d9995a22`; independently verified at `be9fa7b67` |
-| [TL-019](#tl-019--require-successful-mobile-answer-reads) | P2 | Failed mobile reads fabricate inherited or missing answers | Implemented — awaiting review | Fix `f10444bcc` (PR #122) |
-| [TL-020](#tl-020--refresh-game-answers-on-return-from-the-tournament) | P2 | Returning from the tournament leaves game availability stale | Implemented — awaiting review | Fix `f10444bcc` (PR #122) |
-| [TL-021](#tl-021--keep-past-events-before-the-today-divider) | P2 | Underway tournaments put completed events below Today | Implemented — awaiting review | Fix `f10444bcc` (PR #122) |
-| [TL-022](#tl-022--show-placement-without-individual-game-results) | P2 | A placement-only tournament is missing from the dashboard | Implemented — awaiting review | Fix `f10444bcc` (PR #122), mobile and web |
+| [TL-019](#tl-019--require-successful-mobile-answer-reads) | P2 | Failed mobile reads fabricate inherited or missing answers | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
+| [TL-020](#tl-020--refresh-game-answers-on-return-from-the-tournament) | P2 | Returning from the tournament leaves game availability stale | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
+| [TL-021](#tl-021--keep-past-events-before-the-today-divider) | P2 | Underway tournaments put completed events below Today | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
+| [TL-022](#tl-022--show-placement-without-individual-game-results) | P2 | A placement-only tournament is missing from the dashboard | Resolved | Fix `f10444bcc`; mobile and web verified at `dc8f7885a` |
 
 ## Implementation progress as of 2026-10-08
 
@@ -52,7 +52,7 @@
 | Tournament notices, part 2c | Merged via #120 after #118 landed on its feature base; TL-015 resolved | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders |
 | Deleted standalone-event links, #119 / BUG-032 | Merged and reviewed | Deleted notices open the schedule in email and push; cancelled notices retain their event link; tournament routing remains intact |
 | Effective availability in web UI and email | Merged via #121; TL-016–TL-018 resolved | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and D19 game email/reminder answer labels |
-| Tournament mobile support | Reviewed, PR #122; TL-019–TL-022 implemented, awaiting review | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
+| Tournament mobile support | Reviewed, PR #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
 | Event-type colors | Reviewed, #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
 
@@ -798,7 +798,7 @@ controls. The PR's RLS CI job passed; its database tests were not repeated local
 
 ### TL-019 — Require successful mobile answer reads
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [event detail, lines 419–425](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/schedule/%5BeventId%5D.tsx#L419-L425), together with lines 436–437.
 
 The new inherited-answer read ignores errors and converts null data into an empty map. The game's
@@ -819,7 +819,9 @@ to the new child-game read, which currently also renders a failed read as an emp
 **Regression coverage:** each answer query failing independently, successful empty reads, parent
 inheritance and explicit overrides; assert the picker and response groups agree.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `f10444bcc` (PR #122).
+**Resolution and verification:** Resolved on 2026-10-08. Fixed in `f10444bcc` (PR #122).
+Independent inspection and the full 196-test mobile suite passed at `dc8f7885a`, including each failed
+answer read, retry, retained answers with a stale-data warning, failed game reads and successful-empty controls.
 - **The fix:** the event screen checks both answer reads, the game's own and its tournament's.
   - **Applying them:** only when both succeed are they applied, since half would resolve inheritance wrongly.
   - **First load fails:** "Couldn't load the answers" with **Try again**, and no picker or responses.
@@ -838,7 +840,7 @@ inheritance and explicit overrides; assert the picker and response groups agree.
 
 ### TL-020 — Refresh game answers on return from the tournament
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [new parent link, lines 577–581](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/schedule/%5BeventId%5D.tsx#L577-L581), and the fetch effect at lines 451–454.
 
 The link pushes another detail screen onto the stack. Returning retains the mounted game screen, but
@@ -857,7 +859,10 @@ answer changes. Preserve explicit game overrides and guard against stale asynchr
 **Regression coverage:** parent answer changed/cleared during navigation, back to the same mounted
 game, including an explicit game override control; check the picker, inheritance label and counts.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `f10444bcc` (PR #122).
+**Resolution and verification:** Resolved on 2026-10-08. Fixed in `f10444bcc` (PR #122).
+Independent inspection confirmed focus-triggered reads and request sequencing. The changed/cleared parent
+and explicit-override focus tests passed within the 196-test mobile suite at `dc8f7885a`. Native navigation
+was not exercised on a device or emulator.
 - **The fix:** the event screen reads in `useFocusEffect`, so it reads on every focus, including coming back
   from the tournament's screen it pushed. Reads are numbered, and an older one landing after a newer one is
   ignored. The game's own answer comes back with each read, so an override still wins.
@@ -873,7 +878,7 @@ game, including an explicit game override control; check the picker, inheritance
 
 ### TL-021 — Keep past events before the Today divider
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [schedule, lines 103–110](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/schedule/index.tsx#L103-L110).
 
 Events remain sorted by original start time, but an underway tournament now causes Today to be
@@ -892,7 +897,10 @@ cancelled tournaments consistently with the existing cancelled/Now presentation.
 **Regression coverage:** underway tournaments mixed with past and future games/practices, multiple
 overlapping tournaments, cancelled tournaments and the auto-scroll target.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `f10444bcc` (PR #122).
+**Resolution and verification:** Resolved on 2026-10-08. Fixed in `f10444bcc` (PR #122).
+Independent inspection confirmed ordering and divider placement use the same effective day. All six
+schedule-items tests passed at `dc8f7885a`, covering the original mixed-event reproduction, scroll target,
+overlapping/cancelled tournaments and ordinary schedules.
 - **The fix:** the schedule's list is built by `lib/schedule-items.ts` (`buildScheduleItems`).
   - Each event is ordered by the day it's shown on: today for an underway tournament that isn't cancelled,
     else its start. Within a day, events are ordered by start.
@@ -910,7 +918,7 @@ overlapping tournaments, cancelled tournaments and the auto-scroll target.
 
 ### TL-022 — Show placement without individual game results
 
-**Priority / status:** P2 / Implemented — awaiting review.
+**Priority / status:** P2 / Resolved.
 **Source:** [home, lines 145–150](https://github.com/jaredhagemann/lista/blob/be9fa7b670d824375b4c7aa5b841d66b25623402/apps/mobile/app/%28app%29/index.tsx#L145-L150), and the record-only render guard at line 349.
 
 The last tournament is only set when `teamRecord(results)` is non-null, and the card itself also
@@ -929,7 +937,10 @@ record statistics. The web dashboard shares this guard and should be considered 
 **Regression coverage:** placement-only tournament with no recorded game results, tournament with a
 record, and a newer game result replacing the tournament summary.
 
-**Resolution and verification:** Implemented — awaiting review. Fixed in `f10444bcc` (PR #122), on both platforms.
+**Resolution and verification:** Resolved on 2026-10-08. Fixed in `f10444bcc` (PR #122), on both platforms.
+Independent inspection verified both data selection and card render guards allow a missing game record.
+The mobile placement-only case passed within the 196-test suite; all six web tournament-dashboard tests
+passed at `dc8f7885a`, including placement-only, existing-record and newer-game behavior.
 - **The fix:** the last placed tournament is shown when no game has a result, as well as when it ended after
   the last game started.
   - The Record card takes a missing record. It then shows the tournament alone, without wins, losses, ties
@@ -1320,5 +1331,24 @@ than reopen them implicitly. The source code review below is separate from accep
     - web passes 1,449 of 1,449, and `tsc --noEmit` and eslint are clean
 - **Limits:** no native device run. TL-020's focus behavior is checked by the same lifecycle simulation as the
   review, and on a device needs the TestFlight check.
+
+### 2026-10-08 — Independent verification of TL-019–TL-022, PR #122
+
+- **Revision:** `dc8f7885a546775e0a7619cc44cc1d3e62cf09c9`; implementation fix `f10444bcc`,
+  compared against the previously reviewed `be9fa7b67`. #123 is unchanged at `5c7a3fb27`.
+- **Scope:** inspected all application and test changes in the fix: mobile read-error handling,
+  focus refresh and request sequencing, schedule ordering, and placement-only Record cards on mobile/web.
+- **Outcome:** TL-019–TL-022 → Resolved. No new actionable findings in this follow-up. Earlier resolved
+  findings remain resolved, and there are no open findings in this log.
+- **Independent local verification:** 196 mobile tests in 23 suites and all six web tournament-dashboard
+  tests passed. Both apps passed TypeScript (`--noEmit`, web also `--incremental false`). Mobile used the
+  same temporary in-memory Babel runtime resolver and test environment as the preceding review; no
+  dependency or configuration files changed. Existing test warnings did not cause failures.
+- **CI:** #122 reports passing mobile, web, unit, RLS, staging migration and Vercel checks; production
+  migration is skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/37809657865).
+- **Limitations:** focus behavior is verified through component lifecycle tests, not a device/emulator.
+  No visual browser or TestFlight smoke test performed. The unchanged color PR was not retested this round.
+- **Review changes:** this log only. No application edits, commits, pushes or published GitHub comments.
+  The pre-existing untracked screenshot was left alone. `git diff --check` passed.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
