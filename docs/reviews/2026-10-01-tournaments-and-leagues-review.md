@@ -54,7 +54,8 @@
 | Effective availability in web UI and email | Merged via #121; TL-016–TL-018 resolved | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and D19 game email/reminder answer labels |
 | Tournament mobile support | Reviewed, PR #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
 | Event-type colors | Reviewed, #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
-| Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
+| Leagues, database | Implemented — awaiting review, PR #124 (`041b2752d`) | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging) |
+| Leagues, web and mobile | Pending | Management, tagging, the League games action, records and Record card rows (D9), schedule tags, mobile display |
 
 ## Part 1 — database findings
 
