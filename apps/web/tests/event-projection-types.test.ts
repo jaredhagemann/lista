@@ -24,6 +24,8 @@ describe("projection row types", () => {
       end_time: "2026-12-01T18:00:00.000Z",
       // A tournament's dates are read in its own zone (TL-009).
       timezone: null,
+      // A game follows its tournament's answers in the availability grid.
+      tournament_id: null,
       is_cancelled: false,
       // A game is labelled by its team and opponent, with its uniform.
       opponent: null,

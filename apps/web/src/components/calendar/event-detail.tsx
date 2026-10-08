@@ -671,6 +671,7 @@ export function EventDetail({
   availabilityRows,
   members,
   tournamentGames = [],
+  tournamentAnswers = [],
 }: {
   event: EventWithLocation;
   isAdmin: boolean;
@@ -678,6 +679,8 @@ export function EventDetail({
   initialEdit?: boolean;
   /** A tournament's games, in order (docs/specs/tournaments-and-leagues.md §4). */
   tournamentGames?: TournamentGame[];
+  /** A game's tournament's answers, which its answers follow until set (spec §4, Availability). */
+  tournamentAnswers?: { profileId: string; status: "available" | "maybe" | "unavailable" }[];
   /** The team's zone, for an event from before event zones. */
   teamTimeZone?: string | null;
   /** Names games and their uniforms (spec: game-display-and-uniform-colors). */
@@ -1225,6 +1228,8 @@ export function EventDetail({
               isAdmin={isAdmin}
               currentUserId={currentUserId}
               answeringFor={answeringFor}
+              tournamentRows={event.tournament ? tournamentAnswers : undefined}
+              tournamentTitle={event.tournament?.title ?? null}
             />
           </CardContent>
         </Card>

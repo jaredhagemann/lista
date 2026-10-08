@@ -14,10 +14,14 @@ const mocks = vi.hoisted(() => {
   const tables: Record<string, unknown> = {};
   const jobs: unknown[] = [];
   /** How many reads of a tournament's games fail before one succeeds (TL-015). */
-  const failures = { tournamentGames: 0 };
+  /** And which events' answers fail to read (TL-017). */
+  const failures = { tournamentGames: 0, answersFor: new Set<string>() };
+  /** Each update to a table, for the jobs' statuses. */
+  const updates: { table: string; row: Record<string, unknown> }[] = [];
   const from = vi.fn((table: string) => {
     const filters: Array<(row: Record<string, unknown>) => boolean> = [];
     let readsTournamentGames = false;
+    let answersFor: unknown = null;
     const rows = () => {
       const data = tables[table] ?? null;
       return Array.isArray(data) ? data.filter((row) => filters.every((f) => f(row))) : data;
@@ -27,18 +31,28 @@ const mocks = vi.hoisted(() => {
         failures.tournamentGames--;
         return Promise.resolve({ data: null, error: { code: "57014", message: "statement timeout" } });
       }
+      if (table === "availability" && failures.answersFor.has(answersFor as string)) {
+        return Promise.resolve({ data: null, error: { code: "57014", message: "statement timeout" } });
+      }
       return Promise.resolve({ data: rows(), error: null });
     };
+    // One row, as PostgREST gives it.
+    const one = () =>
+      result().then((r) => (Array.isArray(r.data) ? { ...r, data: r.data[0] ?? null } : r));
     const written = () => Promise.resolve({ data: null, error: null });
     const chain: Record<string, unknown> = {
-      single: result,
-      maybeSingle: result,
+      single: one,
+      maybeSingle: one,
       insert: written,
-      update: () => chain,
+      update: (row: Record<string, unknown>) => {
+        updates.push({ table, row });
+        return chain;
+      },
       delete: () => chain,
       select: () => chain,
       eq: (column: string, value: unknown) => {
         if (table === "events" && column === "tournament_id") readsTournamentGames = true;
+        if (table === "availability" && column === "event_id") answersFor = value;
         filters.push((row) => !(column in row) || row[column] === value);
         return chain;
       },
@@ -53,6 +67,7 @@ const mocks = vi.hoisted(() => {
   });
   const rpc = vi.fn(async () => ({ data: jobs.splice(0), error: null }));
   return {
+    updates,
     failures,
     tables,
     jobs,
@@ -149,6 +164,8 @@ beforeEach(() => {
   for (const key of Object.keys(mocks.tables)) delete mocks.tables[key];
   mocks.jobs.length = 0;
   mocks.failures.tournamentGames = 0;
+  mocks.failures.answersFor.clear();
+  mocks.updates.length = 0;
   vi.stubEnv("CRON_SECRET", "secret");
   vi.stubEnv("NEXT_PUBLIC_APP_URL", APP);
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -261,6 +278,148 @@ describe("the worker, for a game in a tournament", () => {
     // Its own answers: an override for this game (spec §4, Notifications).
     expect(sent().html).toContain(`${APP}/dashboard/schedule/g-2?answer=available`);
   });
+
+  // ── D19: the answer shown is the game's resulting answer ──
+
+  /**
+   * A queued update to the Final, described as it was when queued: in Surf Cup.
+   * `current` is the game's tournament now, when the worker sends it (TL-018).
+   */
+  function queueGameUpdate(
+    current: { tournament_id: string | null; tournament: { title: string } | null } = {
+      tournament_id: "t-1",
+      tournament: { title: "Surf Cup" },
+    }
+  ) {
+    mocks.tables.events = [{ id: "g-2", event_type: "game", ...current }];
+    mocks.jobs.push({
+      id: "job-g",
+      team_id: "team-1",
+      event_id: "g-2",
+      action: "updated",
+      kind: "event",
+      occurrence_count: 1,
+      attempts: 1,
+      recipient_profile_ids: null,
+      snapshot: {
+        title: "Final",
+        event_type: "game",
+        start_time: "2026-12-13T22:00:00.000Z",
+        end_time: "2026-12-13T23:30:00.000Z",
+        timezone: LA,
+        arrival_time: null,
+        location_id: null,
+        location_name: null,
+        is_cancelled: false,
+        opponent: "Hawks",
+        home_away: "home",
+        round: "Final",
+        tournament_id: "t-1",
+        tournament_title: "Surf Cup",
+      },
+    });
+  }
+
+  it("D19: with no answer for the game, shows the tournament's, and says so", async () => {
+    mocks.tables.availability = [{ event_id: "t-1", profile_id: "p1", status: "available" }];
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("✓ Available · from Surf Cup");
+    expect(sent().text).not.toContain("No answer yet");
+    // Its buttons still answer the game.
+    expect(sent().html).toContain(`${APP}/dashboard/schedule/g-2?answer=maybe`);
+  });
+
+  it("D19: the game's own answer wins, unmarked", async () => {
+    mocks.tables.availability = [
+      { event_id: "t-1", profile_id: "p1", status: "available" },
+      { event_id: "g-2", profile_id: "p1", status: "maybe" },
+    ];
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("? Maybe");
+    expect(sent().text).not.toContain("from Surf Cup");
+  });
+
+  it("D19: with neither, no answer yet", async () => {
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("No answer yet");
+  });
+
+  // ── TL-017: a failed answer read sends nothing it can't vouch for ──
+
+  const jobStatuses = () =>
+    mocks.updates.filter((u) => u.table === "notification_jobs").map((u) => u.row.status);
+
+  it("TL-017: the game's answers failing to read: no email, and the job is tried again", async () => {
+    mocks.tables.availability = [
+      { event_id: "t-1", profile_id: "p1", status: "available" },
+      { event_id: "g-2", profile_id: "p1", status: "unavailable" },
+    ];
+    mocks.failures.answersFor.add("g-2");
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(jobStatuses()).toEqual(["pending"]);
+  });
+
+  it("TL-017: the tournament's answers failing to read: no email, and the job is tried again", async () => {
+    mocks.tables.availability = [{ event_id: "t-1", profile_id: "p1", status: "available" }];
+    mocks.failures.answersFor.add("t-1");
+    queueGameUpdate();
+    await drainNotificationJobs();
+
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(jobStatuses()).toEqual(["pending"]);
+  });
+
+  it("TL-017: a standalone event's answers failing to read: the same", async () => {
+    mocks.failures.answersFor.add("t-1");
+    queue("created", tournamentSummary("created"));
+    await drainNotificationJobs();
+
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(jobStatuses()).toEqual(["pending"]);
+  });
+
+  // ── TL-018: the game's tournament now, not when the notice was queued ──
+
+  it("TL-018: a game taken out of its tournament since doesn't inherit from it", async () => {
+    mocks.tables.availability = [{ event_id: "t-1", profile_id: "p1", status: "available" }];
+    queueGameUpdate({ tournament_id: null, tournament: null });
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("No answer yet");
+    expect(sent().text).not.toContain("from Surf Cup");
+  });
+
+  it("TL-018: a game moved to another tournament since inherits from that one", async () => {
+    mocks.tables.availability = [
+      { event_id: "t-1", profile_id: "p1", status: "available" },
+      { event_id: "t-2", profile_id: "p1", status: "maybe" },
+    ];
+    queueGameUpdate({ tournament_id: "t-2", tournament: { title: "Winter Cup" } });
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("? Maybe · from Winter Cup");
+  });
+
+  it("TL-018: the game's own answer still wins, wherever it is", async () => {
+    mocks.tables.availability = [
+      { event_id: "t-2", profile_id: "p1", status: "maybe" },
+      { event_id: "g-2", profile_id: "p1", status: "unavailable" },
+    ];
+    queueGameUpdate({ tournament_id: "t-2", tournament: { title: "Winter Cup" } });
+    await drainNotificationJobs();
+
+    expect(sent().text).toContain("✗ Unavailable");
+    expect(sent().text).not.toContain("from Winter Cup");
+  });
 });
 
 describe("the reminder cron", () => {
@@ -316,6 +475,32 @@ describe("the reminder cron", () => {
     await remind();
 
     expect(sent().text).toContain("Part of Surf Cup · Pool A");
+  });
+
+  it("D19: a game's reminder shows the tournament answer it follows", async () => {
+    vi.setSystemTime(new Date("2026-12-11T12:00:00.000Z"));
+    mocks.tables.events = [
+      { ...GAMES[0], teams: TEAM, locations: null, uniform: null, notes: null, arrival_time: null, tournament: { title: "Surf Cup" } },
+    ];
+    mocks.tables.availability = [{ event_id: "t-1", profile_id: "p1", status: "unavailable" }];
+    await remind();
+
+    expect(sent().text).toContain("✗ Unavailable · from Surf Cup");
+  });
+
+  it("TL-017: a game whose tournament answers fail to read isn't reminded, and the run says so", async () => {
+    vi.setSystemTime(new Date("2026-12-11T12:00:00.000Z"));
+    mocks.tables.events = [
+      { ...GAMES[0], teams: TEAM, locations: null, uniform: null, notes: null, arrival_time: null, tournament: { title: "Surf Cup" } },
+    ];
+    mocks.tables.availability = [{ event_id: "t-1", profile_id: "p1", status: "unavailable" }];
+    mocks.failures.answersFor.add("t-1");
+    const response = await remind();
+
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.sendExpo).not.toHaveBeenCalled();
+    expect(response.status).toBe(500);
+    expect((await response.json()).failedEvents).toEqual([{ eventId: "g-1", error: "statement timeout" }]);
   });
 
   // ── TL-015 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──

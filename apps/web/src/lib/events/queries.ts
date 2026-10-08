@@ -37,6 +37,7 @@ export type CalendarEventRow = Pick<
   | "start_time"
   | "end_time"
   | "timezone"
+  | "tournament_id"
   | "is_cancelled"
   | "opponent"
   | "home_away"
@@ -120,8 +121,10 @@ const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{
 const PROJECTIONS: Record<EventProjection, string> = {
   // The grid needs placement and labelling, nothing else. A game is labelled by
   // its team and opponent, with its uniform (spec: game-display-and-uniform-colors).
+  // A tournament's game carries its tournament, whose answers it follows in the
+  // availability grid (tournaments-and-leagues §4, Availability).
   calendar:
-    "id, team_id, title, event_type, start_time, end_time, timezone, is_cancelled, opponent, home_away, uniform, score_for, score_against",
+    "id, team_id, title, event_type, start_time, end_time, timezone, tournament_id, is_cancelled, opponent, home_away, uniform, score_for, score_against",
   // The list needs what its rows and row actions read.
   list: "*, locations(name, address), tournament:tournament_id(title), games:events!tournament_id(count)",
 };

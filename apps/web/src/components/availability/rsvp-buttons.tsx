@@ -9,6 +9,7 @@ import {
   saveAvailability,
   type AvailabilityStatus,
 } from "./availability-picker";
+import { effectiveAnswer } from "@/lib/availability/effective";
 
 export function RsvpButtons({
   eventId,
@@ -16,6 +17,8 @@ export function RsvpButtons({
   initialStatus,
   onStatusChange,
   answeringFor,
+  inheritedStatus,
+  inheritedFrom,
 }: {
   eventId: string;
   profileId: string;
@@ -28,6 +31,12 @@ export function RsvpButtons({
   initialStatus: AvailabilityStatus | null;
   /** Told of every change, including a failed save being put back, so the page can show the answer elsewhere. */
   onStatusChange?: (status: AvailabilityStatus | null) => void;
+  /**
+   * For a game in a tournament: the tournament answer it follows until it has
+   * its own (spec §4, Availability), and the tournament's name.
+   */
+  inheritedStatus?: AvailabilityStatus | null;
+  inheritedFrom?: string | null;
 }) {
   const supabase = createClient();
   const [status, setStatus] = useState<AvailabilityStatus | null>(initialStatus);
@@ -51,15 +60,31 @@ export function RsvpButtons({
   }
 
   const label = answeringFor ? `${answeringFor}'s availability` : "Your availability";
+  // The answer shown: this event's own, else the tournament's it follows. A tap
+  // sets this event's own answer; tapping it again clears it, back to the
+  // tournament's (nextAvailability works on the own answer, not the shown one).
+  const shown = effectiveAnswer(status, inheritedFrom ? inheritedStatus : null);
+  const whose = answeringFor ? `${answeringFor}'s` : "your";
 
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
-      <AvailabilityPicker label={label} status={status} disabled={loading} onChoose={handleClick} />
+      <AvailabilityPicker label={label} status={shown.status} disabled={loading} onChoose={handleClick} />
       <p className="text-xs text-muted-foreground">
         ✓ Available &nbsp;·&nbsp; ? Maybe &nbsp;·&nbsp; ✗ Unavailable
         {status && " · tap again to clear"}
       </p>
+      {inheritedFrom && shown.inherited && (
+        <p className="text-xs text-muted-foreground">
+          From {whose} {inheritedFrom} answer. Choose an answer to set this game differently.
+        </p>
+      )}
+      {inheritedFrom && status && (
+        <p className="text-xs text-muted-foreground">
+          Set for this game.
+          {inheritedStatus ? ` Tap it again to go back to ${whose} ${inheritedFrom} answer.` : ""}
+        </p>
+      )}
     </div>
   );
 }
