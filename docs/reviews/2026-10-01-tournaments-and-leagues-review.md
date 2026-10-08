@@ -48,7 +48,7 @@
 | Tournament notices, part 2c | Merged via #120 after #118 landed on its feature base; TL-015 resolved | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders |
 | Deleted standalone-event links, #119 / BUG-032 | Merged and reviewed | Deleted notices open the schedule in email and push; cancelled notices retain their event link; tournament routing remains intact |
 | Effective availability in web UI and email | Reviewed, PR #121; TL-016–TL-018 implemented, awaiting review, including D19 | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and game email/reminder answer labels; existing tournament bulk-fill database rules alone do not complete this |
-| Tournament mobile support | Pending | Dedicated display and inherited answers; existing 1.0.12 behavior remains the accepted rollout difference |
+| Tournament mobile support | Implemented — awaiting review, PR #122 (`225903863`) | Dedicated display and inherited answers; existing 1.0.12 behavior remains the accepted rollout difference |
 | Leagues | Pending | Team leagues/seasons, tagging, records, management and mobile display |
 
 ## Part 1 — database findings
