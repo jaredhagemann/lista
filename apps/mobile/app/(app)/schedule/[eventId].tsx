@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
 import { arrivalInstant, eventZone, formatEventClock, formatEventDateTime, formatEventDay } from "../../../lib/event-time";
@@ -251,14 +251,36 @@ function Responses({
 
 const RESULT_WORD: Record<string, string> = { win: "Win", loss: "Loss", tie: "Tie" };
 
+/** A read that failed, and a way to try it again. */
+function ReadFailed({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View className="gap-2">
+      <Text className="text-sm text-red-700">{message}</Text>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Try again"
+        onPress={onRetry}
+        style={{ alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#e5e7eb" }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: "500", color: "#374151" }}>Try again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 /** A tournament's games in order, each opening its own screen. */
 function TournamentGames({
   games,
+  failed,
+  onRetry,
   teamName,
   fallbackZone,
   onOpen,
 }: {
   games: TournamentGame[];
+  /** The games couldn't be read (TL-019). */
+  failed: boolean;
+  onRetry: () => void;
   teamName: string | null | undefined;
   fallbackZone: string | null | undefined;
   onOpen: (id: string) => void;
@@ -266,7 +288,11 @@ function TournamentGames({
   return (
     <View accessibilityLabel="Games" className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
       <Text className="font-semibold text-gray-900 mb-2">Games</Text>
-      {games.length === 0 ? <Text className="text-sm text-gray-400">No games yet.</Text> : null}
+      {failed ? (
+        <ReadFailed message="Couldn't load the games." onRetry={onRetry} />
+      ) : games.length === 0 ? (
+        <Text className="text-sm text-gray-400">No games yet.</Text>
+      ) : null}
       {games.map((g, i) => {
         const zone = eventZone({ timezone: g.timezone, teams: { timezone: fallbackZone ?? null } });
         const when = `${formatEventDay(g.start_time, zone)}, ${formatEventClock(g.start_time, zone)}`;
@@ -385,8 +411,19 @@ export default function EventDetailScreen() {
   const inheritedFrom = event?.tournament?.title ?? null;
   const shown = effectiveAnswer(myStatus, inheritedFrom && answeringAs ? tournamentAnswers.get(answeringAs) : null);
 
+  // Whether the answers, and a tournament's games, have ever been read, and
+  // whether the last read of them failed (review TL-019). A failed read is never
+  // shown as "no answers" or "no games": with a tournament, a missing game answer
+  // would show the tournament's, and a missing tournament answer none.
+  const [answersLoaded, setAnswersLoaded] = useState(false);
+  const [answersFailed, setAnswersFailed] = useState(false);
+  const [gamesFailed, setGamesFailed] = useState(false);
+  // Each read's number: a slower, older one landing late is ignored (TL-020).
+  const latestRead = useRef(0);
+
   async function fetchData() {
     if (!eventId || !membership?.profileId) return;
+    const read = ++latestRead.current;
 
     const [eventResult, availResult] = await Promise.all([
       supabase
@@ -399,7 +436,9 @@ export default function EventDetailScreen() {
       supabase.from("availability").select("profile_id, status").eq("event_id", eventId),
     ]);
 
+    if (read !== latestRead.current) return;
     const detail = (eventResult.data ?? null) as unknown as EventDetail | null;
+    let answersOk = !availResult.error;
     if (detail) {
       setEvent(detail);
       navigation.setOptions({ title: gameTitle(detail, detail.teams?.name) });
@@ -420,10 +459,20 @@ export default function EventDetailScreen() {
           ? supabase.from("availability").select("profile_id, status").eq("event_id", detail.tournament_id)
           : Promise.resolve({ data: [] }),
       ]);
-      setGames(((gamesResult.data ?? []) as unknown) as TournamentGame[]);
-      setTournamentAnswers(
-        new Map(((inheritedResult.data ?? []) as unknown as AvailabilityRow[]).map((r) => [r.profile_id, r.status]))
-      );
+      if (read !== latestRead.current) return;
+      if ("error" in gamesResult && gamesResult.error) {
+        setGamesFailed(true);
+      } else {
+        setGamesFailed(false);
+        setGames(((gamesResult.data ?? []) as unknown) as TournamentGame[]);
+      }
+      if ("error" in inheritedResult && inheritedResult.error) answersOk = false;
+      // Both answer reads, or neither: half would resolve inheritance wrongly.
+      if (answersOk) {
+        setTournamentAnswers(
+          new Map(((inheritedResult.data ?? []) as unknown as AvailabilityRow[]).map((r) => [r.profile_id, r.status]))
+        );
+      }
       setRoster(
         ((members ?? []) as unknown as TeamMemberRow[]).map((m) => ({
           profileId: m.profile_id,
@@ -433,8 +482,12 @@ export default function EventDetailScreen() {
       );
     }
 
-    const rows = (availResult.data ?? []) as unknown as AvailabilityRow[];
-    setAnswers(new Map(rows.map((r) => [r.profile_id, r.status])));
+    if (answersOk) {
+      const rows = (availResult.data ?? []) as unknown as AvailabilityRow[];
+      setAnswers(new Map(rows.map((r) => [r.profile_id, r.status])));
+      setAnswersLoaded(true);
+    }
+    setAnswersFailed(!answersOk);
     setLoading(false);
     setRefreshing(false);
   }
@@ -448,10 +501,15 @@ export default function EventDetailScreen() {
     });
   }
 
-  useEffect(() => {
-    if (!membership) return;
-    fetchData();
-  }, [membership?.profileId, membership?.teamId, eventId]);
+  // On every focus, not only the first: back from a tournament's screen, its
+  // answer, which this game may follow, may have changed (review TL-020).
+  useFocusEffect(
+    useCallback(() => {
+      if (!membership) return;
+      fetchData();
+      // fetchData reads the current state; these are what make a new read due.
+    }, [membership?.profileId, membership?.teamId, eventId])
+  );
 
   function onRefresh() {
     setRefreshing(true);
@@ -666,14 +724,30 @@ export default function EventDetailScreen() {
         {tournament ? (
           <TournamentGames
             games={games}
+            failed={gamesFailed}
+            onRetry={fetchData}
             teamName={event.teams?.name}
             fallbackZone={event.timezone ?? event.teams?.timezone}
             onOpen={(id) => router.push(`/(app)/schedule/${id}` as any)}
           />
         ) : null}
 
+        {/* Answers that couldn't be read: never shown as answers (TL-019) */}
+        {answersFailed ? (
+          <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
+            <ReadFailed
+              message={
+                answersLoaded
+                  ? "Couldn't refresh the answers. These may be out of date."
+                  : "Couldn't load the answers. Pull to refresh, or try again."
+              }
+              onRetry={fetchData}
+            />
+          </View>
+        ) : null}
+
         {/* RSVP */}
-        {!event.is_cancelled ? (
+        {!event.is_cancelled && answersLoaded ? (
           <View className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
             <Text className="font-semibold text-gray-900 mb-3">{pickerTitle}</Text>
             {who.choices.length === 0 ? (
@@ -760,7 +834,9 @@ export default function EventDetailScreen() {
         ) : null}
 
         {/* Responses: always shown */}
-        <Responses roster={roster} answers={resulting.answers} inherited={resulting.inherited} inheritedFrom={inheritedFrom} />
+        {answersLoaded ? (
+          <Responses roster={roster} answers={resulting.answers} inherited={resulting.inherited} inheritedFrom={inheritedFrom} />
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

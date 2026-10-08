@@ -146,7 +146,8 @@ export default function HomeScreen() {
     const placed = ((placedResult.data ?? []) as unknown as PlacedTournament[])[0];
     const placement = placed ? placementText(placed) : null;
     setLastTournament(
-      overall && placed && placement && Date.parse(placed.end_time) > Date.parse(overall.last.startTime)
+      // With no game results at all, a placement is still a result (review TL-022).
+      placed && placement && (!overall || Date.parse(placed.end_time) > Date.parse(overall.last.startTime))
         ? {
             title: placed.title,
             placement,
@@ -346,7 +347,7 @@ export default function HomeScreen() {
           onOpenRoster={() => router.push("/(app)/team" as any)}
         />
 
-        {record ? (
+        {record || lastTournament ? (
           <View className="mt-4">
             <RecordCard
               teamName={membership.teamName}

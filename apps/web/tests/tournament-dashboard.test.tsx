@@ -166,6 +166,22 @@ describe("the Record card after a tournament (D8)", () => {
     expect(within(card).getByText("vs Hawks")).toBeTruthy();
   });
 
+  // TL-022 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md): a
+  // placement is recorded on its own, whether or not any game has a result.
+  it("a placed tournament with no game results still shows, without a record", async () => {
+    mocks.tables.placed = [SURF_CUP];
+    mocks.tables.results = [];
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(card).getByText("Last tournament")).toBeTruthy();
+    expect(within(card).getByText("2nd place")).toBeTruthy();
+    expect(within(card).queryByLabelText("Tournament record")).toBeNull();
+    // No wins, losses and ties to show yet.
+    expect(within(card).queryByRole("img")).toBeNull();
+  });
+
   it("without a placed tournament, the last game as before", async () => {
     mocks.tables.placed = [];
     mocks.tables.results = [played("a", "2026-12-12T17:00:00Z", "win", "t-1")];

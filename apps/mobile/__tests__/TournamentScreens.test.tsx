@@ -20,10 +20,21 @@ type Row = Record<string, unknown>;
 const mockTables: Record<string, Row[]> = {};
 const mockWrites: { kind: "upsert" | "delete"; table: string; row: Row }[] = [];
 const mockFilters: { table: string; method: string; column: string; value: unknown }[] = [];
+/**
+ * Reads that fail, as "table:column=value" (e.g. "availability:event_id=g-1"),
+ * for TL-019: the answer reads and a tournament's games read.
+ */
+const mockFailing = new Set<string>();
+/** Each mounted screen's focus callback, to fire on returning to it (TL-020). */
+const mockFocusCallbacks: (() => void)[] = [];
+function mockFocus() {
+  for (const cb of mockFocusCallbacks) cb();
+}
 
 jest.mock("../lib/supabase", () => {
   const from = (table: string) => {
     const filters: ((row: Row) => boolean)[] = [];
+    const eqs: string[] = [];
     const deleting: Row = {};
     let isDelete = false;
     const keep = (method: string, column: string, value: unknown, test: (row: Row) => boolean) => {
@@ -37,6 +48,9 @@ jest.mock("../lib/supabase", () => {
         mockWrites.push({ kind: "delete", table, row: deleting });
         return Promise.resolve({ data: null, error: null });
       }
+      if (eqs.some((e) => mockFailing.has(`${table}:${e}`))) {
+        return Promise.resolve({ data: null, error: { code: "57014", message: "statement timeout" }, count: null });
+      }
       const data = (mockTables[table] ?? []).filter((row) => filters.every((f) => f(row)));
       return Promise.resolve({ data, error: null, count: data.length });
     };
@@ -44,6 +58,7 @@ jest.mock("../lib/supabase", () => {
       select: () => chain,
       eq: (c: string, v: unknown) => {
         if (isDelete) deleting[c] = v;
+        eqs.push(`${c}=${String(v)}`);
         return keep("eq", c, v, (r) => r[c] === v);
       },
       in: (c: string, v: unknown[]) => keep("in", c, v, (r) => v.includes(r[c])),
@@ -80,7 +95,21 @@ jest.mock("expo-router", () => {
     useRouter: () => ({ push: mockPush }),
     useNavigation: () => ({ setOptions: jest.fn() }),
     useLocalSearchParams: () => ({ eventId: mockEventId }),
-    useFocusEffect: (cb: () => void) => React.useEffect(cb, []),
+    // Runs on mount, as a focus would, and again on mockFocus(): returning to a
+    // screen that stayed mounted underneath another.
+    useFocusEffect: (cb: () => void) => {
+      const latest = React.useRef(cb);
+      latest.current = cb;
+      React.useEffect(() => {
+        const run = () => latest.current();
+        mockFocusCallbacks.push(run);
+        run();
+        return () => {
+          const i = mockFocusCallbacks.indexOf(run);
+          if (i >= 0) mockFocusCallbacks.splice(i, 1);
+        };
+      }, []);
+    },
   };
 });
 jest.mock("react-native-safe-area-context", () => {
@@ -181,6 +210,7 @@ beforeEach(() => {
   for (const key of Object.keys(mockTables)) delete mockTables[key];
   mockWrites.length = 0;
   mockFilters.length = 0;
+  mockFailing.clear();
   mockPush.mockClear();
   mockTables.events = [SURF_CUP, POOL_A, FINAL];
   mockTables.team_members = ROSTER;
@@ -396,5 +426,142 @@ describe("a game in a tournament", () => {
     const maybe = screen.getByLabelText("Maybe (1)");
     expect(within(maybe).getByText("Mia Chen")).toBeTruthy();
     expect(within(maybe).queryByText("from Surf Cup")).toBeNull();
+  });
+});
+
+// ── Review findings on PR #122 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──
+
+describe("TL-019: answers that fail to read are never shown as answers", () => {
+  const selected = (label: string) => screen.getByLabelText(label).props.accessibilityState?.selected;
+
+  beforeEach(() => {
+    mockEventId = "g-1";
+  });
+
+  it("the game's answers failing: no answer claimed, and a way to try again", async () => {
+    mockTables.availability = [
+      { event_id: "t-1", profile_id: "me", status: "available" },
+      { event_id: "g-1", profile_id: "me", status: "unavailable" },
+    ];
+    mockFailing.add("availability:event_id=g-1");
+    render(<EventDetailScreen />);
+
+    expect(await screen.findByText(/Couldn't load the answers/)).toBeTruthy();
+    expect(screen.queryByLabelText("Available")).toBeNull();
+    expect(screen.queryByText(/from Surf Cup|From your Surf Cup/)).toBeNull();
+    expect(screen.queryByText("Responses")).toBeNull();
+
+    mockFailing.clear();
+    fireEvent.press(screen.getByLabelText("Try again"));
+    await waitFor(() => expect(selected("Unavailable")).toBe(true));
+  });
+
+  it("the tournament's answers failing: nobody shown as unanswered", async () => {
+    mockTables.availability = [{ event_id: "t-1", profile_id: "ava", status: "available" }];
+    mockFailing.add("availability:event_id=t-1");
+    render(<EventDetailScreen />);
+
+    expect(await screen.findByText(/Couldn't load the answers/)).toBeTruthy();
+    expect(screen.queryByLabelText(/No response/)).toBeNull();
+    expect(screen.queryByText("Ava Smith")).toBeNull();
+  });
+
+  it("a failed refresh keeps the last answers it read, and says so", async () => {
+    mockTables.availability = [{ event_id: "t-1", profile_id: "me", status: "available" }];
+    render(<EventDetailScreen />);
+    await screen.findByText(/From your Surf Cup answer/);
+
+    mockFailing.add("availability:event_id=t-1");
+    mockTables.availability = [];
+    mockFocus();
+
+    expect(await screen.findByText(/Couldn't refresh the answers/)).toBeTruthy();
+    expect(selected("Available")).toBe(true);
+  });
+
+  it("a tournament's games failing to read isn't shown as no games", async () => {
+    mockEventId = "t-1";
+    mockFailing.add("events:tournament_id=t-1");
+    render(<EventDetailScreen />);
+
+    expect(await screen.findByText(/Couldn't load the games/)).toBeTruthy();
+    expect(screen.queryByText("No games yet.")).toBeNull();
+  });
+
+  it("answers read successfully but empty are no answers, as before", async () => {
+    render(<EventDetailScreen />);
+
+    expect(await screen.findByLabelText("No response (2)")).toBeTruthy();
+    expect(screen.queryByText(/Couldn't/)).toBeNull();
+  });
+});
+
+describe("TL-020: coming back to a game reads its answers again", () => {
+  const selected = (label: string) => screen.getByLabelText(label).props.accessibilityState?.selected;
+
+  beforeEach(() => {
+    mockEventId = "g-1";
+  });
+
+  it("a tournament answer changed meanwhile shows on return", async () => {
+    mockTables.availability = [{ event_id: "t-1", profile_id: "me", status: "available" }];
+    render(<EventDetailScreen />);
+    await screen.findByText(/From your Surf Cup answer/);
+    expect(selected("Available")).toBe(true);
+
+    // Over on the tournament's screen: Unavailable for the whole tournament.
+    mockTables.availability = [{ event_id: "t-1", profile_id: "me", status: "unavailable" }];
+    mockFocus();
+
+    await waitFor(() => expect(selected("Unavailable")).toBe(true));
+    expect(screen.getByText(/From your Surf Cup answer/)).toBeTruthy();
+  });
+
+  it("a cleared tournament answer leaves the game unanswered on return", async () => {
+    mockTables.availability = [{ event_id: "t-1", profile_id: "me", status: "available" }];
+    render(<EventDetailScreen />);
+    await screen.findByText(/From your Surf Cup answer/);
+
+    mockTables.availability = [];
+    mockFocus();
+
+    await waitFor(() => expect(selected("Available")).toBe(false));
+    expect(screen.queryByText(/From your Surf Cup answer/)).toBeNull();
+  });
+
+  it("the game's own answer still wins on return", async () => {
+    mockTables.availability = [
+      { event_id: "t-1", profile_id: "me", status: "available" },
+      { event_id: "g-1", profile_id: "me", status: "maybe" },
+    ];
+    render(<EventDetailScreen />);
+    await waitFor(() => expect(selected("Maybe")).toBe(true));
+
+    mockTables.availability = [
+      { event_id: "t-1", profile_id: "me", status: "unavailable" },
+      { event_id: "g-1", profile_id: "me", status: "maybe" },
+    ];
+    mockFocus();
+
+    await waitFor(() => expect(selected("Maybe")).toBe(true));
+    expect(selected("Unavailable")).toBe(false);
+  });
+});
+
+describe("TL-022: a placed tournament without game results", () => {
+  it("still shows on the Record card, without a record", async () => {
+    const past = (days: number) => new Date(Date.now() - days * 24 * HOUR).toISOString();
+    mockTables.events = [
+      event({ id: "t-past", title: "Fall Classic", event_type: "tournament", start_time: past(10), end_time: past(8), placement_rank: 2 }),
+      event({ id: "tg-1", tournament_id: "t-past", opponent: "Hawks", start_time: past(9), end_time: past(9) }),
+    ];
+    render(<HomeScreen />);
+
+    const card = await screen.findByLabelText("Record");
+    expect(within(card).getByText("Last tournament")).toBeTruthy();
+    expect(within(card).getByText("2nd place")).toBeTruthy();
+    expect(within(card).queryByLabelText(/Tournament record/)).toBeNull();
+    // No wins, losses and ties to count yet.
+    expect(within(card).queryByText("Wins")).toBeNull();
   });
 });

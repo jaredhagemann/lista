@@ -19,6 +19,7 @@ import { displayLabel } from "../../../lib/labels";
 import { gameTitle } from "../../../lib/game-display";
 import { gameCount, isTournament, isUnderway, tournamentDates, tournamentLine } from "../../../lib/tournament";
 import { effectiveAnswer } from "../../../lib/availability";
+import { buildScheduleItems, type ScheduleItem } from "../../../lib/schedule-items";
 import { eventTypeColors, PART_OF_COLOR } from "../../../lib/event-type-colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -48,9 +49,7 @@ type Event = {
   games: { count: number }[] | null;
 };
 
-type ListItem =
-  | { type: "event"; event: Event }
-  | { type: "today-divider" };
+type ListItem = ScheduleItem<Event>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,55 +86,6 @@ function RsvpBadge({ status, inherited, label }: { status: AvailabilityStatus; i
       </Text>
     </View>
   );
-}
-
-/** Midnight local time for a given ISO date string or Date */
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function buildItems(events: Event[]): { items: ListItem[]; firstUpcomingIndex: number } {
-  const today = startOfDay(new Date());
-  const items: ListItem[] = [];
-  let dividerInserted = false;
-  let firstUpcomingIndex = -1;
-
-  for (const event of events) {
-    // A tournament underway belongs to today: it started days ago, but it's on.
-    const underway = isTournament(event) && isUnderway(event);
-    const eventDay = underway ? today : startOfDay(new Date(event.start_time));
-
-    // Insert "Today" divider before the first event on or after today
-    if (!dividerInserted && eventDay >= today) {
-      items.push({ type: "today-divider" });
-      dividerInserted = true;
-    }
-
-    // Track the first non-cancelled upcoming event for auto-scroll
-    if (
-      firstUpcomingIndex === -1 &&
-      !event.is_cancelled &&
-      (underway || new Date(event.start_time) >= new Date())
-    ) {
-      firstUpcomingIndex = items.length;
-    }
-
-    items.push({ type: "event", event });
-  }
-
-  // All events are in the past — divider goes at the end
-  if (!dividerInserted) {
-    items.push({ type: "today-divider" });
-  }
-
-  // If the divider itself is the scroll target (no upcoming events found yet),
-  // scroll to it so the user sees "Today" at the top
-  if (firstUpcomingIndex === -1) {
-    const dividerIdx = items.findIndex((i) => i.type === "today-divider");
-    firstUpcomingIndex = dividerIdx;
-  }
-
-  return { items, firstUpcomingIndex };
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -189,7 +139,7 @@ export default function ScheduleScreen() {
     ]);
 
     const events = (eventsResult.data ?? []) as unknown as Event[];
-    const { items: newItems, firstUpcomingIndex: idx } = buildItems(events);
+    const { items: newItems, firstUpcomingIndex: idx } = buildScheduleItems(events);
     setItems(newItems);
     setFirstUpcomingIndex(idx);
 

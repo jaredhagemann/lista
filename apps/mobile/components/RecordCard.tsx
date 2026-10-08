@@ -42,7 +42,9 @@ function ScoreRow({ name, score }: { name: string; score: string | null }) {
  * docs/specs/team-branding-and-labels.md §4): the last game as a scoreline with
  * its date and time, and the wins, losses and ties with a bar split in those
  * proportions: wins in `winColor` (the club's secondary color, else lista
- * blue), losses black, ties grey. Shown only once a game has a result.
+ * blue), losses black, ties grey. Shown once a game has a result, or a
+ * tournament a placement: a placement is a result of its own, and without game
+ * results the card shows the tournament alone (review TL-022).
  */
 export function RecordCard({
   teamName,
@@ -52,23 +54,12 @@ export function RecordCard({
   lastTournament = null,
 }: {
   teamName: string;
-  record: TeamRecord;
+  /** Null before any game has a result: then only the last tournament shows. */
+  record: TeamRecord | null;
   teamTimeZone: string | null;
   winColor: string;
   lastTournament?: LastTournament | null;
 }) {
-  const { wins, losses, ties, last } = record;
-  const scored = last.scoreFor != null && last.scoreAgainst != null;
-  const opponent = `${last.homeAway === "away" ? "at" : "vs"} ${last.opponent ?? "Opponent"}`;
-  const zone = eventZone({ timezone: last.timeZone, teams: { timezone: teamTimeZone } });
-  const played = wins + losses + ties;
-  const share = (n: number): `${number}%` => `${(n / played) * 100}%`;
-
-  const stats = [
-    { label: "Wins", value: wins },
-    { label: "Losses", value: losses },
-    { label: "Ties", value: ties },
-  ];
 
   return (
     <View accessibilityLabel="Record" className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -97,39 +88,72 @@ export function RecordCard({
             </View>
             <Text className="text-sm text-gray-500">{lastTournament.dates}</Text>
           </View>
-        ) : (
-          <View className="gap-1">
-            <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
-              <Text className="text-xs font-semibold uppercase tracking-wide text-white">Last game</Text>
-            </View>
-            <ScoreRow name={teamName} score={scored ? String(last.scoreFor) : RESULT[last.result]} />
-            <ScoreRow name={opponent} score={scored ? String(last.scoreAgainst) : null} />
-            <Text className="text-sm text-gray-500">
-              {formatEventDay(last.startTime, zone)}, {formatEventClock(last.startTime, zone)}
-            </Text>
-          </View>
-        )}
+        ) : record ? (
+          <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />
+        ) : null}
 
-        <View className="gap-3">
-          <View className="flex-row">
-            {stats.map(({ label, value }) => (
-              <View key={label} accessible accessibilityLabel={`${value} ${label}`} style={{ flex: 1, alignItems: "center" }}>
-                <Text className="text-4xl font-light text-gray-900">{value}</Text>
-                <Text className="text-sm text-gray-500">{label}</Text>
-              </View>
-            ))}
+        {record ? <Stats record={record} winColor={winColor} /> : null}
+      </View>
+    </View>
+  );
+}
+
+/** The last game, as a scoreline with its date and time. */
+function LastGame({
+  teamName,
+  last,
+  teamTimeZone,
+}: {
+  teamName: string;
+  last: TeamRecord["last"];
+  teamTimeZone: string | null;
+}) {
+  const scored = last.scoreFor != null && last.scoreAgainst != null;
+  const opponent = `${last.homeAway === "away" ? "at" : "vs"} ${last.opponent ?? "Opponent"}`;
+  const zone = eventZone({ timezone: last.timeZone, teams: { timezone: teamTimeZone } });
+  return (
+    <View className="gap-1">
+      <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
+        <Text className="text-xs font-semibold uppercase tracking-wide text-white">Last game</Text>
+      </View>
+      <ScoreRow name={teamName} score={scored ? String(last.scoreFor) : RESULT[last.result]} />
+      <ScoreRow name={opponent} score={scored ? String(last.scoreAgainst) : null} />
+      <Text className="text-sm text-gray-500">
+        {formatEventDay(last.startTime, zone)}, {formatEventClock(last.startTime, zone)}
+      </Text>
+    </View>
+  );
+}
+
+/** Wins, losses and ties, with a bar split in those proportions. */
+function Stats({ record, winColor }: { record: TeamRecord; winColor: string }) {
+  const { wins, losses, ties } = record;
+  const played = wins + losses + ties;
+  const share = (n: number): `${number}%` => `${(n / played) * 100}%`;
+  const stats = [
+    { label: "Wins", value: wins },
+    { label: "Losses", value: losses },
+    { label: "Ties", value: ties },
+  ];
+  return (
+    <View className="gap-3">
+      <View className="flex-row">
+        {stats.map(({ label, value }) => (
+          <View key={label} accessible accessibilityLabel={`${value} ${label}`} style={{ flex: 1, alignItems: "center" }}>
+            <Text className="text-4xl font-light text-gray-900">{value}</Text>
+            <Text className="text-sm text-gray-500">{label}</Text>
           </View>
-          <View
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel={`${plural(wins, "win", "wins")}, ${plural(losses, "loss", "losses")}, ${plural(ties, "tie", "ties")}`}
-            style={{ flexDirection: "row", height: 12, borderRadius: 99, overflow: "hidden", backgroundColor: "#f3f4f6" }}
-          >
-            <View style={{ width: share(wins), backgroundColor: winColor }} />
-            <View style={{ width: share(losses), backgroundColor: "#000000" }} />
-            <View style={{ width: share(ties), backgroundColor: "#a3a3a3" }} />
-          </View>
-        </View>
+        ))}
+      </View>
+      <View
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={`${plural(wins, "win", "wins")}, ${plural(losses, "loss", "losses")}, ${plural(ties, "tie", "ties")}`}
+        style={{ flexDirection: "row", height: 12, borderRadius: 99, overflow: "hidden", backgroundColor: "#f3f4f6" }}
+      >
+        <View style={{ width: share(wins), backgroundColor: winColor }} />
+        <View style={{ width: share(losses), backgroundColor: "#000000" }} />
+        <View style={{ width: share(ties), backgroundColor: "#a3a3a3" }} />
       </View>
     </View>
   );
