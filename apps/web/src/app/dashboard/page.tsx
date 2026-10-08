@@ -102,9 +102,10 @@ export default async function DashboardPage() {
 
   const record = teamRecord(resultGames ?? []);
   // D8: the tournament is the last result until a game starts after it ended.
+  // With no game results at all, a placement is still a result (review TL-022).
   const placed = placedTournaments?.[0];
   const lastTournament =
-    record && placed && Date.parse(placed.end_time) > Date.parse(record.last.startTime)
+    placed && (!record || Date.parse(placed.end_time) > Date.parse(record.last.startTime))
       ? {
           title: placed.title,
           placement: placementText(placed) ?? "",
@@ -206,7 +207,7 @@ export default async function DashboardPage() {
 
         <TeamCard team={{ ...team, organizations: org }} members={members ?? []} />
 
-        {record && (
+        {(record || lastTournament) && (
           <RecordCard
             teamName={team.name}
             record={record}

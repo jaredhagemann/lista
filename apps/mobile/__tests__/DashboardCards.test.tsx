@@ -22,7 +22,7 @@ jest.mock("../lib/supabase", () => {
   const from = (table: string) => {
     const filters: string[] = [];
     const chain: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "gte", "order", "limit", "in", "not"]) {
+    for (const m of ["select", "eq", "gt", "gte", "lte", "or", "order", "limit", "in", "not"]) {
       chain[m] = (...args: unknown[]) => {
         filters.push(`${m}:${String(args[0])}`);
         return chain;

@@ -18,13 +18,25 @@ import { displayLabel } from "../../lib/labels";
 import { gameTitle } from "../../lib/game-display";
 import { teamRecord, type ResultGame, type TeamRecord } from "../../lib/team-record";
 import { TeamCard, type TeamCardMember } from "../../components/TeamCard";
-import { RecordCard } from "../../components/RecordCard";
+import { RecordCard, type LastTournament } from "../../components/RecordCard";
+import { eventTypeColors, PART_OF_COLOR } from "../../lib/event-type-colors";
+import {
+  gameCount,
+  isTournament,
+  isUnderway,
+  placementText,
+  tournamentDates,
+  tournamentLine,
+  tournamentRecord,
+} from "../../lib/tournament";
 
 type Event = {
   id: string;
   title: string;
   event_type: string;
   start_time: string;
+  end_time: string;
+  is_cancelled: boolean;
   timezone: string | null;
   opponent: string | null;
   home_away: string | null;
@@ -33,24 +45,38 @@ type Event = {
   /** The event's own team: its zone, and its name for game titles. */
   teams: { timezone: string | null; name: string } | null;
   locations: { name: string } | null;
+  /** A game's tournament and round; a tournament's game count. */
+  tournament_id: string | null;
+  round: string | null;
+  tournament: { title: string } | null;
+  games: { count: number }[] | null;
 };
 
-/** "Thu, Sep 17, 4:00 PM MDT", in the event's own zone (BUG-010). */
+/** A finished tournament with a placement, for the Record card (D8). */
+type PlacedTournament = {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  timezone: string | null;
+  placement_rank: number | null;
+  placement_label: string | null;
+  teams: { timezone: string | null } | null;
+};
+
+/**
+ * "Thu, Sep 17, 4:00 PM MDT", in the event's own zone (BUG-010). A tournament
+ * spans whole days: its dates and games instead (D13).
+ */
 function formatEventTime(event: Event) {
+  if (isTournament(event)) {
+    const games = event.games?.[0]?.count ?? 0;
+    return games > 0 ? `${tournamentDates(event)} · ${gameCount(games)}` : tournamentDates(event);
+  }
   const zone = eventZone(event);
   return `${formatEventDay(event.start_time, zone)}, ${formatEventClock(event.start_time, zone)}`;
 }
 
-function eventTypeBadgeClass(type: string) {
-  switch (type) {
-    case "game":
-      return { bg: "#dcfce7", text: "#15803d" };
-    case "practice":
-      return { bg: "#dbeafe", text: "#1d4ed8" };
-    default:
-      return { bg: "#f3e8ff", text: "#7e22ce" };
-  }
-}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -60,6 +86,7 @@ export default function HomeScreen() {
   const [members, setMembers] = useState<TeamCardMember[]>([]);
   // Games with a result, for the Record card; the team's zone for its date line.
   const [record, setRecord] = useState<TeamRecord | null>(null);
+  const [lastTournament, setLastTournament] = useState<LastTournament | null>(null);
   const [teamTimeZone, setTeamTimeZone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,15 +98,17 @@ export default function HomeScreen() {
       return;
     }
 
-    const [eventsResult, membersResult, resultsResult] = await Promise.all([
+    const now = new Date().toISOString();
+    const [eventsResult, membersResult, resultsResult, placedResult] = await Promise.all([
       supabase
         .from("events")
         .select(
-          "id, title, event_type, start_time, timezone, opponent, home_away, score_for, score_against, teams(timezone, name), locations(name)"
+          "id, title, event_type, start_time, end_time, is_cancelled, timezone, opponent, home_away, score_for, score_against, tournament_id, round, teams(timezone, name), locations(name), tournament:tournament_id(title), games:events!tournament_id(count)"
         )
         .eq("team_id", membership.teamId)
         .eq("is_cancelled", false)
-        .gte("start_time", new Date().toISOString())
+        // By end time: a tournament stays listed while it's underway (spec §4).
+        .gt("end_time", now)
         .order("start_time", { ascending: true })
         .limit(5),
       supabase
@@ -88,16 +117,45 @@ export default function HomeScreen() {
         .eq("team_id", membership.teamId),
       supabase
         .from("events")
-        .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, teams(timezone)")
+        .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, teams(timezone)")
         .eq("team_id", membership.teamId)
         .eq("event_type", "game")
         .not("game_result", "is", null),
+      // The latest finished tournament with a placement, for the Record card (D8).
+      supabase
+        .from("events")
+        .select("id, title, start_time, end_time, timezone, placement_rank, placement_label, teams(timezone)")
+        .eq("team_id", membership.teamId)
+        .eq("event_type", "tournament")
+        .eq("is_cancelled", false)
+        .lte("end_time", now)
+        .or("placement_rank.not.is.null,placement_label.not.is.null")
+        .order("end_time", { ascending: false })
+        .limit(1),
     ]);
 
     setEvents((eventsResult.data ?? []) as unknown as Event[]);
     setMembers((membersResult.data ?? []) as unknown as TeamCardMember[]);
-    const results = (resultsResult.data ?? []) as unknown as (ResultGame & { teams: { timezone: string | null } | null })[];
-    setRecord(teamRecord(results));
+    const results = (resultsResult.data ?? []) as unknown as (ResultGame & {
+      tournament_id: string | null;
+      teams: { timezone: string | null } | null;
+    })[];
+    const overall = teamRecord(results);
+    setRecord(overall);
+    // D8: the tournament is the last result until a game starts after it ended.
+    const placed = ((placedResult.data ?? []) as unknown as PlacedTournament[])[0];
+    const placement = placed ? placementText(placed) : null;
+    setLastTournament(
+      // With no game results at all, a placement is still a result (review TL-022).
+      placed && placement && (!overall || Date.parse(placed.end_time) > Date.parse(overall.last.startTime))
+        ? {
+            title: placed.title,
+            placement,
+            record: tournamentRecord(placed.id, results),
+            dates: tournamentDates(placed),
+          }
+        : null
+    );
     setTeamTimeZone(results[0]?.teams?.timezone ?? null);
     setLoading(false);
     setRefreshing(false);
@@ -206,10 +264,13 @@ export default function HomeScreen() {
           ) : (
             <>
               {events.map((event, i) => {
-                const badge = eventTypeBadgeClass(event.event_type);
+                const badge = eventTypeColors(event.event_type);
+                const tournament = isTournament(event);
+                const partOf = tournamentLine(event);
                 return (
                   <TouchableOpacity
                     key={event.id}
+                    accessibilityLabel={tournament ? `${event.title}, tournament` : undefined}
                     onPress={() =>
                       router.push(`/(app)/schedule/${event.id}` as any)
                     }
@@ -243,9 +304,19 @@ export default function HomeScreen() {
                         </Text>
                       </View>
                     </View>
-                    <Text className="text-sm text-gray-500 mt-0.5">
-                      {formatEventTime(event)}
-                    </Text>
+                    {partOf ? (
+                      <Text style={{ fontSize: 12, color: PART_OF_COLOR, marginTop: 1 }}>{partOf}</Text>
+                    ) : null}
+                    <View className="flex-row items-center gap-2 mt-0.5">
+                      <Text className="text-sm text-gray-500 flex-shrink">
+                        {formatEventTime(event)}
+                      </Text>
+                      {tournament && isUnderway(event) ? (
+                        <View style={{ backgroundColor: "#0f172a", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99 }}>
+                          <Text style={{ color: "#ffffff", fontSize: 10, fontWeight: "700" }}>Now</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     {event.locations?.name ? (
                       <Text className="text-sm text-gray-400">
                         {event.locations.name}
@@ -276,13 +347,14 @@ export default function HomeScreen() {
           onOpenRoster={() => router.push("/(app)/team" as any)}
         />
 
-        {record ? (
+        {record || lastTournament ? (
           <View className="mt-4">
             <RecordCard
               teamName={membership.teamName}
               record={record}
               teamTimeZone={teamTimeZone}
               winColor={membership.winColor}
+              lastTournament={lastTournament}
             />
           </View>
         ) : null}

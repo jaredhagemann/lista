@@ -213,6 +213,43 @@ Files: `components/TeamCard.tsx`, `components/RecordCard.tsx`, `components/Remot
 `lib/team-record.ts`, `lib/team-branding.ts`, `lib/membership.ts`, `contexts/AppContext.tsx`,
 `app/(app)/index.tsx`, `__tests__/team-record.test.ts`, `__tests__/DashboardCards.test.tsx`.
 
+### Tournaments, as on the web — [spec §4, "Mobile app"](../specs/tournaments-and-leagues.md)
+
+**Installed build (1.0.12):** see the compatibility review below.
+- A tournament reads as a purple "Tournament" event, "Ends 12:00 AM", and drops off Upcoming on its first day.
+- Its games are ordinary games, without their tournament or round.
+- A game shows only its own answer (D14).
+
+**New build:** display and answering only. Creating and managing stays on the web (D11).
+- **Home and schedule:**
+  - A tournament is one purple card with its dates ("Fri, Dec 11 – Sun, Dec 13") and game count, never times.
+    It's marked **Now** while it's underway.
+  - Upcoming is by end time, so a tournament stays listed until its last day ends. On the schedule, an
+    underway tournament sits under Today.
+  - Each game is its own row, with "Surf Cup · Semifinal" under its name.
+- **Tournament screen:** its dates, location, placement and record, its games in order (each with its round,
+  time and result, opening its screen), and the picker for the tournament.
+- **A game's screen:**
+  - "Part of Surf Cup · Pool A" links to the tournament.
+  - The picker shows your tournament answer until you set one for the game ("From your Surf Cup answer").
+    Choosing sets the game's own answer, and tapping it again goes back to the tournament's.
+  - Responses group by each person's resulting answer, with inherited ones marked "from Surf Cup".
+- **Schedule answer badges:** a game's badge is its resulting answer. An inherited one is dashed and faded.
+- **Record card (D8):** after a tournament with a placement, it shows "Last tournament", with its name,
+  placement, record (W–L–T) and dates, until a game starts after it.
+- **Type colors, as on the web (2026-10-08):**
+  - Practice blue, game green, tournament purple, and **other yellow** (other was purple).
+  - They're defined once, in `lib/event-type-colors.ts`.
+  - The "Surf Cup · Semifinal" line is the tournament's purple.
+  - On 1.0.12, other events and tournaments both stay purple until people update.
+
+These are the web's rules, copied (`lib/tournament.ts` and `effectiveAnswer` in `lib/availability.ts`).
+No server change: the columns, embeds and rows are part 1's.
+
+Files: `lib/tournament.ts`, `lib/availability.ts`, `lib/event-type-colors.ts`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx`,
+`app/(app)/schedule/[eventId].tsx`, `components/RecordCard.tsx`, `__tests__/tournament.test.ts`,
+`__tests__/TournamentScreens.test.tsx`, `__tests__/event-type-colors.test.tsx`.
+
 ---
 
 ## Before shipping
@@ -344,6 +381,13 @@ TestFlight build (production data: use a test team for anything that writes):
   none), "[club] · [season]", and the members with coaches first, each opening their page. On a team with a
   scored past game, the Record card shows the last game's scoreline and date, and W–L–T with the bar's win
   segment in the club's secondary color.
+- **Tournaments:** on a test team with a tournament and games (made on the web):
+  - Home and the schedule show it as one card with its dates and game count, and "Now" while it's underway.
+    Its games read "Surf Cup · [round]".
+  - The tournament screen shows dates, not "Ends", and lists its games, each opening its screen.
+  - Answer the tournament. A game's picker shows that answer "From your Surf Cup answer".
+  - Set the game to something else, then tap it again: it goes back to the tournament's answer.
+  - Set a placement on the web after the tournament: the Record card shows "Last tournament".
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.

@@ -17,6 +17,10 @@ import { eventZone, formatEventClock, formatEventDay } from "../../../lib/event-
 import { useAppContext } from "../../../contexts/AppContext";
 import { displayLabel } from "../../../lib/labels";
 import { gameTitle } from "../../../lib/game-display";
+import { gameCount, isTournament, isUnderway, tournamentDates, tournamentLine } from "../../../lib/tournament";
+import { effectiveAnswer } from "../../../lib/availability";
+import { buildScheduleItems, type ScheduleItem } from "../../../lib/schedule-items";
+import { eventTypeColors, PART_OF_COLOR } from "../../../lib/event-type-colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,22 +41,19 @@ type Event = {
   /** The event's own team: its zone, and its name for game titles. */
   teams: { timezone: string | null; name: string } | null;
   locations: { name: string } | null;
+  /** A game's tournament, for "Surf Cup · Semifinal", and its round. */
+  tournament_id: string | null;
+  round: string | null;
+  tournament: { title: string } | null;
+  /** A tournament's game count. */
+  games: { count: number }[] | null;
 };
 
-type ListItem =
-  | { type: "event"; event: Event }
-  | { type: "today-divider" };
+type ListItem = ScheduleItem<Event>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-function eventTypeBadge(type: string) {
-  switch (type) {
-    case "game":     return { bg: "#dcfce7", text: "#15803d" };
-    case "practice": return { bg: "#dbeafe", text: "#1d4ed8" };
-    default:         return { bg: "#f3e8ff", text: "#7e22ce" };
-  }
-}
 
 const RSVP_STYLE: Record<
   AvailabilityStatus,
@@ -63,62 +64,28 @@ const RSVP_STYLE: Record<
   unavailable: { bg: "#fee2e2", border: "#dc2626", text: "#b91c1c", label: "✗" },
 };
 
-function RsvpBadge({ status }: { status: AvailabilityStatus }) {
+/**
+ * Your answer. On a tournament's game it may be the tournament's, which the
+ * game follows until you answer it (spec §4, Availability): dashed and faded.
+ */
+function RsvpBadge({ status, inherited, label }: { status: AvailabilityStatus; inherited: boolean; label: string }) {
   const s = RSVP_STYLE[status];
+  const words = { available: "Available", maybe: "Maybe", unavailable: "Unavailable" }[status];
   return (
-    <View style={[styles.rsvpCircle, { borderColor: s.border, backgroundColor: s.bg }]}>
+    <View
+      accessible
+      accessibilityLabel={`Your answer for ${label}: ${words}${inherited ? ", from the tournament" : ""}`}
+      style={[
+        styles.rsvpCircle,
+        { borderColor: s.border, backgroundColor: s.bg },
+        inherited && { borderStyle: "dashed", opacity: 0.6 },
+      ]}
+    >
       <Text style={{ color: s.text, fontSize: 12, fontWeight: "700", lineHeight: 16 }}>
         {s.label}
       </Text>
     </View>
   );
-}
-
-/** Midnight local time for a given ISO date string or Date */
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function buildItems(events: Event[]): { items: ListItem[]; firstUpcomingIndex: number } {
-  const today = startOfDay(new Date());
-  const items: ListItem[] = [];
-  let dividerInserted = false;
-  let firstUpcomingIndex = -1;
-
-  for (const event of events) {
-    const eventDay = startOfDay(new Date(event.start_time));
-
-    // Insert "Today" divider before the first event on or after today
-    if (!dividerInserted && eventDay >= today) {
-      items.push({ type: "today-divider" });
-      dividerInserted = true;
-    }
-
-    // Track the first non-cancelled upcoming event for auto-scroll
-    if (
-      firstUpcomingIndex === -1 &&
-      !event.is_cancelled &&
-      new Date(event.start_time) >= new Date()
-    ) {
-      firstUpcomingIndex = items.length;
-    }
-
-    items.push({ type: "event", event });
-  }
-
-  // All events are in the past — divider goes at the end
-  if (!dividerInserted) {
-    items.push({ type: "today-divider" });
-  }
-
-  // If the divider itself is the scroll target (no upcoming events found yet),
-  // scroll to it so the user sees "Today" at the top
-  if (firstUpcomingIndex === -1) {
-    const dividerIdx = items.findIndex((i) => i.type === "today-divider");
-    firstUpcomingIndex = dividerIdx;
-  }
-
-  return { items, firstUpcomingIndex };
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -161,7 +128,7 @@ export default function ScheduleScreen() {
       supabase
         .from("events")
         .select(
-          "id, title, event_type, start_time, end_time, is_cancelled, timezone, opponent, home_away, score_for, score_against, teams(timezone, name), locations(name)"
+          "id, title, event_type, start_time, end_time, is_cancelled, timezone, opponent, home_away, score_for, score_against, tournament_id, round, teams(timezone, name), locations(name), tournament:tournament_id(title), games:events!tournament_id(count)"
         )
         .eq("team_id", membership.teamId)
         .order("start_time", { ascending: true }),
@@ -172,7 +139,7 @@ export default function ScheduleScreen() {
     ]);
 
     const events = (eventsResult.data ?? []) as unknown as Event[];
-    const { items: newItems, firstUpcomingIndex: idx } = buildItems(events);
+    const { items: newItems, firstUpcomingIndex: idx } = buildScheduleItems(events);
     setItems(newItems);
     setFirstUpcomingIndex(idx);
 
@@ -275,16 +242,35 @@ export default function ScheduleScreen() {
           }
 
           const { event } = item;
-          const badge = eventTypeBadge(event.event_type);
-          const rsvpStatus = myAvailability.get(event.id) ?? null;
+          const badge = eventTypeColors(event.event_type);
+          // A game's own answer, else its tournament's (spec §4, Availability).
+          const rsvp = effectiveAnswer(
+            myAvailability.get(event.id),
+            event.tournament_id ? myAvailability.get(event.tournament_id) : null
+          );
+          const title = gameTitle(event, event.teams?.name);
+          // A tournament spans whole days: its dates and games, never times (D13).
+          const tournament = isTournament(event);
+          const games = event.games?.[0]?.count ?? 0;
+          const partOf = tournamentLine(event);
 
           return (
             <TouchableOpacity
               onPress={() => router.push(`/(app)/schedule/${event.id}` as any)}
+              accessibilityLabel={tournament ? `${event.title}, tournament` : undefined}
               style={styles.card}
             >
               {/* Date header inside card */}
-              <Text style={styles.cardDate}>{formatEventDay(event.start_time, eventZone(event))}</Text>
+              <View style={styles.dateRow}>
+                <Text style={styles.cardDate}>
+                  {tournament ? tournamentDates(event) : formatEventDay(event.start_time, eventZone(event))}
+                </Text>
+                {tournament && !event.is_cancelled && isUnderway(event) ? (
+                  <View style={styles.nowPill}>
+                    <Text style={styles.nowPillText}>Now</Text>
+                  </View>
+                ) : null}
+              </View>
 
               <View style={styles.cardBody}>
                 <View style={{ flex: 1, marginRight: 8 }}>
@@ -295,11 +281,16 @@ export default function ScheduleScreen() {
                     ]}
                     numberOfLines={1}
                   >
-                    {gameTitle(event, event.teams?.name)}
+                    {title}
                   </Text>
-                  <Text style={styles.cardTime}>
-                    {formatEventClock(event.start_time, eventZone(event))} – {formatEventClock(event.end_time, eventZone(event))}
-                  </Text>
+                  {partOf ? <Text style={styles.partOf}>{partOf}</Text> : null}
+                  {tournament ? (
+                    games > 0 ? <Text style={styles.cardTime}>{gameCount(games)}</Text> : null
+                  ) : (
+                    <Text style={styles.cardTime}>
+                      {formatEventClock(event.start_time, eventZone(event))} – {formatEventClock(event.end_time, eventZone(event))}
+                    </Text>
+                  )}
                   {event.locations?.name ? (
                     <View style={styles.locationRow}>
                       <Ionicons name="location-outline" size={12} color="#9ca3af" />
@@ -320,8 +311,8 @@ export default function ScheduleScreen() {
                     <View style={styles.cancelledPill}>
                       <Text style={styles.cancelledPillText}>Cancelled</Text>
                     </View>
-                  ) : rsvpStatus ? (
-                    <RsvpBadge status={rsvpStatus} />
+                  ) : rsvp.status ? (
+                    <RsvpBadge status={rsvp.status} inherited={rsvp.inherited} label={title} />
                   ) : (
                     <View style={styles.rsvpEmpty} />
                   )}
@@ -386,14 +377,17 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 12,
   },
+  dateRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   cardDate: {
     fontSize: 11,
     fontWeight: "600",
     color: "#9ca3af",
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    marginBottom: 6,
   },
+  nowPill: { backgroundColor: "#0f172a", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99 },
+  nowPillText: { color: "#ffffff", fontSize: 10, fontWeight: "700" },
+  partOf: { fontSize: 12, color: PART_OF_COLOR, marginTop: 1 },
   cardBody: {
     flexDirection: "row",
     alignItems: "flex-start",

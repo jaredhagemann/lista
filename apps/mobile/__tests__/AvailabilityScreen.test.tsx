@@ -46,11 +46,16 @@ jest.mock("../lib/supabase", () => {
   return { supabase: { from } };
 });
 
-jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: jest.fn() }),
-  useNavigation: () => ({ setOptions: jest.fn() }),
-  useLocalSearchParams: () => ({ eventId: "e-1" }),
-}));
+jest.mock("expo-router", () => {
+  const React = require("react");
+  return {
+    useRouter: () => ({ push: jest.fn() }),
+    useNavigation: () => ({ setOptions: jest.fn() }),
+    useLocalSearchParams: () => ({ eventId: "e-1" }),
+    // The event screen reads on focus (TL-020); here, once on mount.
+    useFocusEffect: (cb: () => void) => React.useEffect(cb, []),
+  };
+});
 jest.mock("react-native-safe-area-context", () => {
   const { View } = require("react-native");
   return { SafeAreaView: View, useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) };

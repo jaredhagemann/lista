@@ -27,8 +27,10 @@ function ScoreRow({ name, score }: { name: string; score: string | null }) {
  * The dashboard's Record card (spec: docs/specs/team-branding-and-labels.md §4):
  * the last game as a scoreline with its date and time, and the season's wins,
  * losses and ties with a bar split in those proportions: wins in the club's
- * secondary color (lista blue outside a club), losses black, ties grey. Only
- * shown once a game has a result.
+ * secondary color (lista blue outside a club), losses black, ties grey. Shown
+ * once a game has a result, or a tournament a placement: a placement is a result
+ * of its own, and without game results the card shows the tournament alone
+ * (review TL-022).
  *
  * After a tournament with a placement, the last result is the tournament until
  * a newer game: its name, placement, own record and dates
@@ -43,7 +45,8 @@ export function RecordCard({
   lastTournament = null,
 }: {
   teamName: string;
-  record: TeamRecord;
+  /** Null before any game has a result: then only the last tournament shows. */
+  record: TeamRecord | null;
   teamTimeZone?: string | null;
   /** The club's secondary color on a club team, else lista blue. */
   winColor: string;
@@ -55,10 +58,13 @@ export function RecordCard({
     dates: string;
   } | null;
 }) {
-  const { wins, losses, ties, last } = record;
-  const scored = last.scoreFor != null && last.scoreAgainst != null;
-  const opponent = `${last.homeAway === "away" ? "at" : "vs"} ${last.opponent ?? "Opponent"}`;
-  const zone = resolveTimeZone(last.timeZone ?? teamTimeZone);
+  const last = record?.last ?? null;
+  const wins = record?.wins ?? 0;
+  const losses = record?.losses ?? 0;
+  const ties = record?.ties ?? 0;
+  const scored = last != null && last.scoreFor != null && last.scoreAgainst != null;
+  const opponent = last ? `${last.homeAway === "away" ? "at" : "vs"} ${last.opponent ?? "Opponent"}` : "";
+  const zone = resolveTimeZone(last?.timeZone ?? teamTimeZone);
   const played = wins + losses + ties;
   const share = (n: number) => `${(n / played) * 100}%`;
 
@@ -93,7 +99,7 @@ export function RecordCard({
               </div>
               <p className="text-sm text-muted-foreground">{lastTournament.dates}</p>
             </div>
-          ) : (
+          ) : last ? (
             <div className="min-w-0 space-y-2">
               <span className="inline-block rounded bg-primary px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground">
                 Last game
@@ -106,28 +112,30 @@ export function RecordCard({
                 {formatShortEventDate(last.startTime, zone)}, {formatEventTime(last.startTime, zone)}
               </p>
             </div>
-          )}
+          ) : null}
 
-          <div className="flex flex-col justify-center gap-4">
-            <div className="grid grid-cols-3 text-center">
-              {stats.map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-4xl font-light tabular-nums">{value}</p>
-                  <p className="text-sm text-muted-foreground">{label}</p>
-                </div>
-              ))}
+          {record && (
+            <div className="flex flex-col justify-center gap-4">
+              <div className="grid grid-cols-3 text-center">
+                {stats.map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-4xl font-light tabular-nums">{value}</p>
+                    <p className="text-sm text-muted-foreground">{label}</p>
+                  </div>
+                ))}
+              </div>
+              <div
+                role="img"
+                aria-label={`${plural(wins, "win", "wins")}, ${plural(losses, "loss", "losses")}, ${plural(ties, "tie", "ties")}`}
+                className="flex h-3 overflow-hidden rounded-full bg-muted"
+              >
+                <div style={{ width: share(wins), backgroundColor: winColor }} />
+                {/* Black would vanish on the dark theme's card, so it turns white there. */}
+                <div className="bg-black dark:bg-white" style={{ width: share(losses) }} />
+                <div className="bg-neutral-400" style={{ width: share(ties) }} />
+              </div>
             </div>
-            <div
-              role="img"
-              aria-label={`${plural(wins, "win", "wins")}, ${plural(losses, "loss", "losses")}, ${plural(ties, "tie", "ties")}`}
-              className="flex h-3 overflow-hidden rounded-full bg-muted"
-            >
-              <div style={{ width: share(wins), backgroundColor: winColor }} />
-              {/* Black would vanish on the dark theme's card, so it turns white there. */}
-              <div className="bg-black dark:bg-white" style={{ width: share(losses) }} />
-              <div className="bg-neutral-400" style={{ width: share(ties) }} />
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </section>
