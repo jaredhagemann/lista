@@ -85,6 +85,7 @@ function practiceSeries(
     recurrence_rule: i === 0 ? rule : null,
     parent_event_id: i === 0 ? null : `occ-${from}`,
     tournament_id: null,
+    league_id: null,
     round: null,
     placement_rank: null,
     placement_label: null,

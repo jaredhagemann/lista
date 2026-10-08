@@ -346,6 +346,18 @@ Review fixes to the tournament functions and triggers (TL-001 to TL-007), and a 
 after it starts (TL-012). None of it reaches 1.0.12: they change database functions, which 1.0.12 never calls,
 and triggers on `events` writes, which it never makes (checked against `b3473c71b`).
 
+### Added 2026-10-08: leagues (`20261008000000_leagues.sql`)
+
+Spec: `docs/specs/tournaments-and-leagues.md` §5. It adds:
+- a new `leagues` table
+- a nullable `events.league_id`
+- a check that only games carry one
+- triggers on `leagues` and on `events` writes
+
+None of it reaches 1.0.12. It never reads `leagues`, and it selects named columns from `events`, never
+`*`, so it doesn't see `league_id`. The check and triggers act on writes it never makes. A league game shows
+in 1.0.12 as an ordinary game, without its league.
+
 ## On the TestFlight build, before submitting for review
 
 Each of these is the check recorded on its ticket. They need a real build, so run them on the 1.1.0
