@@ -24,20 +24,8 @@ import {
   type MonthKey,
 } from "@/lib/events/month-range";
 import { useNavigate } from "@/components/layout/navigation-progress";
+import { eventTypeStyle } from "@/lib/events/type-colors";
 
-const eventTypeColors: Record<string, { bg: string; text: string }> = {
-  practice: { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-700 dark:text-blue-300" },
-  game: { bg: "bg-green-100 dark:bg-green-900/40", text: "text-green-700 dark:text-green-300" },
-  tournament: { bg: "bg-amber-100 dark:bg-amber-900/40", text: "text-amber-800 dark:text-amber-300" },
-  other: { bg: "bg-purple-100 dark:bg-purple-900/40", text: "text-purple-700 dark:text-purple-300" },
-};
-
-const eventDotColors: Record<string, string> = {
-  practice: "bg-blue-600",
-  game: "bg-green-600",
-  tournament: "bg-amber-500",
-  other: "bg-purple-600",
-};
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MAX_VISIBLE_EVENTS = 2;
@@ -418,7 +406,8 @@ export function ScheduleCalendar({
                   {/* Desktop: event badges */}
                   <div className="hidden sm:flex flex-col gap-0.5">
                     {visibleEvents.map((event) => {
-                      const colors = eventTypeColors[event.event_type] ?? eventTypeColors.other;
+                      const style = eventTypeStyle(event.event_type);
+                      const colors = { bg: style.chipBg, text: style.chipText };
                       if (isTournament(event)) {
                         // One segment of a bar across its days: square where it
                         // continues, and named on its first day, wherever a week
@@ -468,7 +457,7 @@ export function ScheduleCalendar({
                   {/* Mobile: coloured dots */}
                   <div className="flex sm:hidden flex-wrap gap-1 px-0.5">
                     {dayEvents.map((event) => {
-                      const dotColor = eventDotColors[event.event_type] ?? eventDotColors.other;
+                      const dotColor = eventTypeStyle(event.event_type).dot;
                       return (
                         <button
                           key={event.id}

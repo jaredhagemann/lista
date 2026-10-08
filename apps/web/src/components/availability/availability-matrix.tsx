@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { displayLabel } from "@/lib/labels";
 import { effectiveAnswer } from "@/lib/availability/effective";
+import { eventTypeStyle } from "@/lib/events/type-colors";
 
 type AvailabilityStatus = "available" | "maybe" | "unavailable";
 type EventType = "practice" | "game" | "other";
@@ -87,11 +88,6 @@ const statusConfig: Record<
   },
 };
 
-const eventTypeBadge: Record<string, string> = {
-  practice: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  game: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  other: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
-};
 
 /**
  * A cell.
@@ -790,7 +786,7 @@ export function AvailabilityMatrix({
                           </span>
                           <span
                             className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                              eventTypeBadge[event.event_type] ?? eventTypeBadge.other
+                              eventTypeStyle(event.event_type).badge
                             }`}
                           >
                             {displayLabel(event.event_type)}
