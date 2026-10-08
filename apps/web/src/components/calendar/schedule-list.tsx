@@ -41,6 +41,7 @@ import {
 import { EventFormDialog } from "./event-form-dialog";
 import { gameTitle, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import { isTournament, isUnderway, tournamentDates, tournamentLine } from "@/lib/events/tournament";
+import { EVENT_TYPE_STYLES } from "@/lib/events/type-colors";
 import { UniformLabel } from "@/components/events/uniform-label";
 import { eventTimeZone } from "@/lib/events/event-timezone";
 import { browserTimeZone } from "@/lib/events/team-timezone";
@@ -68,19 +69,19 @@ type PageSize = 30 | 50 | 100;
 const TYPE_BADGE: Record<string, { label: string; className: string }> = {
   practice: {
     label: "Practice",
-    className: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-0",
+    className: `${EVENT_TYPE_STYLES.practice.badge} border-0`,
   },
   game: {
     label: "Game",
-    className: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border-0",
+    className: `${EVENT_TYPE_STYLES.game.badge} border-0`,
   },
   tournament: {
     label: "Tournament",
-    className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-0",
+    className: `${EVENT_TYPE_STYLES.tournament.badge} border-0`,
   },
   other: {
     label: "Other",
-    className: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border-0",
+    className: `${EVENT_TYPE_STYLES.other.badge} border-0`,
   },
 };
 
