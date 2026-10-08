@@ -65,6 +65,7 @@ import { UniformOptions } from "@/components/events/uniform-options";
 import { UniformLabel } from "@/components/events/uniform-label";
 import { gameTitle, homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import { isTournament, placementText, tournamentDates, tournamentRecord } from "@/lib/events/tournament";
+import { eventTypeStyle } from "@/lib/events/type-colors";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import { isWithinDays, tournamentDays } from "@/lib/events/tournament-form";
 import { TournamentEditForm } from "@/components/tournaments/tournament-edit-form";
@@ -867,11 +868,6 @@ export function EventDetail({
     setSeries(null);
   }
 
-  const eventTypeColor: Record<string, string> = {
-    practice: "bg-blue-100 text-blue-800",
-    game: "bg-green-100 text-green-800",
-    other: "bg-purple-100 text-purple-800",
-  };
 
   // ── Edit mode ──────────────────────────────────────────────────────────────
   if (tournament && editState === "tournament") {
@@ -960,7 +956,7 @@ export function EventDetail({
                 )}
               </div>
               <Badge
-                className={eventTypeColor[event.event_type] ?? ""}
+                className={eventTypeStyle(event.event_type).badge}
                 variant="secondary"
               >
                 {displayLabel(event.event_type)}
