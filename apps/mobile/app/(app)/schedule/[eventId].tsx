@@ -9,16 +9,18 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useNavigation } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../lib/supabase";
-import { arrivalInstant, eventZone, formatEventClock, formatEventDateTime } from "../../../lib/event-time";
+import { arrivalInstant, eventZone, formatEventClock, formatEventDateTime, formatEventDay } from "../../../lib/event-time";
 import { useAppContext } from "../../../contexts/AppContext";
 import { displayLabel } from "../../../lib/labels";
 import { gameTitle, homeAwayLabel, scoreLine, uniformOf, type TeamUniforms } from "../../../lib/game-display";
 import { UniformLabel } from "../../../components/UniformLabel";
+import { isTournament, isUnderway, placementText, tournamentDates, tournamentLine, tournamentRecord } from "../../../lib/tournament";
 import {
   answerersFor,
+  effectiveAnswer,
   groupResponses,
   nextAvailability,
   type Answerer,
@@ -47,7 +49,33 @@ type EventDetail = {
   /** The event's own team: its zone, name and uniforms. */
   teams: ({ timezone: string | null; name: string } & TeamUniforms) | null;
   locations: { name: string; address: string | null } | null;
+  /** A game's tournament and round; a tournament's placement (docs/specs/tournaments-and-leagues.md §4). */
+  tournament_id: string | null;
+  round: string | null;
+  placement_rank: number | null;
+  placement_label: string | null;
+  tournament: { id: string; title: string } | null;
 };
+
+/** A tournament's game, as its screen lists it. */
+type TournamentGame = {
+  id: string;
+  title: string;
+  event_type: string;
+  start_time: string;
+  timezone: string | null;
+  opponent: string | null;
+  home_away: string | null;
+  round: string | null;
+  score_for: number | null;
+  score_against: number | null;
+  game_result: string | null;
+  is_cancelled: boolean;
+  tournament_id: string | null;
+};
+
+const TOURNAMENT_GAME_COLUMNS =
+  "id, title, event_type, start_time, timezone, opponent, home_away, round, score_for, score_against, game_result, is_cancelled, tournament_id";
 
 const RESULT_STYLE: Record<string, { bg: string; text: string }> = {
   win: { bg: "#dcfce7", text: "#15803d" },
@@ -151,8 +179,23 @@ function AnswerIcon({ status }: { status: AvailabilityStatus | null }) {
  * Players grouped by answer, then coaches and staff with their role, as the
  * web's ResponseList. Only players count in the summary.
  */
-function Responses({ roster, answers }: { roster: RosterMember[]; answers: ReadonlyMap<string, AvailabilityStatus> }) {
+function Responses({
+  roster,
+  answers,
+  inherited,
+  inheritedFrom,
+}: {
+  roster: RosterMember[];
+  answers: ReadonlyMap<string, AvailabilityStatus>;
+  /** For a tournament's game: who follows their tournament answer, marked "from Surf Cup". */
+  inherited?: ReadonlySet<string>;
+  inheritedFrom?: string | null;
+}) {
   const { groups, staff, summary, playerCount } = groupResponses(roster, answers);
+  const mark = (profileId: string) =>
+    inheritedFrom && inherited?.has(profileId) ? (
+      <Text className="text-xs text-gray-400">from {inheritedFrom}</Text>
+    ) : null;
   const sections = [
     { key: "available", label: "Available", color: "text-green-700", members: groups.available },
     { key: "maybe", label: "Maybe", color: "text-amber-700", members: groups.maybe },
@@ -174,9 +217,10 @@ function Responses({ roster, answers }: { roster: RosterMember[]; answers: Reado
               {label} ({members.length})
             </Text>
             {members.map((m) => (
-              <Text key={m.profileId} className={`text-sm py-0.5 ${key === "none" ? "text-gray-400" : "text-gray-700"}`}>
-                {m.name}
-              </Text>
+              <View key={m.profileId} className="flex-row items-center gap-2 py-0.5">
+                <Text className={`text-sm flex-shrink ${key === "none" ? "text-gray-400" : "text-gray-700"}`}>{m.name}</Text>
+                {mark(m.profileId)}
+              </View>
             ))}
           </View>
         ) : null
@@ -194,6 +238,7 @@ function Responses({ roster, answers }: { roster: RosterMember[]; answers: Reado
               <AnswerIcon status={m.status} />
               <Text className="text-sm text-gray-700 flex-shrink">{m.name}</Text>
               <Text className="text-xs text-gray-400">{m.roleLabel}</Text>
+              {mark(m.profileId)}
             </View>
           ))}
         </View>
@@ -202,6 +247,55 @@ function Responses({ roster, answers }: { roster: RosterMember[]; answers: Reado
   );
 }
 
+
+const RESULT_WORD: Record<string, string> = { win: "Win", loss: "Loss", tie: "Tie" };
+
+/** A tournament's games in order, each opening its own screen. */
+function TournamentGames({
+  games,
+  teamName,
+  fallbackZone,
+  onOpen,
+}: {
+  games: TournamentGame[];
+  teamName: string | null | undefined;
+  fallbackZone: string | null | undefined;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <View accessibilityLabel="Games" className="bg-white rounded-2xl border border-gray-100 px-4 py-4">
+      <Text className="font-semibold text-gray-900 mb-2">Games</Text>
+      {games.length === 0 ? <Text className="text-sm text-gray-400">No games yet.</Text> : null}
+      {games.map((g, i) => {
+        const zone = eventZone({ timezone: g.timezone, teams: { timezone: fallbackZone ?? null } });
+        const when = `${formatEventDay(g.start_time, zone)}, ${formatEventClock(g.start_time, zone)}`;
+        const result = g.game_result ? RESULT_STYLE[g.game_result] ?? RESULT_STYLE.tie : null;
+        return (
+          <TouchableOpacity
+            key={g.id}
+            accessibilityRole="button"
+            onPress={() => onOpen(g.id)}
+            style={{ paddingVertical: 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: "#f3f4f6" }}
+          >
+            <View className="flex-row items-center gap-2">
+              <Text
+                className={`text-sm font-medium flex-shrink ${g.is_cancelled ? "line-through text-gray-400" : "text-gray-900"}`}
+              >
+                {gameTitle(g, teamName)}
+              </Text>
+              {result && g.game_result ? (
+                <View style={{ backgroundColor: result.bg, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99 }}>
+                  <Text style={{ color: result.text, fontSize: 11, fontWeight: "600" }}>{RESULT_WORD[g.game_result] ?? g.game_result}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text className="text-xs text-gray-500 mt-0.5">{[g.round?.trim(), when].filter(Boolean).join(" · ")}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
 
 function RsvpButton({
   label,
@@ -255,7 +349,11 @@ function RsvpButton({
 export default function EventDetailScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
   const { membership, ownProfile, allMemberships } = useAppContext();
+  // A tournament's games; a game's tournament answers, which it follows until answered.
+  const [games, setGames] = useState<TournamentGame[]>([]);
+  const [tournamentAnswers, setTournamentAnswers] = useState<Map<string, AvailabilityStatus>>(new Map());
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   // Everyone's answer, yours included: one source, so answering moves your row.
@@ -279,7 +377,12 @@ export default function EventDetailScreen() {
       : answeringName
         ? `Availability for ${answeringName}`
         : "Availability";
+  // This event's own answer, and the one shown: for a tournament's game, its own
+  // else the tournament's (spec §4, Availability). A tap sets the game's own;
+  // tapping it again clears it, back to the tournament's.
   const myStatus = answeringAs ? answers.get(answeringAs) ?? null : null;
+  const inheritedFrom = event?.tournament?.title ?? null;
+  const shown = effectiveAnswer(myStatus, inheritedFrom && answeringAs ? tournamentAnswers.get(answeringAs) : null);
 
   async function fetchData() {
     if (!eventId || !membership?.profileId) return;
@@ -288,7 +391,7 @@ export default function EventDetailScreen() {
       supabase
         .from("events")
         .select(
-          "id, team_id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, opponent, home_away, uniform, score_for, score_against, game_result, teams(timezone, name, home_uniform, away_uniform, home_uniform_color, away_uniform_color), locations(name, address)"
+          "id, team_id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, opponent, home_away, uniform, score_for, score_against, game_result, tournament_id, round, placement_rank, placement_label, teams(timezone, name, home_uniform, away_uniform, home_uniform_color, away_uniform_color), locations(name, address), tournament:tournament_id(id, title)"
         )
         .eq("id", eventId)
         .single(),
@@ -301,11 +404,25 @@ export default function EventDetailScreen() {
       navigation.setOptions({ title: gameTitle(detail, detail.teams?.name) });
 
       // The event's own team, which may not be the one the app has open (an
-      // event opened from another team's notification).
-      const { data: members } = await supabase
-        .from("team_members")
-        .select("profile_id, role, profiles(first_name, last_name)")
-        .eq("team_id", detail.team_id);
+      // event opened from another team's notification). A tournament's games,
+      // or a game's tournament answers, alongside.
+      const [{ data: members }, gamesResult, inheritedResult] = await Promise.all([
+        supabase.from("team_members").select("profile_id, role, profiles(first_name, last_name)").eq("team_id", detail.team_id),
+        isTournament(detail)
+          ? supabase
+              .from("events")
+              .select(TOURNAMENT_GAME_COLUMNS)
+              .eq("tournament_id", detail.id)
+              .order("start_time", { ascending: true })
+          : Promise.resolve({ data: [] }),
+        detail.tournament_id
+          ? supabase.from("availability").select("profile_id, status").eq("event_id", detail.tournament_id)
+          : Promise.resolve({ data: [] }),
+      ]);
+      setGames(((gamesResult.data ?? []) as unknown) as TournamentGame[]);
+      setTournamentAnswers(
+        new Map(((inheritedResult.data ?? []) as unknown as AvailabilityRow[]).map((r) => [r.profile_id, r.status]))
+      );
       setRoster(
         ((members ?? []) as unknown as TeamMemberRow[]).map((m) => ({
           profileId: m.profile_id,
@@ -362,6 +479,21 @@ export default function EventDetailScreen() {
     setRsvpLoading(false);
   }
 
+  // Everyone's resulting answer: for a tournament's game, their own else the
+  // tournament's, with who's inheriting (spec §4, Availability).
+  const resulting = (() => {
+    if (!inheritedFrom) return { answers, inherited: new Set<string>() };
+    const merged = new Map<string, AvailabilityStatus>();
+    const inherited = new Set<string>();
+    for (const id of new Set([...answers.keys(), ...tournamentAnswers.keys()])) {
+      const answer = effectiveAnswer(answers.get(id), tournamentAnswers.get(id));
+      if (!answer.status) continue;
+      merged.set(id, answer.status);
+      if (answer.inherited) inherited.add(id);
+    }
+    return { answers: merged, inherited };
+  })();
+
   if (loading || !membership) {
     return (
       <SafeAreaView
@@ -383,6 +515,11 @@ export default function EventDetailScreen() {
       </SafeAreaView>
     );
   }
+
+  const tournament = isTournament(event);
+  const partOf = tournamentLine(event);
+  const placement = tournament ? placementText(event) : null;
+  const record = tournament ? tournamentRecord(event.id, games) : null;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["bottom"]}>
@@ -436,20 +573,62 @@ export default function EventDetailScreen() {
             {gameTitle(event, event.teams?.name)}
           </Text>
 
+          {partOf && event.tournament ? (
+            <TouchableOpacity
+              accessibilityRole="link"
+              accessibilityLabel={`Part of ${partOf}`}
+              onPress={() => router.push(`/(app)/schedule/${event.tournament!.id}` as any)}
+              className="mb-3 -mt-2"
+            >
+              <Text className="text-sm text-gray-500">
+                Part of <Text className="font-semibold text-gray-900">{partOf}</Text>
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           <View className="gap-2">
-            <View className="flex-row items-center gap-2">
-              <Ionicons name="time-outline" size={16} color="#9ca3af" />
-              <Text className="text-sm text-gray-700">
-                {formatEventDateTime(event.start_time, eventZone(event))}
-              </Text>
-            </View>
-            <View className="flex-row items-center gap-2">
-              <Ionicons name="arrow-forward-outline" size={16} color="#9ca3af" />
-              <Text className="text-sm text-gray-700">
-                Ends {formatEventClock(event.end_time, eventZone(event))}
-              </Text>
-            </View>
-            {event.arrival_time != null ? (
+            {tournament ? (
+              // A tournament spans whole days: its dates, never times (D13).
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="calendar-outline" size={16} color="#9ca3af" />
+                <Text className="text-sm text-gray-700">{tournamentDates(event)}</Text>
+                {!event.is_cancelled && isUnderway(event) ? (
+                  <View style={{ backgroundColor: "#0f172a", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99 }}>
+                    <Text style={{ color: "#ffffff", fontSize: 10, fontWeight: "700" }}>Now</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <>
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="time-outline" size={16} color="#9ca3af" />
+                  <Text className="text-sm text-gray-700">
+                    {formatEventDateTime(event.start_time, eventZone(event))}
+                  </Text>
+                </View>
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="arrow-forward-outline" size={16} color="#9ca3af" />
+                  <Text className="text-sm text-gray-700">
+                    Ends {formatEventClock(event.end_time, eventZone(event))}
+                  </Text>
+                </View>
+              </>
+            )}
+            {tournament && (placement || record) ? (
+              <View className="flex-row flex-wrap items-center gap-3">
+                <Ionicons name="trophy-outline" size={16} color="#9ca3af" />
+                {placement ? <Text className="text-sm font-semibold text-gray-900">{placement}</Text> : null}
+                {record ? (
+                  <Text
+                    accessibilityLabel={`Tournament record ${record.wins}–${record.losses}–${record.ties}`}
+                    className="text-sm text-gray-500"
+                  >
+                    {record.wins}–{record.losses}–{record.ties}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            {!tournament && event.arrival_time != null ? (
               <View className="flex-row items-center gap-2">
                 <Ionicons name="walk-outline" size={16} color="#9ca3af" />
                 <Text className="text-sm text-gray-700">
@@ -482,6 +661,15 @@ export default function EventDetailScreen() {
         </View>
 
         <GameDetails event={event} />
+
+        {tournament ? (
+          <TournamentGames
+            games={games}
+            teamName={event.teams?.name}
+            fallbackZone={event.timezone ?? event.teams?.timezone}
+            onOpen={(id) => router.push(`/(app)/schedule/${id}` as any)}
+          />
+        ) : null}
 
         {/* RSVP */}
         {!event.is_cancelled ? (
@@ -526,7 +714,7 @@ export default function EventDetailScreen() {
                     label="Available"
                     icon="✓"
                     status="available"
-                    current={myStatus}
+                    current={shown.status}
                     activeColor="#16a34a"
                     onPress={() => handleRsvp("available")}
                     disabled={rsvpLoading || !answeringAs}
@@ -535,7 +723,7 @@ export default function EventDetailScreen() {
                     label="Maybe"
                     icon="?"
                     status="maybe"
-                    current={myStatus}
+                    current={shown.status}
                     activeColor="#d97706"
                     onPress={() => handleRsvp("maybe")}
                     disabled={rsvpLoading || !answeringAs}
@@ -544,7 +732,7 @@ export default function EventDetailScreen() {
                     label="Unavailable"
                     icon="✗"
                     status="unavailable"
-                    current={myStatus}
+                    current={shown.status}
                     activeColor="#dc2626"
                     onPress={() => handleRsvp("unavailable")}
                     disabled={rsvpLoading || !answeringAs}
@@ -552,6 +740,16 @@ export default function EventDetailScreen() {
                 </View>
                 {!answeringAs ? (
                   <Text className="text-xs text-gray-400 text-center mt-2">Choose who you're answering for</Text>
+                ) : inheritedFrom && shown.inherited ? (
+                  <Text className="text-xs text-gray-400 text-center mt-2">
+                    From {answeringAs === ownProfile?.id ? "your" : `${answeringName ?? "their"}'s`} {inheritedFrom} answer. Choose an
+                    answer to set this game differently.
+                  </Text>
+                ) : inheritedFrom && myStatus ? (
+                  <Text className="text-xs text-gray-400 text-center mt-2">
+                    Set for this game.
+                    {tournamentAnswers.get(answeringAs) ? ` Tap it again to go back to the ${inheritedFrom} answer.` : ""}
+                  </Text>
                 ) : myStatus ? (
                   <Text className="text-xs text-gray-400 text-center mt-2">Tap again to clear the response</Text>
                 ) : null}
@@ -561,7 +759,7 @@ export default function EventDetailScreen() {
         ) : null}
 
         {/* Responses: always shown */}
-        <Responses roster={roster} answers={answers} />
+        <Responses roster={roster} answers={resulting.answers} inherited={resulting.inherited} inheritedFrom={inheritedFrom} />
       </ScrollView>
     </SafeAreaView>
   );

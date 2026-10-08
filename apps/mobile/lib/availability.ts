@@ -98,3 +98,24 @@ export function answerersFor(
   const answeringAs = viewing?.profileId ?? (choices.length === 1 ? choices[0].profileId : null);
   return { answeringAs, choices };
 }
+
+export type EffectiveAnswer = {
+  status: AvailabilityStatus | null;
+  /** True when the answer is the tournament's, because the game has none of its own. */
+  inherited: boolean;
+};
+
+/**
+ * A game's answer, in a tournament (docs/specs/tournaments-and-leagues.md §4,
+ * "Availability", D2): its own answer if there is one, else the tournament's,
+ * else none. Clearing the game's own answer goes back to the tournament's. Keep
+ * in step with apps/web/src/lib/availability/effective.ts.
+ */
+export function effectiveAnswer(
+  own: AvailabilityStatus | null | undefined,
+  tournament: AvailabilityStatus | null | undefined
+): EffectiveAnswer {
+  if (own) return { status: own, inherited: false };
+  if (tournament) return { status: tournament, inherited: true };
+  return { status: null, inherited: false };
+}

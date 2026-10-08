@@ -4,6 +4,18 @@ import { eventZone, formatEventClock, formatEventDay } from "../lib/event-time";
 
 const RESULT = { win: "Win", loss: "Loss", tie: "Tie" } as const;
 
+/**
+ * The last tournament with a placement, shown as the last result until a game
+ * starts after it ended (docs/specs/tournaments-and-leagues.md, D8).
+ */
+export type LastTournament = {
+  title: string;
+  placement: string;
+  /** Its own games' record, once one has a result. */
+  record: Pick<TeamRecord, "wins" | "losses" | "ties"> | null;
+  dates: string;
+};
+
 function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -37,11 +49,13 @@ export function RecordCard({
   record,
   teamTimeZone,
   winColor,
+  lastTournament = null,
 }: {
   teamName: string;
   record: TeamRecord;
   teamTimeZone: string | null;
   winColor: string;
+  lastTournament?: LastTournament | null;
 }) {
   const { wins, losses, ties, last } = record;
   const scored = last.scoreFor != null && last.scoreAgainst != null;
@@ -62,16 +76,39 @@ export function RecordCard({
         <Text className="font-semibold text-gray-900">Record</Text>
       </View>
       <View className="p-4 gap-5">
-        <View className="gap-1">
-          <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
-            <Text className="text-xs font-semibold uppercase tracking-wide text-white">Last game</Text>
+        {lastTournament ? (
+          <View className="gap-1">
+            <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
+              <Text className="text-xs font-semibold uppercase tracking-wide text-white">Last tournament</Text>
+            </View>
+            <Text className="text-lg font-semibold text-gray-900" numberOfLines={1}>
+              {lastTournament.title}
+            </Text>
+            <View className="flex-row flex-wrap items-baseline gap-3">
+              <Text className="text-lg font-semibold text-gray-900">{lastTournament.placement}</Text>
+              {lastTournament.record ? (
+                <Text
+                  accessibilityLabel={`Tournament record ${lastTournament.record.wins}–${lastTournament.record.losses}–${lastTournament.record.ties}`}
+                  className="text-sm text-gray-500"
+                >
+                  {lastTournament.record.wins}–{lastTournament.record.losses}–{lastTournament.record.ties}
+                </Text>
+              ) : null}
+            </View>
+            <Text className="text-sm text-gray-500">{lastTournament.dates}</Text>
           </View>
-          <ScoreRow name={teamName} score={scored ? String(last.scoreFor) : RESULT[last.result]} />
-          <ScoreRow name={opponent} score={scored ? String(last.scoreAgainst) : null} />
-          <Text className="text-sm text-gray-500">
-            {formatEventDay(last.startTime, zone)}, {formatEventClock(last.startTime, zone)}
-          </Text>
-        </View>
+        ) : (
+          <View className="gap-1">
+            <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
+              <Text className="text-xs font-semibold uppercase tracking-wide text-white">Last game</Text>
+            </View>
+            <ScoreRow name={teamName} score={scored ? String(last.scoreFor) : RESULT[last.result]} />
+            <ScoreRow name={opponent} score={scored ? String(last.scoreAgainst) : null} />
+            <Text className="text-sm text-gray-500">
+              {formatEventDay(last.startTime, zone)}, {formatEventClock(last.startTime, zone)}
+            </Text>
+          </View>
+        )}
 
         <View className="gap-3">
           <View className="flex-row">
