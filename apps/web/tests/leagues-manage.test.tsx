@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => {
   const rpcs: { name: string; args: Row }[] = [];
   /** The next write to this table fails with this error. */
   const failNext: Record<string, { code?: string; message: string } | undefined> = {};
+  /** Reads of this table fail with this error, until cleared (TL-025). */
+  const failReads: Record<string, { message: string } | undefined> = {};
 
   const from = (table: string) => {
     const eqs: Record<string, unknown> = {};
@@ -49,9 +51,16 @@ const mocks = vi.hoisted(() => {
         writes.push({ op, table, row: payload, filters: { ...eqs } });
         const error = failNext[table];
         failNext[table] = undefined;
-        return Promise.resolve({ data: null, error: error ?? null });
+        if (error) return Promise.resolve({ data: null, error });
+        // An update changes the stored rows its filters match, and returns them,
+        // as PostgREST does with .select(): what really changed (TL-023).
+        const matched = op === "update" ? (tables[table] ?? []).filter((r) => filters.every((f) => f(r))) : [];
+        for (const r of matched) Object.assign(r, payload);
+        return Promise.resolve({ data: matched.map((r) => ({ ...r })), error: null });
       }
-      const data = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+      if (failReads[table]) return Promise.resolve({ data: null, error: failReads[table] });
+      // Copies, as a real read is: later changes to stored rows don't reach it.
+      const data = (tables[table] ?? []).filter((r) => filters.every((f) => f(r))).map((r) => ({ ...r }));
       return Promise.resolve({ data, error: null });
     };
     const chain: Record<string, unknown> = {
@@ -107,6 +116,7 @@ const mocks = vi.hoisted(() => {
     writes,
     rpcs,
     failNext,
+    failReads,
     client: {
       from,
       rpc: async (name: string, args: Row) => {
@@ -148,8 +158,10 @@ beforeEach(() => {
   mocks.writes.length = 0;
   mocks.rpcs.length = 0;
   for (const key of Object.keys(mocks.failNext)) delete mocks.failNext[key];
+  for (const key of Object.keys(mocks.failReads)) delete mocks.failReads[key];
   vi.clearAllMocks();
-  mocks.tables.leagues = [DIV3, REC, OLD];
+  // Copies: updates change stored rows now (TL-023), and a test mustn't leak into the next.
+  mocks.tables.leagues = [DIV3, REC, OLD].map((l) => ({ ...l }));
   mocks.tables.teams = [{ id: "team-1", season: "Fall 2026" }];
   mocks.tables.locations = [];
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -250,8 +262,8 @@ describe("League games", () => {
     { id: "g-rec", team_id: "team-1", event_type: "game", title: "Game", opponent: "Hawks", home_away: "home", start_time: "2026-10-24T17:00:00Z", timezone: LA, league_id: "l-2", score_for: null, score_against: null },
   ];
 
-  async function open() {
-    mocks.tables.events = GAMES;
+  async function open(games: Row[] = GAMES) {
+    mocks.tables.events = games.map((g) => ({ ...g }));
     render(<LeaguesSection teamId="team-1" teamName="U10 Girls" defaultSeason="Fall 2026" />);
     await user.click(await screen.findByRole("button", { name: "League games for Division 3" }));
     return screen.getByRole("dialog");
@@ -278,11 +290,137 @@ describe("League games", () => {
     expect(writesTo("events")).toEqual(
       expect.arrayContaining([
         { op: "update", table: "events", row: { league_id: "l-1" }, filters: { id: ["g-past", "g-rec"] } },
-        { op: "update", table: "events", row: { league_id: null }, filters: { id: ["g-tagged"] } },
+        { op: "update", table: "events", row: { league_id: null }, filters: { id: ["g-tagged"], league_id: "l-1" } },
       ])
     );
     // Classification, not schedule news.
     expect(drainNotifications).not.toHaveBeenCalled();
+  });
+
+  // ── Review findings on PR #125 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ──
+
+  it("TL-023: unticking a game someone has since moved to another league leaves it there", async () => {
+    const dialog = await open();
+    await within(dialog).findByRole("checkbox", { name: /Eagles/ });
+    // Meanwhile, another coach moves it to Rec.
+    mocks.tables.events.find((g) => g.id === "g-tagged")!.league_id = "l-2";
+
+    await user.click(within(dialog).getByRole("checkbox", { name: /Eagles/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(writesTo("events")).toHaveLength(1));
+    expect(mocks.tables.events.find((g) => g.id === "g-tagged")!.league_id).toBe("l-2");
+    expect(toast.info).toHaveBeenCalledWith("1 game had moved to another league since you opened this, so it was left there.");
+  });
+
+  it("TL-023: a game still in this league is untagged as before", async () => {
+    const dialog = await open();
+    await user.click(await within(dialog).findByRole("checkbox", { name: /Eagles/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.tables.events.find((g) => g.id === "g-tagged")!.league_id).toBeNull());
+    expect(toast.success).toHaveBeenCalledWith("Updated 1 game");
+  });
+
+  describe("TL-024: the dates are each game's own date, as shown", () => {
+    const NY = "America/New_York";
+    // A game well outside the narrowed dates: once it's gone, the list shown is
+    // the narrowed one, not the first, broad read still on screen.
+    const FAR = { ...GAMES[0], id: "g-far", opponent: "Faraway", start_time: "2026-12-05T17:00:00Z", timezone: LA };
+    const narrowed = async (dialog: HTMLElement, expected: RegExp) =>
+      waitFor(() => {
+        expect(within(dialog).queryByRole("checkbox", { name: /Faraway/ })).toBeNull();
+        expect(within(dialog).getByRole("checkbox", { name: expected })).toBeTruthy();
+      });
+    const setRange = (dialog: HTMLElement, from: string, to: string) => {
+      fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: from } });
+      fireEvent.change(within(dialog).getByLabelText("To"), { target: { value: to } });
+    };
+
+    it("a New York game just after midnight is on its own day, from a Pacific browser", async () => {
+      // Sat Oct 17, 12:30 AM EDT: Fri Oct 16 in the browser's Los Angeles.
+      const dialog = await open([
+        { ...GAMES[0], id: "g-ny", opponent: "Knicks", start_time: "2026-10-17T04:30:00Z", timezone: NY },
+        FAR,
+      ]);
+      await within(dialog).findByRole("checkbox", { name: /Faraway/ });
+      setRange(dialog, "2026-10-17", "2026-10-17");
+
+      await narrowed(dialog, /Knicks.* · Sat, Oct 17/);
+    });
+
+    it("the last hour of a fall-back day is still that day", async () => {
+      // Sun Nov 1, 11:30 PM PST: the 25-hour day clocks fall back on.
+      const dialog = await open([
+        { ...GAMES[0], id: "g-late", opponent: "Owls", start_time: "2026-11-02T07:30:00Z", timezone: LA },
+        FAR,
+      ]);
+      await within(dialog).findByRole("checkbox", { name: /Faraway/ });
+      setRange(dialog, "2026-11-01", "2026-11-01");
+
+      await narrowed(dialog, /Owls.* · Sun, Nov 1/);
+    });
+
+    it("a game just past the last day is left out", async () => {
+      const dialog = await open([
+        { ...GAMES[0], id: "g-next", opponent: "Bears", start_time: "2026-10-18T04:30:00Z", timezone: NY },
+        { ...GAMES[0], id: "g-in", opponent: "Lions", start_time: "2026-10-17T17:00:00Z", timezone: NY },
+      ]);
+      setRange(dialog, "2026-10-17", "2026-10-17");
+
+      expect(await within(dialog).findByRole("checkbox", { name: /Lions/ })).toBeTruthy();
+      expect(within(dialog).queryByRole("checkbox", { name: /Bears/ })).toBeNull();
+    });
+
+    it("says the dates are each game's own", async () => {
+      const dialog = await open();
+
+      expect(within(dialog).getByText(/each game's own date/i)).toBeTruthy();
+    });
+  });
+
+  describe("TL-025: ticks belong to the dates they were read for", () => {
+    it("a failed read for new dates offers nothing to save, and a retry reads them", async () => {
+      const dialog = await open();
+      await user.click(await within(dialog).findByRole("checkbox", { name: /Rivals FC/ }));
+
+      mocks.failReads.events = { message: "statement timeout" };
+      fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: "2026-10-18" } });
+
+      expect(await within(dialog).findByText(/Couldn't load the games/)).toBeTruthy();
+      expect(within(dialog).queryByRole("checkbox", { name: /Rivals FC/ })).toBeNull();
+      expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+
+      mocks.failReads.events = undefined;
+      await user.click(within(dialog).getByRole("button", { name: "Try again" }));
+      // From Oct 18: the Oct 24 game, not the Sep 12 one ticked before.
+      expect(await within(dialog).findByRole("checkbox", { name: /Hawks/ })).toBeTruthy();
+      await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+      // Nothing ticked under the old dates is written.
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith("No changes"));
+      expect(writesTo("events")).toEqual([]);
+    });
+
+    it("can't save while new dates are loading", async () => {
+      const dialog = await open();
+      await within(dialog).findByRole("checkbox", { name: /Rivals FC/ });
+
+      fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: "2026-10-18" } });
+
+      expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("a From date after To says so, and can't be saved", async () => {
+      const dialog = await open();
+      await within(dialog).findByRole("checkbox", { name: /Rivals FC/ });
+
+      fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: "2027-01-10" } });
+      fireEvent.change(within(dialog).getByLabelText("To"), { target: { value: "2027-01-01" } });
+
+      expect(within(dialog).getByText("The From date is after the To date.")).toBeTruthy();
+      expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 });
 
