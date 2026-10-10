@@ -69,6 +69,8 @@ import { eventTypeStyle } from "@/lib/events/type-colors";
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import { isWithinDays, tournamentDays } from "@/lib/events/tournament-form";
 import { TournamentEditForm } from "@/components/tournaments/tournament-edit-form";
+import { LeaguePicker } from "@/components/leagues/league-picker";
+import { useTeamLeagues } from "@/components/leagues/use-team-leagues";
 import {
   AddTournamentGameDialog,
   CancelTournamentDialog,
@@ -176,6 +178,9 @@ export function EventEditForm({
   // A tournament game stays a game, with its round (docs/specs/tournaments-and-leagues.md §4).
   const inTournament = editingEvent.tournament_id != null;
   const [round, setRound] = useState(editingEvent.round ?? "");
+  // Its league (spec §5); an archived one it's in stays offered, so saving keeps it.
+  const [leagueId, setLeagueId] = useState(editingEvent.league_id ?? "");
+  const teamLeagues = useTeamLeagues(teamId);
   const tournamentZone = tournament?.timezone ?? eventZone;
   const tournamentSpan =
     tournament?.start_time && tournament.end_time
@@ -269,6 +274,7 @@ export function EventEditForm({
           : null,
       arrival_time: arrivalTime !== "" ? parseInt(arrivalTime, 10) : null,
       ...(inTournament ? { round: round.trim() || null } : {}),
+      league_id: eventType === "game" ? leagueId || null : null,
     };
 
     // A series head carries the pattern. Pin its start before this occurrence
@@ -500,6 +506,14 @@ export function EventEditForm({
                   />
                 </div>
               )}
+              <LeaguePicker
+                id="league"
+                value={leagueId}
+                onChange={setLeagueId}
+                leagues={teamLeagues.leagues}
+                defaultSeason={teamLeagues.season}
+                onCreate={teamLeagues.create}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Home / Away</Label>

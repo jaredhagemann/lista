@@ -91,6 +91,20 @@ describe("a league", () => {
     expect((await league(other.coach.client, other.teamId, "Division 3", "Fall 2026")).error).toBeNull();
   });
 
+  // D21, clarified 2026-10-09 (review of #124): runs of spaces inside count as one.
+  it("D21: repeated spaces inside a name or season don't make another league", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    await league(coach.client, teamId, "Division 3", "Fall 2026");
+
+    expect((await league(coach.client, teamId, "Division   3", "Fall 2026")).error?.code).toBe("23505");
+    expect((await league(coach.client, teamId, "Division 3", "Fall    2026")).error?.code).toBe("23505");
+
+    // Renaming another league onto it is refused the same way.
+    const { id } = await league(coach.client, teamId, "Rec", "Fall 2026");
+    const { error } = await coach.client.from("leagues").update({ name: "division  3" }).eq("id", id);
+    expect(error?.code).toBe("23505");
+  });
+
   it("stays on its team", async () => {
     const { coach, teamId } = await teamWithCoach();
     const { id } = await league(coach.client, teamId);
@@ -166,6 +180,28 @@ describe("a game's league", () => {
     expect((await coach.client.from("events").update({ league_id: null }).eq("id", played)).error).toBeNull();
   });
 
+  // TL-023: League games untags only games still in the league, and counts from
+  // the rows returned.
+  it("a coach's untag that's limited to this league returns just the rows it changed", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const { id: div3 } = await league(coach.client, teamId);
+    const { id: rec } = await league(coach.client, teamId, "Rec", "Fall 2026");
+    const stillHere = await teamGame(teamId, -48, { league_id: div3 });
+    const movedAway = await teamGame(teamId, 48, { league_id: rec });
+
+    const { data, error } = await coach.client
+      .from("events")
+      .update({ league_id: null })
+      .in("id", [stillHere, movedAway])
+      .eq("league_id", div3)
+      .select("id");
+
+    expect(error).toBeNull();
+    expect(data).toEqual([{ id: stillHere }]);
+    const after = await eventsOf(teamId);
+    expect(after.find((e) => e.id === movedAway)?.league_id).toBe(rec);
+  });
+
   it("tagging notifies nobody, past games or upcoming", async () => {
     const { coach, teamId } = await teamWithCoach();
     const { id } = await league(coach.client, teamId);
@@ -219,6 +255,42 @@ describe("a game's league", () => {
 
     const { error } = await coach.client.from("events").update({ league_id: id }).eq("id", first.id);
     expect(error).toBeNull();
+  });
+});
+
+describe("games created with a tournament (D4)", () => {
+  it("each can be in a league, given with the game", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const { id } = await league(coach.client, teamId);
+
+    const tournamentId = await createTournament(coach, teamId, {
+      games: [game(10 * 24 + 2, { round: "Pool A", league_id: id }), game(11 * 24 + 2, { round: "Final" })],
+      notify: false,
+    });
+
+    const games = (await eventsOf(teamId)).filter((e) => e.tournament_id === tournamentId);
+    expect(games.map((g) => [g.round, g.league_id])).toEqual([
+      ["Pool A", id],
+      ["Final", null],
+    ]);
+  });
+
+  it("another team's league is refused, and nothing is saved", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const other = await teamWithCoach();
+    const { id: theirs } = await league(other.coach.client, other.teamId);
+
+    const { error } = await coach.client.rpc("create_tournament", {
+      p_team_id: teamId,
+      p_title: "Surf Cup",
+      p_first_day: "2099-12-11",
+      p_last_day: "2099-12-13",
+      p_games: [game(10 * 24 + 2, { league_id: theirs })],
+      p_notify: false,
+    });
+
+    expect(error?.message).toMatch(/LEAGUE_TEAM_MISMATCH/);
+    expect(await eventsOf(teamId)).toEqual([]);
   });
 });
 

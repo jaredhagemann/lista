@@ -28,6 +28,8 @@ import { expandInZone, instantFromWallClock, isUsableTimeZone, wallClockIn } fro
 import { browserTimeZone } from "@/lib/events/team-timezone";
 import { TimeZoneSelect } from "./time-zone-select";
 import { TournamentCreateForm } from "@/components/tournaments/tournament-create-form";
+import { LeaguePicker } from "@/components/leagues/league-picker";
+import { useTeamLeagues } from "@/components/leagues/use-team-leagues";
 import { GameTitleHint } from "@/components/events/game-title-hint";
 import { UniformOptions } from "@/components/events/uniform-options";
 import type { TeamDisplay } from "@/lib/events/game-display";
@@ -109,6 +111,9 @@ export function EventFormDialog({
   const [homeAway, setHomeAway] = useState("");
   const [uniform, setUniform] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
+  // A game's league (docs/specs/tournaments-and-leagues.md §5): every occurrence of a series gets it.
+  const [leagueId, setLeagueId] = useState("");
+  const teamLeagues = useTeamLeagues(teamId);
 
   // Locations
   const [locations, setLocations] = useState<Location[]>([]);
@@ -186,6 +191,7 @@ export function EventFormDialog({
       opponent: eventType === "game" ? opponent || null : null,
       home_away: eventType === "game" ? homeAway || null : null,
       uniform: eventType === "game" ? uniform || null : null,
+      league_id: eventType === "game" ? leagueId || null : null,
       game_result: null,
       score_for: null,
       score_against: null,
@@ -323,6 +329,7 @@ export function EventFormDialog({
             teamTimeZone={teamTimeZone}
             defaultDay={defaultDay}
             typeField={typeField}
+            teamLeagues={teamLeagues}
             onClose={onClose}
           />
         </DialogContent>
@@ -505,6 +512,14 @@ export function EventFormDialog({
                     </Select>
                   </div>
                 </div>
+                <LeaguePicker
+                  id="league"
+                  value={leagueId}
+                  onChange={setLeagueId}
+                  leagues={teamLeagues.leagues}
+                  defaultSeason={teamLeagues.season}
+                  onCreate={teamLeagues.create}
+                />
               </div>
             )}
 

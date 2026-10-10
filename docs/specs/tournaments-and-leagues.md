@@ -271,8 +271,9 @@ Display and answering only. Creating events stays on the web (D11).
 - **One league per season (D17):** `leagues(id, team_id, name, season text not null, archived_at null)`.
   - "Fall 2026 Division 3" is one league. Next fall's is another.
   - A record is always one season's.
-- **One per name and season (D21):** a team can't have two "Division 3, Fall 2026" leagues, ignoring case and
-  spaces. A double tap can't split a record.
+- **One per name and season (D21):** a team can't have two "Division 3, Fall 2026" leagues. Case, spaces at
+  the edges, and runs of spaces inside are all ignored, so "Division  3" is "Division 3" (clarified
+  2026-10-09). A double tap or a stray space can't split a record.
 - **Deleting (D20):** only a league with no games can be deleted. One with games is refused, pointing to
   archiving, which keeps its record. Deleting the team still takes its leagues and games with it.
 - **Archiving** hides a league from pickers and from the Record card's rows. It never removes its games' tags,
@@ -325,7 +326,7 @@ Display and answering only. Creating events stays on the web (D11).
 | D18 | Tournaments and recurring series | A tournament and its games are always standalone. A trigger refuses series links |
 | D19 | The current answer shown in a game's email or reminder (decided 2026-10-07) | The game's resulting answer: its own, else the tournament's. Built with effective availability, the part after 2c, not in #118 |
 | D20 | Deleting a league that has games (decided 2026-10-08) | Refused: archive it instead, which keeps its record. A league with no games can be deleted |
-| D21 | Two leagues with the same name and season on a team (decided 2026-10-08) | Not allowed, ignoring case and spaces |
+| D21 | Two leagues with the same name and season on a team (decided 2026-10-08) | Not allowed, ignoring case and spaces: edge spaces and, clarified 2026-10-09, runs of spaces inside |
 
 ## 7. Compatibility with the installed 1.0.12 (D4 of the mobile spec)
 

@@ -9,6 +9,7 @@ import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
 import { TrainingCategoriesSection } from "@/components/settings/training-categories-section";
+import { LeaguesSection } from "@/components/leagues/leagues-section";
 import { AccountSettings } from "@/components/settings/account-settings";
 import { PlanTabClient, type OrgPlanData } from "@/components/settings/plan-tab-client";
 
@@ -222,6 +223,14 @@ export default async function SettingsPage({
         {membership && team && (
           <TabsContent value="team" className="space-y-6">
             <TeamSettingsForm team={team} isAdmin={isAdmin} />
+            {isAdmin && (
+              <LeaguesSection
+                teamId={team.id}
+                teamName={team.name}
+                defaultSeason={team.season ?? ""}
+                teamTimeZone={team.timezone ?? null}
+              />
+            )}
             {showTrainingCategories && (
               <TrainingCategoriesSection
                 teamId={team.id}

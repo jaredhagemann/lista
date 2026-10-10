@@ -125,6 +125,7 @@ describe("tournamentGamesPayload", () => {
         uniform: "home",
         round: "Pool A",
         location_id: "loc-1",
+        league_id: null,
       },
       {
         title: "Final",
@@ -135,6 +136,7 @@ describe("tournamentGamesPayload", () => {
         uniform: null,
         round: "Final",
         location_id: "loc-1",
+        league_id: null,
       },
     ]);
   });
