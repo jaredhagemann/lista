@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-09, [PR #124](https://github.com/jaredhagemann/lista/pull/124) at `876163ee0a1cfa728a4fa86bb26658fdd2de5c9f`, implementation `041b2752d865d3c6a1a075edc1f2a4c3c6569435`, based on merged main `5def5eb812ac742c912b4ab672745831a1a5c0d8`.
-**Current outcome:** TL-001 through TL-022 remain resolved; tournament support and colors are merged. No confirmed defect in the league database PR. D21's treatment of repeated internal whitespace needs clarification (see the latest review history); the current index trims edges only. League web/mobile work is still pending. Prior visual/device testing limitations remain.
+**Last reviewed:** 2026-10-10, [PR #125](https://github.com/jaredhagemann/lista/pull/125) at `4069661c9372ea06994536c94f1251939b730017`, implementation `c087aacfb`, based on merged main `259b3b30eadaf42968db9273b122a11b31264878`.
+**Current outcome:** TL-001 through TL-022 remain resolved. League web management has three new P2 findings, TL-023–TL-025, in the League games dialog. D21 now explicitly includes repeated internal spaces, and its database/UI normalization tests pass. League records/display and mobile remain later parts.
 
 ## Using this document as the feature changes
 
@@ -40,12 +40,15 @@
 | [TL-020](#tl-020--refresh-game-answers-on-return-from-the-tournament) | P2 | Returning from the tournament leaves game availability stale | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
 | [TL-021](#tl-021--keep-past-events-before-the-today-divider) | P2 | Underway tournaments put completed events below Today | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
 | [TL-022](#tl-022--show-placement-without-individual-game-results) | P2 | A placement-only tournament is missing from the dashboard | Resolved | Fix `f10444bcc`; mobile and web verified at `dc8f7885a` |
+| [TL-023](#tl-023--only-clear-a-game-still-in-the-selected-league) | P2 | A stale uncheck removes another league's newer assignment | Open | Reproduced at `4069661c9` |
+| [TL-024](#tl-024--use-calendar-day-boundaries-in-an-explicit-zone) | P2 | League game date filters omit valid games across zones and DST | Open | Two boundary cases reproduced at `4069661c9` |
+| [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Open | Reproduced at `4069661c9` |
 
-## Implementation progress as of 2026-10-09
+## Implementation progress as of 2026-10-10
 
 | Area | Status | Completed behavior / remaining scope |
 | --- | --- | --- |
-| Specification | D1–D21 recorded; D21 whitespace wording needs clarification | Tournament and league design, including deletion and per-team name/season uniqueness |
+| Specification | D1–D21 recorded; D21 clarified in #125 | Tournament and league design, including deletion and per-team name/season uniqueness ignoring repeated internal spaces |
 | Tournament database, #114 and #115 | Merged | Tournament/game links, placement and rounds, indexes, atomic create/cancel/delete, bulk-answer rules, durable notification snapshots and concurrency fixes |
 | Tournament web display, #116 | Merged | Overlap queries, schedule rows and calendar bars, tournament/game detail links, placement and record display, dashboard treatment |
 | Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
@@ -54,8 +57,8 @@
 | Effective availability in web UI and email | Merged via #121; TL-016–TL-018 resolved | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and D19 game email/reminder answer labels |
 | Tournament mobile support | Merged via #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
 | Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
-| Leagues, database | Reviewed, PR #124 (`876163ee0`); no confirmed defect; D21 clarification pending | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging) |
-| Leagues, web management | Implemented — awaiting review, PR #125 (`c087aacfb`) | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games (D4, `create_tournament` takes a league per game); D21 clarified to collapse inner spaces; the old team field relabeled (D17) |
+| Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
+| Leagues, web management | Reviewed, PR #125 (`4069661c9`); TL-023–TL-025 open | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
 | Leagues, web display and mobile | Pending | Record card rows per active league (D9), schedule league tags, the league on a game's page; mobile display |
 
 ## Part 1 — database findings
@@ -957,6 +960,82 @@ passed at `dc8f7885a`, including placement-only, existing-record and newer-game 
   Each shows "Last tournament" and "2nd place", with no tournament record and no stats, and each failed before
   the fix. The existing D8 tests (with a record, and a newer game replacing it) pass unchanged.
 
+## Leagues — web management findings
+
+### TL-023 — Only clear a game still in the selected league
+
+**Priority / status:** P2 / Open.
+**Source:** [league-games-dialog.tsx, lines 100–104](https://github.com/jaredhagemann/lista/blob/4069661c9372ea06994536c94f1251939b730017/apps/web/src/components/leagues/league-games-dialog.tsx#L100-L104).
+
+The clear list is calculated from the loaded snapshot, but its UPDATE filters only by game IDs. If
+another coach has moved a game to a different league since the dialog loaded, unchecking it in the old
+league removes the newer assignment. This changes another league's record even though the action is
+to remove a game from the selected league.
+
+**Reproduction / observed:** render the actual dialog for L1 with a game checked, then change that game's
+mocked persisted tag to L2 without refreshing the dialog. Uncheck and Save. The emitted update clears
+the persisted L2 tag to null; the assertion that L2 survives fails. The mock applies the emitted query's
+filters to independent persisted rows, preserving the original client snapshot.
+
+**Requested change:** constrain clears to rows still assigned to the selected league, or use an atomic
+operation with expected previous values. Report actual changed rows/conflicts rather than claiming all
+snapshot IDs changed. Intentional checked moves to this league should remain supported.
+
+**Regression coverage:** a second coach moves the game to another league before the first saves an
+uncheck; include unchanged-membership clear and intentional move controls.
+
+**Resolution and verification:** Open at `4069661c9`; no fix reviewed.
+
+### TL-024 — Use calendar-day boundaries in an explicit zone
+
+**Priority / status:** P2 / Open.
+**Source:** [league-games-dialog.tsx, lines 71–72](https://github.com/jaredhagemann/lista/blob/4069661c9372ea06994536c94f1251939b730017/apps/web/src/components/leagues/league-games-dialog.tsx#L71-L72).
+
+The date inputs are parsed in the browser's zone, while game dates are displayed in the event/team zone.
+The inclusive To boundary is also implemented as midnight plus 24 elapsed hours. A fall-back day lasts
+25 hours, so its last hour disappears; a spring-forward day can include the next day's first hour.
+Travelling coaches can also lose games at the selected date's edges even without a DST transition.
+
+**Reproduction / observed:** two actual-dialog probes, with the browser in Los Angeles:
+1. A New York game at October 17, 2026, 00:30 (`04:30Z`) is shown in the broad initial list, but disappears
+   when From and To both select October 17, despite that being its displayed date.
+2. A Los Angeles game at November 1, 2026, 23:30 (`November 2 07:30Z`) disappears when both inputs select
+   November 1. The query incorrectly ends at `07:00Z`, an hour before local midnight.
+
+Both expected-inclusion assertions failed. An ordinary daytime Los Angeles game control passed.
+
+**Requested change:** define and label the range's timezone, using the team's zone or a documented
+event-date policy consistently. Convert the selected day and the next calendar day's midnight in that
+zone to instants; do not add a fixed 24 hours to obtain the end of a local day.
+
+**Regression coverage:** device and team in different zones, fall-back and spring-forward dates, and
+inclusive final-day games. Check the displayed date and range behavior agree.
+
+**Resolution and verification:** Open at `4069661c9`; no fix reviewed.
+
+### TL-025 — Invalidate selections when the date range changes
+
+**Priority / status:** P2 / Open.
+**Source:** [league-games-dialog.tsx, lines 62–77](https://github.com/jaredhagemann/lista/blob/4069661c9372ea06994536c94f1251939b730017/apps/web/src/components/leagues/league-games-dialog.tsx#L62-L77), with the Save guard at line 174.
+
+Changing From/To starts another query without invalidating `games` or `checked`. Save remains enabled
+during the request; if it fails, the old range's list and selections remain indefinitely beneath the new
+dates. Saving still updates those old IDs, even when they are outside the range now selected. Empty date
+inputs also return early without making the old selection unsaveable.
+
+**Reproduction / observed:** load an untagged October 17 game, check it, change From to October 18, and
+make the replacement read fail. After the error toast, press Save. The component issues a tag update for
+the October 17 game; the assertion that no stale-range write occurs fails.
+
+**Requested change:** track which range a successful result belongs to and disable saving while it is
+loading, invalid or failed. Clear old selections or explicitly preserve them under their original range;
+do not present them as loaded for the new dates. Provide a retry path for failed reads.
+
+**Regression coverage:** delayed/failed replacement reads after a selection, empty/reversed dates, and
+successful retry; no stale-range write should occur.
+
+**Resolution and verification:** Open at `4069661c9`; no fix reviewed.
+
 ## Review history
 
 ### 2026-10-01 — Specification, PR #111
@@ -1391,5 +1470,33 @@ than reopen them implicitly. The source code review below is separate from accep
 - **Limits / review changes:** no live UI, native-device or production smoke test; no outbound notifications.
   This log is the only retained edit. No application edits, commits, pushes or published GitHub comments.
   The existing untracked screenshot was left alone. `git diff --check` passed.
+
+### 2026-10-10 — League web management, PR #125
+
+- **Revision:** `4069661c9372ea06994536c94f1251939b730017`; implementation `c087aacfb`, against
+  main `259b3b30eadaf42968db9273b122a11b31264878` (league database #124 merged).
+- **Scope:** all 23 changed files, tracing settings CRUD, League games reads/writes, shared league
+  loading and pickers, game/series creation and single-game editing, tournament game creation, the
+  migration, tests and specification changes. The separate series editor intentionally does not set leagues.
+- **Outcome:** opened TL-023–TL-025 (P2). Prior TL-001–TL-022 remain resolved. D21's prior ambiguity is
+  resolved by the updated spec: repeated internal spaces are equivalent; insert and rename uniqueness
+  tests pass with the new migration. No new finding in the tournament RPC extension.
+- **Completed behavior:** settings league add/edit/archive/restore/delete with readable refusals;
+  played-game tagging; active league pickers with inline creation; preservation of an edited game's
+  archived league; league tags on new series occurrences and tournament games; D17 free-text relabel.
+  Part 2b's records/schedule/detail display and part 3 mobile remain planned work, not omissions in this PR.
+- **Independent checks:** 89 focused web tests passed across leagues-lib (5), leagues-manage (17),
+  tournament-form (17), tournament-manage (39), and event-form-timezone (11). Web TypeScript passed
+  (`tsc --noEmit --incremental false`). All 19 league database tests passed against the existing local
+  stack with `20261009000000` applied; no reset. These include inner-space duplicate insert/rename and
+  atomic rollback when tournament creation receives another team's league.
+- **Additional probes:** four expected-behavior assertions failed across the three findings, using the
+  real League games component with mocked reads/writes. One normal date-range control passed. No live
+  browser/device run or outbound notifications. Temporary probe source was removed after review.
+- **CI:** all reported checks pass: web, mobile, unit, RLS, staging migration and Vercel; production
+  migration is skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/38027152973).
+  Green suites do not cover these findings. No clean reset or full local suite was repeated.
+- **Review changes:** this log only; no application edits, commits, pushes or published GitHub comments.
+  Existing untracked screenshot preserved. `git diff --check` passed.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
