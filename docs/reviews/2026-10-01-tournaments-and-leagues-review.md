@@ -3,7 +3,7 @@
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
 **Last reviewed:** 2026-10-10, [PR #125](https://github.com/jaredhagemann/lista/pull/125) at `4069661c9372ea06994536c94f1251939b730017`, implementation `c087aacfb`, based on merged main `259b3b30eadaf42968db9273b122a11b31264878`.
-**Current outcome:** TL-001 through TL-022 remain resolved. League web management has three new P2 findings, TL-023–TL-025, in the League games dialog. D21 now explicitly includes repeated internal spaces, and its database/UI normalization tests pass. League records/display and mobile remain later parts.
+**Current outcome:** TL-001 through TL-022 remain resolved. League web management's three P2 findings, TL-023–TL-025, in the League games dialog, are implemented in `03472d716` and awaiting review. D21 now explicitly includes repeated internal spaces, and its database/UI normalization tests pass. League records/display and mobile remain later parts.
 
 ## Using this document as the feature changes
 
@@ -40,9 +40,9 @@
 | [TL-020](#tl-020--refresh-game-answers-on-return-from-the-tournament) | P2 | Returning from the tournament leaves game availability stale | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
 | [TL-021](#tl-021--keep-past-events-before-the-today-divider) | P2 | Underway tournaments put completed events below Today | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
 | [TL-022](#tl-022--show-placement-without-individual-game-results) | P2 | A placement-only tournament is missing from the dashboard | Resolved | Fix `f10444bcc`; mobile and web verified at `dc8f7885a` |
-| [TL-023](#tl-023--only-clear-a-game-still-in-the-selected-league) | P2 | A stale uncheck removes another league's newer assignment | Open | Reproduced at `4069661c9` |
-| [TL-024](#tl-024--use-calendar-day-boundaries-in-an-explicit-zone) | P2 | League game date filters omit valid games across zones and DST | Open | Two boundary cases reproduced at `4069661c9` |
-| [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Open | Reproduced at `4069661c9` |
+| [TL-023](#tl-023--only-clear-a-game-still-in-the-selected-league) | P2 | A stale uncheck removes another league's newer assignment | Implemented — awaiting review | Fix `03472d716`, RLS check `bd7960fcd` (PR #125) |
+| [TL-024](#tl-024--use-calendar-day-boundaries-in-an-explicit-zone) | P2 | League game date filters omit valid games across zones and DST | Implemented — awaiting review | Fix `03472d716` (PR #125) |
+| [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Implemented — awaiting review | Fix `03472d716` (PR #125) |
 
 ## Implementation progress as of 2026-10-10
 
@@ -58,7 +58,7 @@
 | Tournament mobile support | Merged via #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
 | Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
-| Leagues, web management | Reviewed, PR #125 (`4069661c9`); TL-023–TL-025 open | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
+| Leagues, web management | Reviewed, PR #125; TL-023–TL-025 implemented, awaiting review | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
 | Leagues, web display and mobile | Pending | Record card rows per active league (D9), schedule league tags, the league on a game's page; mobile display |
 
 ## Part 1 — database findings
@@ -964,7 +964,7 @@ passed at `dc8f7885a`, including placement-only, existing-record and newer-game 
 
 ### TL-023 — Only clear a game still in the selected league
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [league-games-dialog.tsx, lines 100–104](https://github.com/jaredhagemann/lista/blob/4069661c9372ea06994536c94f1251939b730017/apps/web/src/components/leagues/league-games-dialog.tsx#L100-L104).
 
 The clear list is calculated from the loaded snapshot, but its UPDATE filters only by game IDs. If
@@ -984,11 +984,24 @@ snapshot IDs changed. Intentional checked moves to this league should remain sup
 **Regression coverage:** a second coach moves the game to another league before the first saves an
 uncheck; include unchanged-membership clear and intentional move controls.
 
-**Resolution and verification:** Open at `4069661c9`; no fix reviewed.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `03472d716`, with an RLS check in `bd7960fcd` (PR #125).
+- **The fix:** an untag is `update({ league_id: null }).in("id", …).eq("league_id", league.id).select("id")`.
+  - It clears only games still in this league, so one moved elsewhere meanwhile stays there.
+  - The counts come from the rows returned. A game left in place is reported: "1 game had moved to another
+    league since you opened this, so it was left there."
+  - Ticking a game in another league still moves it here, as intended.
+- **Implementation verification:**
+  - `tests/leagues-manage.test.tsx`: the mock's updates now change stored rows and return the ones matched,
+    and its reads return copies, so a snapshot can go stale.
+    - "TL-023: unticking a game someone has since moved…": Rec survives, and the dialog says so
+    - the unchanged-membership control: still untagged
+    - the existing set-and-clear test now expects the `league_id` filter
+  - `tests/rls/leagues.test.ts`: a coach's filtered untag returns just the row it changed, under RLS, and leaves
+    the moved game in Rec.
 
 ### TL-024 — Use calendar-day boundaries in an explicit zone
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [league-games-dialog.tsx, lines 71–72](https://github.com/jaredhagemann/lista/blob/4069661c9372ea06994536c94f1251939b730017/apps/web/src/components/leagues/league-games-dialog.tsx#L71-L72).
 
 The date inputs are parsed in the browser's zone, while game dates are displayed in the event/team zone.
@@ -1011,11 +1024,25 @@ zone to instants; do not add a fixed 24 hours to obtain the end of a local day.
 **Regression coverage:** device and team in different zones, fall-back and spring-forward dates, and
 inclusive final-day games. Check the displayed date and range behavior agree.
 
-**Resolution and verification:** Open at `4069661c9`; no fix reviewed.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `03472d716` (PR #125).
+- **The policy:** a game is in the range when its own date is, as shown beside it (its zone, else the team's).
+  The dialog says so: "By each game's own date, as shown beside it."
+- **The fix:**
+  - The read covers a day either side of the range, as instants, so no zone's game is cut off.
+  - Each game is then kept by `wallClockIn(start, its zone)`'s date: never the browser's zone, and never a
+    fixed 24-hour day.
+- **Implementation verification:** `tests/leagues-manage.test.tsx` → "TL-024", with the browser in Los Angeles:
+  - the review's New York game at 12:30 AM on Oct 17
+  - the 11:30 PM game on fall-back Sunday, Nov 1
+  - a game just past the last day, left out
+  - the label
+
+  Each waits until a far-off game has dropped out, so it checks the narrowed list. That matters: on the old
+  dialog the stale broad list (TL-025) let them pass for the wrong reason. All four fail on the old dialog.
 
 ### TL-025 — Invalidate selections when the date range changes
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Implemented — awaiting review.
 **Source:** [league-games-dialog.tsx, lines 62–77](https://github.com/jaredhagemann/lista/blob/4069661c9372ea06994536c94f1251939b730017/apps/web/src/components/leagues/league-games-dialog.tsx#L62-L77), with the Save guard at line 174.
 
 Changing From/To starts another query without invalidating `games` or `checked`. Save remains enabled
@@ -1034,7 +1061,20 @@ do not present them as loaded for the new dates. Provide a retry path for failed
 **Regression coverage:** delayed/failed replacement reads after a selection, empty/reversed dates, and
 successful retry; no stale-range write should occur.
 
-**Resolution and verification:** Open at `4069661c9`; no fix reviewed.
+**Resolution and verification:** Implemented — awaiting review. Fixed in `03472d716` (PR #125).
+- **The fix:** each load is keyed by its range and attempt, and is shown only while it answers the dates on
+  screen.
+  - While new dates load, the list reads "Loading games…" and Save is disabled.
+  - A failed read shows "Couldn't load the games" with **Try again**.
+  - Empty dates, or a From after To, say so and can't be saved.
+  - Ticks are reset from what's saved whenever new dates load.
+- **Implementation verification:** `tests/leagues-manage.test.tsx` → "TL-025":
+  - a failed read after a tick lists nothing and disables Save. Try again then reads the new dates, and Save
+    writes nothing from the old ones.
+  - Save is disabled while loading
+  - a reversed range
+
+  All three fail on the old dialog.
 
 ## Review history
 
@@ -1498,5 +1538,20 @@ than reopen them implicitly. The source code review below is separate from accep
   Green suites do not cover these findings. No clean reset or full local suite was repeated.
 - **Review changes:** this log only; no application edits, commits, pushes or published GitHub comments.
   Existing untracked screenshot preserved. `git diff --check` passed.
+
+### 2026-10-10 — TL-023 to TL-025 fixes, PR #125
+
+- **Revision:** `03472d716` and `bd7960fcd`, on `605b585f8`. The review round above was committed as written in
+  `605b585f8`.
+- **Scope:** `components/leagues/league-games-dialog.tsx`, with tests in `leagues-manage` and
+  `tests/rls/leagues`.
+- **Status changes:** TL-023 through TL-025, Open → Implemented — awaiting review.
+- **Local verification:**
+  - Run against the old dialog, 9 of the 26 `leagues-manage` tests fail: the 8 new findings' tests and the
+    updated set-and-clear test. Against the new dialog all 26 pass.
+  - Web passes 1,487 of 1,487, and `tsc --noEmit` and eslint are clean.
+  - The `leagues` RLS file passes 20 of 20.
+- **A test-quality note:** the first versions of the TL-024 tests passed on the old dialog, because they found
+  the game in the stale broad list (the TL-025 bug). They now wait for the narrowed list.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
