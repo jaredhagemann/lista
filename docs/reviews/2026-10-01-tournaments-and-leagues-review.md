@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-08, [PR #122](https://github.com/jaredhagemann/lista/pull/122) at `dc8f7885a546775e0a7619cc44cc1d3e62cf09c9`, fixes in `f10444bcc`. [PR #123](https://github.com/jaredhagemann/lista/pull/123) remains unchanged at its reviewed `5c7a3fb2756da8b61dc69d0bea4d89044177c669`.
-**Current outcome:** TL-001 through TL-022 are resolved. Independent follow-up review verified all four mobile fixes, including placement-only dashboard results on both platforms, with no new actionable findings. The prior color review remains unchanged; visual/device testing remains outstanding.
+**Last reviewed:** 2026-10-09, [PR #124](https://github.com/jaredhagemann/lista/pull/124) at `876163ee0a1cfa728a4fa86bb26658fdd2de5c9f`, implementation `041b2752d865d3c6a1a075edc1f2a4c3c6569435`, based on merged main `5def5eb812ac742c912b4ab672745831a1a5c0d8`.
+**Current outcome:** TL-001 through TL-022 remain resolved; tournament support and colors are merged. No confirmed defect in the league database PR. D21's treatment of repeated internal whitespace needs clarification (see the latest review history); the current index trims edges only. League web/mobile work is still pending. Prior visual/device testing limitations remain.
 
 ## Using this document as the feature changes
 
@@ -41,20 +41,20 @@
 | [TL-021](#tl-021--keep-past-events-before-the-today-divider) | P2 | Underway tournaments put completed events below Today | Resolved | Fix `f10444bcc`; independently verified at `dc8f7885a` |
 | [TL-022](#tl-022--show-placement-without-individual-game-results) | P2 | A placement-only tournament is missing from the dashboard | Resolved | Fix `f10444bcc`; mobile and web verified at `dc8f7885a` |
 
-## Implementation progress as of 2026-10-08
+## Implementation progress as of 2026-10-09
 
 | Area | Status | Completed behavior / remaining scope |
 | --- | --- | --- |
-| Specification | Decided | Tournament and league design, D1–D19 |
+| Specification | D1–D21 recorded; D21 whitespace wording needs clarification | Tournament and league design, including deletion and per-team name/season uniqueness |
 | Tournament database, #114 and #115 | Merged | Tournament/game links, placement and rounds, indexes, atomic create/cancel/delete, bulk-answer rules, durable notification snapshots and concurrency fixes |
 | Tournament web display, #116 | Merged | Overlap queries, schedule rows and calendar bars, tournament/game detail links, placement and record display, dashboard treatment |
 | Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
 | Tournament notices, part 2c | Merged via #120 after #118 landed on its feature base; TL-015 resolved | Tournament template, per-action links and answers, cancelled/kept/deleted game lists, "Part of" on game notices and reminders, tournament reminders |
 | Deleted standalone-event links, #119 / BUG-032 | Merged and reviewed | Deleted notices open the schedule in email and push; cancelled notices retain their event link; tournament routing remains intact |
 | Effective availability in web UI and email | Merged via #121; TL-016–TL-018 resolved | Inherited answers, game overrides and clearing, response lists, coach grid, unanswered counts and D19 game email/reminder answer labels |
-| Tournament mobile support | Reviewed, PR #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
-| Event-type colors | Reviewed, #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
-| Leagues, database | Implemented — awaiting review, PR #124 (`041b2752d`) | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging) |
+| Tournament mobile support | Merged via #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
+| Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
+| Leagues, database | Reviewed, PR #124 (`876163ee0`); no confirmed defect; D21 clarification pending | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging) |
 | Leagues, web and mobile | Pending | Management, tagging, the League games action, records and Record card rows (D9), schedule tags, mobile display |
 
 ## Part 1 — database findings
@@ -1351,5 +1351,44 @@ than reopen them implicitly. The source code review below is separate from accep
   No visual browser or TestFlight smoke test performed. The unchanged color PR was not retested this round.
 - **Review changes:** this log only. No application edits, commits, pushes or published GitHub comments.
   The pre-existing untracked screenshot was left alone. `git diff --check` passed.
+
+### 2026-10-09 — League database, PR #124
+
+- **Revision:** `876163ee0a1cfa728a4fa86bb26658fdd2de5c9f`; implementation
+  `041b2752d865d3c6a1a075edc1f2a4c3c6569435`, against merged tournament/color main
+  `5def5eb812ac742c912b4ab672745831a1a5c0d8`.
+- **Scope:** all ten changed files: migration, manual database type additions, four event fixture updates,
+  league RLS tests, spec D20/D21, compatibility notes and this log. Also traced closed-club guards,
+  foreign-key deletion behavior, team deletion's service-role path and notification classification.
+- **Outcome:** no confirmed code defect; TL-001–TL-022 remain resolved. The missing league UI, records,
+  pickers and mobile display are explicitly subsequent parts, not findings in this database-only PR.
+- **Completed behavior:** team/season league entities; coach/manager writes and teammate reads; archive
+  state preserving tags; immutable team; refusal to delete leagues with games; team deletion cascading
+  through leagues and games; nullable game-only same-team tags; tournament/league coexistence; silent
+  classification changes; closed-club write protection. The additive shape is compatible with the
+  existing event projections and does not require 1.0.12 to understand league tags.
+- **D21 clarification, asked during review:** does “ignoring case and spaces” include repeated internal
+  whitespace, or only leading/trailing spaces? The
+  [unique index](https://github.com/jaredhagemann/lista/blob/876163ee0a1cfa728a4fa86bb26658fdd2de5c9f/supabase/migrations/20261008000000_leagues.sql#L27-L29)
+  uses `lower(btrim(...))` for both fields. A local database probe confirmed `Division 3` and
+  `Division  3` can coexist on one team in the same season. This is recorded as an unresolved product
+  interpretation, not a confirmed defect or an accepted decision. If repeated whitespace should be
+  equivalent, normalize both keys and extend duplicate-insert/update coverage before relying on D21.
+- **Independent local checks:** all 16 league RLS tests passed against the existing local database with
+  `20261008000000` already applied; no reset was performed. All 69 tests in the four changed web suites
+  passed (availability-own-answer 7, event-form-timezone 11, game-display-event 16, series-edit-plan 35).
+  Web `tsc --noEmit --incremental false` passed.
+- **Additional database probes:** manager create/rename/archive/unarchive/delete and duplicate rename;
+  service-role deletion of a team with league-tagged tournament games; closed-club direct delete refusal
+  and creator-account deletion preserving the league with `created_by = null`; current D21 whitespace
+  behavior. All four probes passed. An initial direct-client team-delete expectation was corrected after
+  confirming existing RLS deliberately disallows it and the authorized server action uses the service
+  role; that was a probe assumption, not a PR defect. Temporary tests and their fixtures were cleaned up.
+- **CI:** all reported PR checks pass, including full RLS, web, unit, mobile, staging migration and Vercel.
+  [Tests run](https://github.com/jaredhagemann/lista/actions/runs/37826220376). Production migration is skipped
+  for the PR. CI supplies full-suite and clean-migration evidence; those were not repeated locally.
+- **Limits / review changes:** no live UI, native-device or production smoke test; no outbound notifications.
+  This log is the only retained edit. No application edits, commits, pushes or published GitHub comments.
+  The existing untracked screenshot was left alone. `git diff --check` passed.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
