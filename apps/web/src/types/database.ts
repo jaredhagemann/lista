@@ -217,6 +217,7 @@ export type Database = {
           home_away: string | null
           id: string
           is_cancelled: boolean | null
+          league_id: string | null
           location_id: string | null
           notes: string | null
           opponent: string | null
@@ -244,6 +245,7 @@ export type Database = {
           home_away?: string | null
           id?: string
           is_cancelled?: boolean | null
+          league_id?: string | null
           location_id?: string | null
           notes?: string | null
           opponent?: string | null
@@ -271,6 +273,7 @@ export type Database = {
           home_away?: string | null
           id?: string
           is_cancelled?: boolean | null
+          league_id?: string | null
           location_id?: string | null
           notes?: string | null
           opponent?: string | null
@@ -289,6 +292,13 @@ export type Database = {
           uniform?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "events_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "events_created_by_fkey"
             columns: ["created_by"]
@@ -429,6 +439,51 @@ export type Database = {
           },
           {
             foreignKeyName: "invitations_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leagues: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          season: string
+          team_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          season: string
+          team_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          season?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leagues_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leagues_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"

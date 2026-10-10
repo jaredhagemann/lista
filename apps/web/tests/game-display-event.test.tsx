@@ -91,6 +91,7 @@ const GAME = {
   recurrence_rule: null,
   parent_event_id: null,
   tournament_id: null,
+  league_id: null,
   round: null,
   placement_rank: null,
   placement_label: null,
