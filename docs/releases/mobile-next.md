@@ -358,6 +358,14 @@ None of it reaches 1.0.12. It never reads `leagues`, and it selects named column
 `*`, so it doesn't see `league_id`. The check and triggers act on writes it never makes. A league game shows
 in 1.0.12 as an ordinary game, without its league.
 
+### Added 2026-10-09: leagues, part 2 (`20261009000000_leagues_web.sql`)
+
+Two changes:
+- the league uniqueness index now ignores runs of spaces inside a name or season (D21)
+- `create_tournament` accepts a league per game
+
+Neither reaches 1.0.12: it never reads leagues, and never calls the function.
+
 ## On the TestFlight build, before submitting for review
 
 Each of these is the check recorded on its ticket. They need a real build, so run them on the 1.1.0

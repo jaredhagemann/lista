@@ -7,6 +7,11 @@ import { X } from "lucide-react";
 import { uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import { instantFromWallClock } from "@/lib/events/event-timezone";
 import { isWithinDays, type TournamentGameDraft } from "@/lib/events/tournament-form";
+import { LeaguePicker } from "@/components/leagues/league-picker";
+import type { useTeamLeagues } from "@/components/leagues/use-team-leagues";
+
+/** A team's leagues, for each game's picker (D4). */
+export type TeamLeagues = Pick<ReturnType<typeof useTeamLeagues>, "leagues" | "season" | "create">;
 
 // Wall-clock times ("YYYY-MM-DDTHH:mm") in the tournament's zone, never the browser's (BUG-010).
 const wallMs = (wall: string) => Date.parse(`${wall}:00.000Z`);
@@ -16,7 +21,7 @@ const HOUR = 60 * 60 * 1000;
 /** A new game: an hour, after the last one, else 9 AM on the first day. */
 export function newGameDraft(previous: TournamentGameDraft | undefined, firstDay: string): TournamentGameDraft {
   const start = previous?.end && wallMs(previous.end) ? previous.end : `${firstDay}T09:00`;
-  return { start, end: shiftWall(start, HOUR), opponent: "", homeAway: "", uniform: "", round: "" };
+  return { start, end: shiftWall(start, HOUR), opponent: "", homeAway: "", uniform: "", round: "", league: "" };
 }
 
 const SELECT_CLASS =
@@ -37,8 +42,10 @@ export function TournamentGameRow({
   lastDay,
   team,
   error,
+  teamLeagues,
 }: {
   index: number;
+  teamLeagues?: TeamLeagues;
   /** Why this game can't be saved, shown on it (review TL-012). */
   error?: string | null;
   draft: TournamentGameDraft;
@@ -160,6 +167,17 @@ export function TournamentGameRow({
           </select>
         </div>
       </div>
+      {teamLeagues && (
+        <LeaguePicker
+          id={id("league")}
+          label={`Game ${n} league`}
+          value={draft.league ?? ""}
+          onChange={(league) => set({ league })}
+          leagues={teamLeagues.leagues}
+          defaultSeason={teamLeagues.season}
+          onCreate={teamLeagues.create}
+        />
+      )}
     </fieldset>
   );
 }
@@ -173,8 +191,10 @@ export function TournamentGameRows({
   lastDay,
   team,
   errors = [],
+  teamLeagues,
 }: {
   games: TournamentGameDraft[];
+  teamLeagues?: TeamLeagues;
   /** Each game's error, by position. */
   errors?: (string | null)[];
   onChange: (games: TournamentGameDraft[]) => void;
@@ -203,6 +223,7 @@ export function TournamentGameRows({
           lastDay={lastDay}
           team={team}
           error={errors[i]}
+          teamLeagues={teamLeagues}
         />
       ))}
       <Button
