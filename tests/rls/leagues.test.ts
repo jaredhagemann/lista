@@ -180,6 +180,28 @@ describe("a game's league", () => {
     expect((await coach.client.from("events").update({ league_id: null }).eq("id", played)).error).toBeNull();
   });
 
+  // TL-023: League games untags only games still in the league, and counts from
+  // the rows returned.
+  it("a coach's untag that's limited to this league returns just the rows it changed", async () => {
+    const { coach, teamId } = await teamWithCoach();
+    const { id: div3 } = await league(coach.client, teamId);
+    const { id: rec } = await league(coach.client, teamId, "Rec", "Fall 2026");
+    const stillHere = await teamGame(teamId, -48, { league_id: div3 });
+    const movedAway = await teamGame(teamId, 48, { league_id: rec });
+
+    const { data, error } = await coach.client
+      .from("events")
+      .update({ league_id: null })
+      .in("id", [stillHere, movedAway])
+      .eq("league_id", div3)
+      .select("id");
+
+    expect(error).toBeNull();
+    expect(data).toEqual([{ id: stillHere }]);
+    const after = await eventsOf(teamId);
+    expect(after.find((e) => e.id === movedAway)?.league_id).toBe(rec);
+  });
+
   it("tagging notifies nobody, past games or upcoming", async () => {
     const { coach, teamId } = await teamWithCoach();
     const { id } = await league(coach.client, teamId);
