@@ -55,7 +55,7 @@
 | Tournament mobile support | Merged via #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
 | Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues, database | Reviewed, PR #124 (`876163ee0`); no confirmed defect; D21 clarification pending | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging) |
-| Leagues, web management | Implemented — awaiting review (this PR) | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games (D4, `create_tournament` takes a league per game); D21 clarified to collapse inner spaces; the old team field relabeled (D17) |
+| Leagues, web management | Implemented — awaiting review, PR #125 (`c087aacfb`) | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games (D4, `create_tournament` takes a league per game); D21 clarified to collapse inner spaces; the old team field relabeled (D17) |
 | Leagues, web display and mobile | Pending | Record card rows per active league (D9), schedule league tags, the league on a game's page; mobile display |
 
 ## Part 1 — database findings
