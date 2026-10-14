@@ -59,7 +59,8 @@
 | Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
 | Leagues, web management | Reviewed, PR #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
-| Leagues, web display and mobile | Pending | Record card rows per active league (D9), schedule league tags, the league on a game's page; mobile display |
+| Leagues, web display | Implemented — awaiting review, PR #126 (`251b2aa91`) | Record card rows per active league (D9), schedule league tags, the league on a game's page |
+| Leagues, mobile | Pending | League rows on the Record card, league tags, the league on a game's screen |
 
 ## Part 1 — database findings
 
