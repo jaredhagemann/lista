@@ -6,6 +6,7 @@
  */
 
 import type { Database } from "@/types/database";
+import { teamRecord, type ResultGame, type TeamRecord } from "@/lib/events/team-record";
 
 export type League = Database["public"]["Tables"]["leagues"]["Row"];
 
@@ -37,4 +38,24 @@ export function leagueErrorMessage(error: { code?: string; message: string }): s
   if (error.message.startsWith("CLUB_CLOSED")) return "This club is closed, so its leagues can't be changed.";
   if (error.code === "23505") return "There's already a league with that name and season.";
   return error.message;
+}
+
+/**
+ * A row per active league for the Record card (D9): its label and its record over
+ * its own games with a result, or null before it has one. Archived leagues have
+ * none (D17); the overall record still counts every game (D3).
+ */
+export function leagueRecords(
+  leagues: Pick<League, "id" | "name" | "season" | "archived_at">[],
+  games: (ResultGame & { league_id?: string | null })[],
+  now: Date = new Date()
+): { id: string; label: string; record: TeamRecord | null }[] {
+  return activeLeagues(leagues).map((l) => ({
+    id: l.id,
+    label: leagueLabel(l),
+    record: teamRecord(
+      games.filter((g) => g.league_id === l.id),
+      now
+    ),
+  }));
 }

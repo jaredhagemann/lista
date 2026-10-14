@@ -191,3 +191,54 @@ describe("the Record card after a tournament (D8)", () => {
     expect(within(screen.getByRole("region", { name: "Record" })).getByText("Last game")).toBeTruthy();
   });
 });
+
+// ── League rows (docs/specs/tournaments-and-leagues.md §5, D9) ───────────────
+
+describe("the Record card's league rows (D9)", () => {
+  beforeEach(() => {
+    vi.setSystemTime(new Date("2026-12-20T12:00:00.000Z"));
+  });
+
+  const leagueGame = (id: string, start: string, result: string, league: string | null) => ({
+    ...played(id, start, result, null),
+    league_id: league,
+  });
+
+  it("shows a row per active league with its record, under the overall record", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [
+      { id: "div3", team_id: "team-1", name: "Division 3", season: "Fall 2026", archived_at: null },
+      { id: "cup", team_id: "team-1", name: "Cup", season: "Fall 2026", archived_at: null },
+    ];
+    mocks.tables.results = [
+      leagueGame("a", "2026-10-03T17:00:00Z", "win", "div3"),
+      leagueGame("b", "2026-10-10T17:00:00Z", "win", "div3"),
+      leagueGame("c", "2026-10-17T17:00:00Z", "loss", "div3"),
+      leagueGame("d", "2026-10-24T17:00:00Z", "tie", null),
+    ];
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    const rows = within(card).getByRole("list", { name: "League records" });
+    expect(within(rows).getByText("Fall 2026 Division 3")).toBeTruthy();
+    expect(within(rows).getByLabelText("Fall 2026 Division 3 record").textContent).toBe("2–1–0");
+    // A league with no result yet says so.
+    expect(within(rows).getByLabelText("Fall 2026 Cup record").textContent).toBe("No results yet");
+    // The overall record still counts every game (D3).
+    expect(within(card).getByRole("img").getAttribute("aria-label")).toBe("2 wins, 1 loss, 1 tie");
+  });
+
+  it("asks for active leagues only (D17)", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [];
+    mocks.tables.results = [leagueGame("a", "2026-10-03T17:00:00Z", "win", null)];
+
+    render(await DashboardPage());
+
+    const archivedFilter = mocks.calls.find((c) => c.table === "leagues" && c.method === "is");
+    expect(archivedFilter?.args).toEqual(["archived_at", null]);
+    // No leagues, no rows.
+    expect(within(screen.getByRole("region", { name: "Record" })).queryByRole("list", { name: "League records" })).toBeNull();
+  });
+});

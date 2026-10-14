@@ -70,6 +70,7 @@ import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import { isWithinDays, tournamentDays } from "@/lib/events/tournament-form";
 import { TournamentEditForm } from "@/components/tournaments/tournament-edit-form";
 import { LeaguePicker } from "@/components/leagues/league-picker";
+import { leagueLabel } from "@/lib/leagues";
 import { useTeamLeagues } from "@/components/leagues/use-team-leagues";
 import {
   AddTournamentGameDialog,
@@ -87,6 +88,8 @@ type EventWithLocation = Event & {
   locations: { name: string; address: string | null } | null;
   /** A game's tournament, for "Part of Surf Cup", and its days, to warn about a game outside them. */
   tournament?: GameTournament | null;
+  /** A game's league (tournaments-and-leagues §5). */
+  league?: { name: string; season: string } | null;
 };
 type GameTournament = { id: string; title: string } & Partial<Pick<Event, "start_time" | "end_time" | "timezone">>;
 /** A tournament's game, as its page lists it. */
@@ -1086,10 +1089,17 @@ export function EventDetail({
             (event.opponent ||
               event.home_away ||
               event.uniform ||
-              event.game_result) && (
+              event.game_result ||
+              event.league) && (
               <div className="border-t pt-4">
                 <h3 className="mb-2 font-medium">Game details</h3>
                 <div className="space-y-2 text-sm">
+                  {/* Its league, even an archived one: it's still this game's (D17). */}
+                  {event.league && (
+                    <div>
+                      <span className="text-muted-foreground">League:</span> {leagueLabel(event.league)}
+                    </div>
+                  )}
                   {event.opponent && (
                     <div>
                       <span className="text-muted-foreground">Opponent:</span>{" "}

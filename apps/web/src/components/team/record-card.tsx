@@ -43,7 +43,10 @@ export function RecordCard({
   teamTimeZone,
   winColor,
   lastTournament = null,
+  leagues = [],
 }: {
+  /** A row per active league, with its own record (D9). */
+  leagues?: { id: string; label: string; record: TeamRecord | null }[];
   teamName: string;
   /** Null before any game has a result: then only the last tournament shows. */
   record: TeamRecord | null;
@@ -135,6 +138,19 @@ export function RecordCard({
                 <div className="bg-neutral-400" style={{ width: share(ties) }} />
               </div>
             </div>
+          )}
+
+          {leagues.length > 0 && (
+            <ul aria-label="League records" className="divide-y border-t text-sm sm:col-span-2">
+              {leagues.map((l) => (
+                <li key={l.id} className="flex items-baseline justify-between gap-3 py-2">
+                  <span className="min-w-0 truncate">{l.label}</span>
+                  <span aria-label={`${l.label} record`} className="shrink-0 tabular-nums text-muted-foreground">
+                    {l.record ? `${l.record.wins}–${l.record.losses}–${l.record.ties}` : "No results yet"}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>

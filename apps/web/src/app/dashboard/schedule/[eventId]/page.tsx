@@ -11,6 +11,8 @@ type Event = Database["public"]["Tables"]["events"]["Row"] & {
   locations: { name: string; address: string | null } | null;
   /** A game's tournament, for "Part of Surf Cup", and its days, for the game editor's warning. */
   tournament: { id: string; title: string; start_time: string; end_time: string; timezone: string | null } | null;
+  /** A game's league, for its game details. */
+  league: { name: string; season: string } | null;
 };
 
 /** What a tournament's page shows of each of its games. */
@@ -44,7 +46,7 @@ export default async function EventDetailPage({
 
   const { data: rawEvent, error } = await supabase
     .from("events")
-    .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address), tournament:tournament_id(id, title, start_time, end_time, timezone)")
+    .select("*, profiles!events_created_by_fkey(first_name, last_name), locations(name, address), tournament:tournament_id(id, title, start_time, end_time, timezone), league:league_id(name, season)")
     .eq("id", eventId)
     .single();
 

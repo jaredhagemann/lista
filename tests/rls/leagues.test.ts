@@ -258,6 +258,27 @@ describe("a game's league", () => {
   });
 });
 
+describe("the schedule list's read (leagues part 2b)", () => {
+  it("embeds each game's league, and none for an event outside one", async () => {
+    const { fetchEventPage } = await import("@/lib/events/queries");
+    const { coach, teamId } = await teamWithCoach();
+    const { id } = await league(coach.client, teamId);
+    const tagged = await teamGame(teamId, 48, { league_id: id });
+    const untagged = await teamGame(teamId, 72);
+
+    const page = await fetchEventPage(coach.client, {
+      query: { teamId, includeCancelled: true },
+      pageSize: 10,
+      cursor: null,
+      projection: "list",
+    });
+
+    const byId = new Map(page.items.map((e) => [e.id, e]));
+    expect(byId.get(tagged)?.league).toEqual({ name: "Division 3", season: "Fall 2026" });
+    expect(byId.get(untagged)?.league).toBeNull();
+  });
+});
+
 describe("games created with a tournament (D4)", () => {
   it("each can be in a league, given with the game", async () => {
     const { coach, teamId } = await teamWithCoach();
