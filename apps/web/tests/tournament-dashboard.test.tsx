@@ -151,7 +151,9 @@ describe("the Record card after a tournament (D8)", () => {
     expect(within(card).getByRole("img").getAttribute("aria-label")).toBe("3 wins, 1 loss, 0 ties");
   });
 
-  it("a game since then is the last result again", async () => {
+  // D8 revised 2026-10-14: the latest finished tournament always shows, under
+  // the last game, until a newer one finishes.
+  it("a game since then shows as the last game, and the tournament stays", async () => {
     mocks.tables.placed = [SURF_CUP];
     mocks.tables.results = [
       played("b", "2026-12-12T17:00:00Z", "win", "t-1"),
@@ -162,8 +164,50 @@ describe("the Record card after a tournament (D8)", () => {
 
     const card = screen.getByRole("region", { name: "Record" });
     expect(within(card).getByText("Last game")).toBeTruthy();
-    expect(within(card).queryByText("Last tournament")).toBeNull();
     expect(within(card).getByText("vs Hawks")).toBeTruthy();
+    expect(within(within(card).getByRole("region", { name: "Last tournament" })).getByText("Surf Cup")).toBeTruthy();
+  });
+
+  it("a finished tournament without a placement shows its results too", async () => {
+    mocks.tables.placed = [{ ...SURF_CUP, placement_rank: null, placement_label: null }];
+    mocks.tables.results = [played("b", "2026-12-12T17:00:00Z", "win", "t-1")];
+
+    render(await DashboardPage());
+
+    const tournament = within(screen.getByRole("region", { name: "Record" })).getByRole("region", { name: "Last tournament" });
+    expect(within(tournament).getByText("Surf Cup")).toBeTruthy();
+    expect(within(tournament).getByLabelText("Tournament record").textContent).toBe("1–0–0");
+    expect(within(tournament).queryByText(/place$/)).toBeNull();
+  });
+
+  it("asks for the latest finished tournament, placed or not", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.results = [];
+
+    render(await DashboardPage());
+
+    // No placement filter: an unplaced tournament's results count too.
+    expect(mocks.calls.some((c) => c.table === "events" && c.method === "or")).toBe(false);
+  });
+
+  it("lays out the last game, then the last tournament, then the overall record across the card", async () => {
+    mocks.tables.placed = [SURF_CUP];
+    mocks.tables.results = [
+      played("b", "2026-12-12T17:00:00Z", "win", "t-1"),
+      played("e", "2026-12-18T17:00:00Z", "tie", null, "Hawks"),
+    ];
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    const lastGame = within(card).getByText("Last game");
+    const tournament = within(card).getByRole("region", { name: "Last tournament" });
+    const overall = within(card).getByRole("region", { name: "Overall record" });
+    expect(lastGame.compareDocumentPosition(tournament) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tournament.compareDocumentPosition(overall) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(overall).getByRole("img").getAttribute("aria-label")).toBe("1 win, 0 losses, 1 tie");
+    // Full width: not one column of two.
+    expect(overall.querySelector(".sm\\:grid-cols-2")).toBeNull();
   });
 
   // TL-022 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md): a
@@ -263,21 +307,24 @@ describe("the Record card with leagues (D9)", () => {
     expect(within(cup).queryByRole("img")).toBeNull();
   });
 
-  it("a placed tournament (D8) shows in Overall", async () => {
+  it("the last tournament sits between the leagues and the Overall record", async () => {
     mocks.tables.placed = [SURF_CUP];
     mocks.tables.leagues = [DIV3];
-    mocks.tables.results = [leagueGame("a", "2026-12-05T17:00:00Z", "win", "div3")];
+    mocks.tables.results = [leagueGame("a", "2026-12-15T17:00:00Z", "win", "div3")];
 
     render(await DashboardPage());
 
     const card = screen.getByRole("region", { name: "Record" });
+    const div3 = section(card, "Fall 2026 Division 3");
+    const tournament = section(card, "Last tournament");
     const overall = section(card, "Overall record");
-    expect(within(overall).getByText("Last tournament")).toBeTruthy();
-    expect(within(overall).getByText("Surf Cup")).toBeTruthy();
-    expect(within(section(card, "Fall 2026 Division 3")).queryByText("Last tournament")).toBeNull();
+    expect(within(tournament).getByText("Surf Cup")).toBeTruthy();
+    expect(div3.compareDocumentPosition(tournament) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tournament.compareDocumentPosition(overall) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(overall).queryByText("Surf Cup")).toBeNull();
   });
 
-  it("asks for active leagues only (D17); with none, the card is as before", async () => {
+  it("asks for active leagues only (D17); with none, the card has no league sections", async () => {
     mocks.tables.placed = [];
     mocks.tables.leagues = [];
     mocks.tables.results = [leagueGame("a", "2026-10-03T17:00:00Z", "win", null)];
@@ -287,7 +334,7 @@ describe("the Record card with leagues (D9)", () => {
     const archivedFilter = mocks.calls.find((c) => c.table === "leagues" && c.method === "is");
     expect(archivedFilter?.args).toEqual(["archived_at", null]);
     const card = screen.getByRole("region", { name: "Record" });
-    expect(within(card).queryByRole("region", { name: "Overall record" })).toBeNull();
+    expect(within(card).getByRole("region", { name: "Overall record" })).toBeTruthy();
     expect(within(card).getByText("Last game")).toBeTruthy();
   });
 });

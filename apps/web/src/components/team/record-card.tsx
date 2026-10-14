@@ -118,31 +118,32 @@ function Stats({ record, winColor }: { record: TeamRecord; winColor: string }) {
   );
 }
 
-/** A labelled part of the card: a league's record, or the overall one. */
+/** A headed part of the card: a league's record, or the overall one. */
 function RecordSection({ heading, label, children }: { heading: string; label: string; children: React.ReactNode }) {
   return (
     <section aria-label={label} className="space-y-3">
       <h3 className="text-sm font-semibold">{heading}</h3>
-      <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">{children}</div>
+      {children}
     </section>
   );
 }
 
 /**
- * The dashboard's Record card (spec: docs/specs/team-branding-and-labels.md §4):
- * the last game as a scoreline with its date and time, and the wins, losses and
- * ties with a bar split in those proportions: wins in the club's secondary color
- * (lista blue outside a club), losses black, ties grey. Shown once a game has a
- * result, or a tournament a placement: a placement is a result of its own, and
- * without game results the card shows the tournament alone (review TL-022).
+ * The dashboard's Record card (spec: docs/specs/team-branding-and-labels.md §4;
+ * docs/specs/tournaments-and-leagues.md D8, D9, layout revised 2026-10-14), top
+ * to bottom:
  *
- * After a tournament with a placement, the last result is the tournament until
- * a newer game (docs/specs/tournaments-and-leagues.md, D8).
+ *   - a section per active league: its own last game and record graphic, or
+ *     "No results yet". Without leagues, the team's last game instead
+ *   - the last tournament: the latest finished one, placed or not, with its
+ *     placement, its own record and its dates. It stays until a newer one
+ *     finishes, whatever games follow it
+ *   - the Overall record across the card: every game counts (D3)
  *
- * With active leagues (D9; layout 2026-10-14), the card leads with a section per
- * league, its own last game and record, or "No results yet", and ends with the
- * Overall record, which counts every game (D3). The last tournament, which isn't
- * tied to a league, shows in Overall.
+ * The graphic is the wins, losses and ties with a bar split in those
+ * proportions: wins in the club's secondary color (lista blue outside a club),
+ * losses black, ties grey. The card shows once a game has a result or a
+ * tournament has finished (review TL-022).
  */
 export function RecordCard({
   teamName,
@@ -153,12 +154,12 @@ export function RecordCard({
   leagues = [],
 }: {
   teamName: string;
-  /** Null before any game has a result: then only the last tournament shows. */
+  /** Null before any game has a result. */
   record: TeamRecord | null;
   teamTimeZone?: string | null;
   /** The club's secondary color on a club team, else lista blue. */
   winColor: string;
-  /** The latest placed tournament, when it ended after the last game started. */
+  /** The latest finished tournament. */
   lastTournament?: LastTournament | null;
   /** The team's active leagues, each with its own record, or null before a result (D9). */
   leagues?: { id: string; label: string; record: TeamRecord | null }[];
@@ -169,38 +170,33 @@ export function RecordCard({
         <CardHeader className="border-b">
           <CardTitle className="text-sm font-medium">Record</CardTitle>
         </CardHeader>
-        {leagues.length === 0 ? (
-          <CardContent className="grid gap-6 sm:grid-cols-2 sm:gap-10">
-            {lastTournament ? (
+        <CardContent className="space-y-6 divide-y [&>*:not(:first-child)]:pt-6">
+          {leagues.length > 0
+            ? leagues.map((l) => (
+                <RecordSection key={l.id} heading={l.label} label={l.label}>
+                  {l.record ? (
+                    <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
+                      <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
+                      <Stats record={l.record} winColor={winColor} />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No results yet</p>
+                  )}
+                </RecordSection>
+              ))
+            : record && <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />}
+          {lastTournament && (
+            <section aria-label="Last tournament">
               <LastTournamentSummary tournament={lastTournament} />
-            ) : record ? (
-              <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />
-            ) : null}
-            {record && <Stats record={record} winColor={winColor} />}
-          </CardContent>
-        ) : (
-          <CardContent className="space-y-6 divide-y [&>*:not(:first-child)]:pt-6">
-            {leagues.map((l) => (
-              <RecordSection key={l.id} heading={l.label} label={l.label}>
-                {l.record ? (
-                  <>
-                    <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
-                    <Stats record={l.record} winColor={winColor} />
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No results yet</p>
-                )}
-              </RecordSection>
-            ))}
-            {/* Always last: every game counts here (D3). */}
-            {(record || lastTournament) && (
-              <RecordSection heading="Overall" label="Overall record">
-                {lastTournament && <LastTournamentSummary tournament={lastTournament} />}
-                {record && <Stats record={record} winColor={winColor} />}
-              </RecordSection>
-            )}
-          </CardContent>
-        )}
+            </section>
+          )}
+          {/* Always last, across the card: every game counts here (D3). */}
+          {record && (
+            <RecordSection heading="Overall" label="Overall record">
+              <Stats record={record} winColor={winColor} />
+            </RecordSection>
+          )}
+        </CardContent>
       </Card>
     </section>
   );

@@ -88,7 +88,8 @@ export default async function DashboardPage() {
       .eq("team_id", team.id)
       .eq("event_type", "game")
       .not("game_result", "is", null),
-    // The latest finished tournament with a placement, for the Record card (D8).
+    // The latest finished tournament, placed or not, for the Record card (D8,
+    // revised 2026-10-14).
     supabase
       .from("events")
       .select("id, title, start_time, end_time, timezone, placement_rank, placement_label")
@@ -96,7 +97,6 @@ export default async function DashboardPage() {
       .eq("event_type", "tournament")
       .eq("is_cancelled", false)
       .lte("end_time", new Date().toISOString())
-      .or("placement_rank.not.is.null,placement_label.not.is.null")
       .order("end_time", { ascending: false })
       .limit(1),
     // The team's active leagues, a row each on the Record card (D9, D17).
@@ -104,11 +104,12 @@ export default async function DashboardPage() {
   ]);
 
   const record = teamRecord(resultGames ?? []);
-  // D8: the tournament is the last result until a game starts after it ended.
-  // With no game results at all, a placement is still a result (review TL-022).
+  // D8, revised 2026-10-14: the latest finished tournament always shows its
+  // results, under the last game, until a newer one finishes. With no game
+  // results at all, it's still shown (review TL-022).
   const placed = placedTournaments?.[0];
   const lastTournament =
-    placed && (!record || Date.parse(placed.end_time) > Date.parse(record.last.startTime))
+    placed
       ? {
           title: placed.title,
           placement: placementText(placed) ?? "",
