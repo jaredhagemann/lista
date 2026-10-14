@@ -293,8 +293,9 @@ Display and answering only. Creating events stays on the web (D11).
     it would leave played games out of the league's record. Feedback, §9.
 - **Records (D9, layout revised 2026-10-14):** with active leagues, the Record card leads with a section
   per league: its own last game and record graphic, or "No results yet". It ends with the **Overall** record
-  (every game, D3), its graphic across the card, always last. Between them, the latest finished
-  tournament's results (D8, revised 2026-10-14). Without leagues: the team's last game, then the
+  (every game, D3), headed "Overall Record", its graphic across the card, always last. Between them, the
+  latest finished tournament (D8, revised 2026-10-14), laid out as a league section: its name, placement and
+  dates, beside its own record graphic. Without leagues: the team's last game, then the
   tournament, then Overall, the same way.
 - **Schedule:** a small league tag on league games.
 - **Tournaments and leagues are independent** (D4): a game can carry either, or both.

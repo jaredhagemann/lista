@@ -145,10 +145,15 @@ describe("the Record card after a tournament (D8)", () => {
     expect(within(card).getByText("Last tournament")).toBeTruthy();
     expect(within(card).getByText("Surf Cup")).toBeTruthy();
     expect(within(card).getByText("2nd place")).toBeTruthy();
-    expect(within(card).getByLabelText("Tournament record").textContent).toBe("2–1–0");
     expect(within(card).getByText("Fri, Dec 11 – Sun, Dec 13")).toBeTruthy();
-    // The season's record still counts every game.
-    expect(within(card).getByRole("img").getAttribute("aria-label")).toBe("3 wins, 1 loss, 0 ties");
+    // Its own record as a graphic, as a league section shows one (2026-10-14).
+    const tournament = within(card).getByRole("region", { name: "Last tournament" });
+    expect(within(tournament).getByRole("heading", { name: "Last tournament" })).toBeTruthy();
+    expect(within(tournament).getByRole("img").getAttribute("aria-label")).toBe("2 wins, 1 loss, 0 ties");
+    // The season's record still counts every game, under "Overall Record".
+    const overall = within(card).getByRole("region", { name: "Overall record" });
+    expect(within(overall).getByRole("heading", { name: "Overall Record" })).toBeTruthy();
+    expect(within(overall).getByRole("img").getAttribute("aria-label")).toBe("3 wins, 1 loss, 0 ties");
   });
 
   // D8 revised 2026-10-14: the latest finished tournament always shows, under
@@ -176,7 +181,7 @@ describe("the Record card after a tournament (D8)", () => {
 
     const tournament = within(screen.getByRole("region", { name: "Record" })).getByRole("region", { name: "Last tournament" });
     expect(within(tournament).getByText("Surf Cup")).toBeTruthy();
-    expect(within(tournament).getByLabelText("Tournament record").textContent).toBe("1–0–0");
+    expect(within(tournament).getByRole("img").getAttribute("aria-label")).toBe("1 win, 0 losses, 0 ties");
     expect(within(tournament).queryByText(/place$/)).toBeNull();
   });
 
@@ -221,8 +226,7 @@ describe("the Record card after a tournament (D8)", () => {
     const card = screen.getByRole("region", { name: "Record" });
     expect(within(card).getByText("Last tournament")).toBeTruthy();
     expect(within(card).getByText("2nd place")).toBeTruthy();
-    expect(within(card).queryByLabelText("Tournament record")).toBeNull();
-    // No wins, losses and ties to show yet.
+    // No wins, losses and ties to show yet: no graphic, for it or overall.
     expect(within(card).queryByRole("img")).toBeNull();
   });
 

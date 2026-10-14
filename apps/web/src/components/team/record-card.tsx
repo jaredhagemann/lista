@@ -65,20 +65,12 @@ function LastGame({
   );
 }
 
-/** The last placed tournament (D8): its name, placement, own record and dates. */
+/** The last tournament (D8): its name, placement and dates. Its record is a graphic beside it. */
 function LastTournamentSummary({ tournament }: { tournament: LastTournament }) {
   return (
     <div className="min-w-0 space-y-2">
-      <Tag>Last tournament</Tag>
       <p className="truncate text-lg font-semibold text-primary sm:text-xl">{tournament.title}</p>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        {tournament.placement && <span className="text-lg font-semibold sm:text-xl">{tournament.placement}</span>}
-        {tournament.record && (
-          <span aria-label="Tournament record" className="tabular-nums text-muted-foreground">
-            {tournament.record.wins}–{tournament.record.losses}–{tournament.record.ties}
-          </span>
-        )}
-      </div>
+      {tournament.placement && <p className="text-lg font-semibold sm:text-xl">{tournament.placement}</p>}
       <p className="text-sm text-muted-foreground">{tournament.dates}</p>
     </div>
   );
@@ -135,10 +127,10 @@ function RecordSection({ heading, label, children }: { heading: string; label: s
  *
  *   - a section per active league: its own last game and record graphic, or
  *     "No results yet". Without leagues, the team's last game instead
- *   - the last tournament: the latest finished one, placed or not, with its
- *     placement, its own record and its dates. It stays until a newer one
- *     finishes, whatever games follow it
- *   - the Overall record across the card: every game counts (D3)
+ *   - the last tournament, laid out as a league section: the latest finished
+ *     one, placed or not, with its placement and dates, and its own record
+ *     graphic. It stays until a newer one finishes, whatever games follow it
+ *   - "Overall Record" across the card: every game counts (D3)
  *
  * The graphic is the wins, losses and ties with a bar split in those
  * proportions: wins in the club's secondary color (lista blue outside a club),
@@ -185,14 +177,18 @@ export function RecordCard({
                 </RecordSection>
               ))
             : record && <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />}
+          {/* Laid out as a league section is: the summary, and its own record graphic (2026-10-14). */}
           {lastTournament && (
-            <section aria-label="Last tournament">
-              <LastTournamentSummary tournament={lastTournament} />
-            </section>
+            <RecordSection heading="Last tournament" label="Last tournament">
+              <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
+                <LastTournamentSummary tournament={lastTournament} />
+                {lastTournament.record && <Stats record={lastTournament.record} winColor={winColor} />}
+              </div>
+            </RecordSection>
           )}
           {/* Always last, across the card: every game counts here (D3). */}
           {record && (
-            <RecordSection heading="Overall" label="Overall record">
+            <RecordSection heading="Overall Record" label="Overall record">
               <Stats record={record} winColor={winColor} />
             </RecordSection>
           )}
