@@ -30,6 +30,7 @@ import {
 import { tournamentDates } from "@/lib/events/tournament";
 import type { Database } from "@/types/database";
 import { newGameDraft, TournamentGameRow } from "./tournament-game-rows";
+import { useTeamLeagues } from "@/components/leagues/use-team-leagues";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
 type Game = Pick<Event, "id" | "start_time" | "is_cancelled">;
@@ -252,6 +253,7 @@ export function AddTournamentGameDialog({
   const [notifyTeam, setNotifyTeam] = useState(true);
   const [busy, setBusy] = useState(false);
   const [timesError, setTimesError] = useState<string | null>(null);
+  const teamLeagues = useTeamLeagues(tournament.team_id!);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -325,6 +327,7 @@ export function AddTournamentGameDialog({
               setTimesError(null);
             }}
             error={timesError}
+            teamLeagues={teamLeagues}
             zone={zone}
             firstDay={firstDay}
             lastDay={lastDay}

@@ -85,6 +85,8 @@ export type TournamentGameDraft = {
   homeAway: string;
   uniform: string;
   round: string;
+  /** A league id, or "" for none (D4). */
+  league?: string;
 };
 
 const WALL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
@@ -122,6 +124,7 @@ export function tournamentGameFields(
     uniform: draft.uniform || null,
     round,
     location_id: locationId,
+    league_id: draft.league || null,
   };
 }
 

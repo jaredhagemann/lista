@@ -20,7 +20,7 @@ import {
   type TournamentGameDraft,
 } from "@/lib/events/tournament-form";
 import { LocationField, noLocation, resolveLocation } from "./location-field";
-import { TournamentGameRows } from "./tournament-game-rows";
+import { TournamentGameRows, type TeamLeagues } from "./tournament-game-rows";
 
 const DAYS_ERROR = "The last day can't be before the first.";
 
@@ -41,7 +41,10 @@ export function TournamentCreateForm({
   defaultDay,
   typeField,
   onClose,
+  teamLeagues,
 }: {
+  /** The team's leagues, for each game (D4). */
+  teamLeagues?: TeamLeagues;
   teamId: string;
   team: TeamDisplay;
   timeZone: string;
@@ -171,6 +174,7 @@ export function TournamentCreateForm({
             setGameErrors([]);
           }}
           errors={gameErrors}
+          teamLeagues={teamLeagues}
           zone={timeZone}
           firstDay={firstDay}
           lastDay={lastDay}

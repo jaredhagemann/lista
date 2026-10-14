@@ -424,8 +424,9 @@ export function TeamSettingsForm({ team, isAdmin }: TeamSettingsFormProps) {
               formatLabel(team.sport, SPORTS),
               renderSelect(sport, handleSelectChange(setSport), SPORTS, "Select sport")
             )}
+            {/* Display text only: leagues for records are in Leagues below (D17). */}
             {renderField(
-              "League",
+              "League (shown on your team page)",
               team.league ?? "—",
               <Input
                 value={league}

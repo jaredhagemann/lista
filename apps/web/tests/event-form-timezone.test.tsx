@@ -29,11 +29,14 @@ const mocks = vi.hoisted(() => {
   const inserts: Array<Record<string, unknown> | Record<string, unknown>[]> = [];
   const updates: Array<Record<string, unknown>> = [];
   const from = (table: string) => {
-    if (table === "locations") {
+    // The forms read the team's locations, and its leagues and season for the
+    // League picker: none of them matter to times.
+    if (table === "locations" || table === "leagues" || table === "teams") {
       const chain = {
         select: () => chain,
         eq: () => chain,
         order: () => Promise.resolve({ data: [], error: null }),
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
       };
       return chain;
     }

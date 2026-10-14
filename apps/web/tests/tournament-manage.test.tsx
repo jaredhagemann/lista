@@ -249,6 +249,7 @@ describe("creating a tournament", () => {
           uniform: null,
           round: "Pool A",
           location_id: null,
+          league_id: null,
         },
         {
           title: "Final",
@@ -259,6 +260,7 @@ describe("creating a tournament", () => {
           uniform: null,
           round: "Final",
           location_id: null,
+          league_id: null,
         },
       ],
     });
