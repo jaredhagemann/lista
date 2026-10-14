@@ -192,44 +192,92 @@ describe("the Record card after a tournament (D8)", () => {
   });
 });
 
-// ── League rows (docs/specs/tournaments-and-leagues.md §5, D9) ───────────────
+// ── League sections (docs/specs/tournaments-and-leagues.md §5, D9; layout 2026-10-14) ──
+//
+// With active leagues, the card leads with a section per league, its last game
+// and its own record graphic, and ends with the Overall record. A league with no
+// result yet says so. A placed tournament (D8) shows in Overall. Without leagues
+// the card is as before.
 
-describe("the Record card's league rows (D9)", () => {
+describe("the Record card with leagues (D9)", () => {
   beforeEach(() => {
     vi.setSystemTime(new Date("2026-12-20T12:00:00.000Z"));
   });
 
-  const leagueGame = (id: string, start: string, result: string, league: string | null) => ({
-    ...played(id, start, result, null),
+  const leagueGame = (id: string, start: string, result: string, league: string | null, opponent = "Rivals FC") => ({
+    ...played(id, start, result, null, opponent),
     league_id: league,
   });
+  const DIV3 = { id: "div3", team_id: "team-1", name: "Division 3", season: "Fall 2026", archived_at: null };
+  const CUP = { id: "cup", team_id: "team-1", name: "Cup", season: "Fall 2026", archived_at: null };
+  const RESULTS = [
+    leagueGame("a", "2026-10-03T17:00:00Z", "win", "div3"),
+    leagueGame("b", "2026-10-10T17:00:00Z", "win", "div3"),
+    leagueGame("c", "2026-10-17T17:00:00Z", "loss", "div3", "Eagles"),
+    leagueGame("d", "2026-10-24T17:00:00Z", "tie", null, "Hawks"),
+  ];
+  const section = (card: HTMLElement, name: string) => within(card).getByRole("region", { name });
 
-  it("shows a row per active league with its record, under the overall record", async () => {
+  it("leads with a section per league: its last game and its own record", async () => {
     mocks.tables.placed = [];
-    mocks.tables.leagues = [
-      { id: "div3", team_id: "team-1", name: "Division 3", season: "Fall 2026", archived_at: null },
-      { id: "cup", team_id: "team-1", name: "Cup", season: "Fall 2026", archived_at: null },
-    ];
-    mocks.tables.results = [
-      leagueGame("a", "2026-10-03T17:00:00Z", "win", "div3"),
-      leagueGame("b", "2026-10-10T17:00:00Z", "win", "div3"),
-      leagueGame("c", "2026-10-17T17:00:00Z", "loss", "div3"),
-      leagueGame("d", "2026-10-24T17:00:00Z", "tie", null),
-    ];
+    mocks.tables.leagues = [DIV3];
+    mocks.tables.results = RESULTS;
 
     render(await DashboardPage());
 
     const card = screen.getByRole("region", { name: "Record" });
-    const rows = within(card).getByRole("list", { name: "League records" });
-    expect(within(rows).getByText("Fall 2026 Division 3")).toBeTruthy();
-    expect(within(rows).getByLabelText("Fall 2026 Division 3 record").textContent).toBe("2–1–0");
-    // A league with no result yet says so.
-    expect(within(rows).getByLabelText("Fall 2026 Cup record").textContent).toBe("No results yet");
-    // The overall record still counts every game (D3).
-    expect(within(card).getByRole("img").getAttribute("aria-label")).toBe("2 wins, 1 loss, 1 tie");
+    const div3 = section(card, "Fall 2026 Division 3");
+    expect(within(div3).getByText("Last game")).toBeTruthy();
+    // Its own last game: the loss to Eagles, not the overall last (a tie with Hawks).
+    expect(within(div3).getByText("vs Eagles")).toBeTruthy();
+    expect(within(div3).getByRole("img").getAttribute("aria-label")).toBe("2 wins, 1 loss, 0 ties");
   });
 
-  it("asks for active leagues only (D17)", async () => {
+  it("ends with the Overall record, counting every game (D3)", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [DIV3];
+    mocks.tables.results = RESULTS;
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    const overall = section(card, "Overall record");
+    expect(within(overall).getByRole("img").getAttribute("aria-label")).toBe("2 wins, 1 loss, 1 tie");
+    expect(within(overall).queryByText("Last game")).toBeNull();
+    // Always last.
+    const div3 = section(card, "Fall 2026 Division 3");
+    expect(div3.compareDocumentPosition(overall) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("a section for each active league, and one with no result yet says so", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [DIV3, CUP];
+    mocks.tables.results = RESULTS;
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(section(card, "Fall 2026 Division 3")).getByText("Last game")).toBeTruthy();
+    const cup = section(card, "Fall 2026 Cup");
+    expect(within(cup).getByText("No results yet")).toBeTruthy();
+    expect(within(cup).queryByRole("img")).toBeNull();
+  });
+
+  it("a placed tournament (D8) shows in Overall", async () => {
+    mocks.tables.placed = [SURF_CUP];
+    mocks.tables.leagues = [DIV3];
+    mocks.tables.results = [leagueGame("a", "2026-12-05T17:00:00Z", "win", "div3")];
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    const overall = section(card, "Overall record");
+    expect(within(overall).getByText("Last tournament")).toBeTruthy();
+    expect(within(overall).getByText("Surf Cup")).toBeTruthy();
+    expect(within(section(card, "Fall 2026 Division 3")).queryByText("Last tournament")).toBeNull();
+  });
+
+  it("asks for active leagues only (D17); with none, the card is as before", async () => {
     mocks.tables.placed = [];
     mocks.tables.leagues = [];
     mocks.tables.results = [leagueGame("a", "2026-10-03T17:00:00Z", "win", null)];
@@ -238,7 +286,8 @@ describe("the Record card's league rows (D9)", () => {
 
     const archivedFilter = mocks.calls.find((c) => c.table === "leagues" && c.method === "is");
     expect(archivedFilter?.args).toEqual(["archived_at", null]);
-    // No leagues, no rows.
-    expect(within(screen.getByRole("region", { name: "Record" })).queryByRole("list", { name: "League records" })).toBeNull();
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(card).queryByRole("region", { name: "Overall record" })).toBeNull();
+    expect(within(card).getByText("Last game")).toBeTruthy();
   });
 });

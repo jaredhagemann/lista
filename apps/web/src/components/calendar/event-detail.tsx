@@ -1108,6 +1108,7 @@ export function EventDetail({
                   )}
                   {event.home_away && (
                     <div>
+                      <span className="text-muted-foreground">Home / Away:</span>{" "}
                       <Badge variant="outline">{homeAwayLabel(event.home_away)}</Badge>
                     </div>
                   )}

@@ -160,3 +160,23 @@ describe("a game's page", () => {
     expect(screen.getByText("Fall 2025 Division 4")).toBeTruthy();
   });
 });
+
+describe("a game's Home / Away (2026-10-14)", () => {
+  it("is a labelled field, like the others", () => {
+    render(
+      <EventDetail
+        event={FRIENDLY as never}
+        isAdmin={false}
+        creatorName="Coach Kim"
+        team={TEAM}
+        teamTimeZone={LA}
+        currentUserId="me"
+        availabilityRows={[]}
+        members={[]}
+      />
+    );
+
+    const label = screen.getByText("Home / Away:");
+    expect(within(label.parentElement!).getByText("Home")).toBeTruthy();
+  });
+});
