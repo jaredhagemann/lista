@@ -54,6 +54,8 @@ export type ListEventRow = EventRow & {
   locations: { name: string; address: string | null } | null;
   tournament: { title: string } | null;
   games: { count: number }[];
+  /** A game's league, for its tag (tournaments-and-leagues §5). */
+  league: { name: string; season: string } | null;
 };
 
 /** The row shape a projection returns. Callers do not get to choose it. */
@@ -118,6 +120,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Postgres timestamps, including the microseconds JavaScript's Date discards. */
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})?$/;
 
+/** The list's read: what its rows and row actions show, a game's league included. */
+export const LIST_PROJECTION =
+  "*, locations(name, address), tournament:tournament_id(title), games:events!tournament_id(count), league:league_id(name, season)";
+
 const PROJECTIONS: Record<EventProjection, string> = {
   // The grid needs placement and labelling, nothing else. A game is labelled by
   // its team and opponent, with its uniform (spec: game-display-and-uniform-colors).
@@ -126,7 +132,7 @@ const PROJECTIONS: Record<EventProjection, string> = {
   calendar:
     "id, team_id, title, event_type, start_time, end_time, timezone, tournament_id, is_cancelled, opponent, home_away, uniform, score_for, score_against",
   // The list needs what its rows and row actions read.
-  list: "*, locations(name, address), tournament:tournament_id(title), games:events!tournament_id(count)",
+  list: LIST_PROJECTION,
 };
 
 function assertValid(query: EventQuery, pageSize: number, cursor: EventCursor | null) {

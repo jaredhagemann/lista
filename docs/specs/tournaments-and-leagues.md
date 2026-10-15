@@ -240,8 +240,8 @@ A tournament-wide action must send **one notice that reads as a tournament**, ne
 - **Game page:** "Part of Surf Cup", linking to the tournament.
 - **Dashboard:**
   - Upcoming shows the tournament while it's upcoming or underway.
-  - The Record card stays overall, with league rows (D9). After a tournament with a placement, the last
-    result is "Surf Cup · 2nd place · 3–1–0" (D8).
+  - The Record card (D8, D9, revised 2026-10-14): league sections, or the last game without leagues;
+    then the latest finished tournament's results; then the Overall record across the card. See §5, Records.
 - **Emails:** as in "Notifications".
 
 ### Mobile app
@@ -291,7 +291,12 @@ Display and answering only. Creating events stays on the web (D11).
     - It includes played games, so a league added halfway through a season gets its earlier results.
   - **The series editor doesn't set leagues.** It only touches upcoming occurrences and skips exceptions, so
     it would leave played games out of the league's record. Feedback, §9.
-- **Records:** overall (every game), plus one per active league: "Fall 2026 Division 3 · 6–2–1" (D9).
+- **Records (D9, layout revised 2026-10-14):** with active leagues, the Record card leads with a section
+  per league: its own last game and record graphic, or "No results yet". It ends with the **Overall** record
+  (every game, D3), headed "Overall Record", its graphic across the card, always last. Between them, the
+  latest finished tournament (D8, revised 2026-10-14), laid out as a league section: its name, placement and
+  dates, beside its own record graphic. Without leagues: the team's last game, then the
+  tournament, then Overall, the same way.
 - **Schedule:** a small league tag on league games.
 - **Tournaments and leagues are independent** (D4): a game can carry either, or both.
 - **The old team fields (D17):** `teams.league` and `teams.league_url` are the team's free-text league
@@ -312,8 +317,8 @@ Display and answering only. Creating events stays on the web (D11).
 | D5 | Deleting a tournament with games | A plain delete is refused. "Delete the tournament and its games" is one function and one notice |
 | D6 | Reminders | **A reminder for every event:** the tournament (before its start date) and each game. This went against the recommendation of one per tournament |
 | D7 | A round on games | Yes, optional `events.round` |
-| D8 | The dashboard after a tournament | Its placement shows as the last result until a newer game |
-| D9 | Leagues on the Record card | A row per active league under the overall record |
+| D8 | The dashboard after a tournament | Revised 2026-10-14: the latest finished tournament, placed or not, always shows its results (placement if set, its own record, its dates) under the last game, until a newer one finishes. First decided as the last result only until a newer game |
+| D9 | Leagues on the Record card | Revised 2026-10-14: a section per active league (its last game and record graphic, or "No results yet"), then the Overall record and graphic, always last, with the D8 tournament summary there. First decided as a row per league under the overall record |
 | D10 | League model | Team leagues (§5) |
 | D11 | The app before 1.1.0 | Display and answering for **both tournaments and leagues**. Creating them stays on the web |
 | D12 | Order, and the release | Tournaments first (database, web, app), then leagues (database, web, app). **The `ios-v1.1.0` tag waits until both are done** |

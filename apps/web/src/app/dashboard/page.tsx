@@ -14,6 +14,7 @@ import type { Database } from "@/types/database";
 import { displayLabel } from "@/lib/labels";
 import { TeamCard } from "@/components/team/team-card";
 import { RecordCard } from "@/components/team/record-card";
+import { leagueRecords } from "@/lib/leagues";
 import { clubSecondaryColor, LISTA_BLUE } from "@/lib/team-branding";
 import { teamRecord } from "@/lib/events/team-record";
 import { isTournament, isUnderway, placementText, tournamentDates, tournamentRecord } from "@/lib/events/tournament";
@@ -72,7 +73,7 @@ export default async function DashboardPage() {
 
   // The Team card: the club's branding, and the team's games with a result
   // (spec: team-branding-and-labels §4).
-  const [{ data: members }, { data: org }, { data: resultGames }, { data: placedTournaments }] = await Promise.all([
+  const [{ data: members }, { data: org }, { data: resultGames }, { data: placedTournaments }, { data: teamLeagues }] = await Promise.all([
     supabase.from("team_members").select("id, role, profiles(first_name, last_name)").eq("team_id", team.id),
     team.organization_id
       ? supabase
@@ -83,11 +84,12 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: null }),
     supabase
       .from("events")
-      .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id")
+      .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, league_id")
       .eq("team_id", team.id)
       .eq("event_type", "game")
       .not("game_result", "is", null),
-    // The latest finished tournament with a placement, for the Record card (D8).
+    // The latest finished tournament, placed or not, for the Record card (D8,
+    // revised 2026-10-14).
     supabase
       .from("events")
       .select("id, title, start_time, end_time, timezone, placement_rank, placement_label")
@@ -95,17 +97,19 @@ export default async function DashboardPage() {
       .eq("event_type", "tournament")
       .eq("is_cancelled", false)
       .lte("end_time", new Date().toISOString())
-      .or("placement_rank.not.is.null,placement_label.not.is.null")
       .order("end_time", { ascending: false })
       .limit(1),
+    // The team's active leagues, a row each on the Record card (D9, D17).
+    supabase.from("leagues").select("id, name, season, archived_at").eq("team_id", team.id).is("archived_at", null),
   ]);
 
   const record = teamRecord(resultGames ?? []);
-  // D8: the tournament is the last result until a game starts after it ended.
-  // With no game results at all, a placement is still a result (review TL-022).
+  // D8, revised 2026-10-14: the latest finished tournament always shows its
+  // results, under the last game, until a newer one finishes. With no game
+  // results at all, it's still shown (review TL-022).
   const placed = placedTournaments?.[0];
   const lastTournament =
-    placed && (!record || Date.parse(placed.end_time) > Date.parse(record.last.startTime))
+    placed
       ? {
           title: placed.title,
           placement: placementText(placed) ?? "",
@@ -214,6 +218,7 @@ export default async function DashboardPage() {
             teamTimeZone={team.timezone}
             winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
             lastTournament={lastTournament}
+            leagues={leagueRecords(teamLeagues ?? [], resultGames ?? [])}
           />
         )}
       </div>

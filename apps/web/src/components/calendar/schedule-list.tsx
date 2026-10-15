@@ -42,6 +42,7 @@ import { EventFormDialog } from "./event-form-dialog";
 import { gameTitle, uniformOf, type TeamDisplay } from "@/lib/events/game-display";
 import { isTournament, isUnderway, tournamentDates, tournamentLine } from "@/lib/events/tournament";
 import { EVENT_TYPE_STYLES } from "@/lib/events/type-colors";
+import { leagueLabel } from "@/lib/leagues";
 import { UniformLabel } from "@/components/events/uniform-label";
 import { eventTimeZone } from "@/lib/events/event-timezone";
 import { browserTimeZone } from "@/lib/events/team-timezone";
@@ -59,6 +60,8 @@ type EventWithLocation = Event & {
   tournament?: { title: string } | null;
   /** A tournament's game count. */
   games?: { count: number }[];
+  /** A game's league, for its tag. */
+  league?: { name: string; season: string } | null;
 };
 type TypeFilter = "all" | "game" | "practice" | "tournament" | "other";
 type PageSize = 30 | 50 | 100;
@@ -516,6 +519,12 @@ export function ScheduleList({
                             {badge.label}
                           </Badge>
                           {event.event_type === "game" && <UniformLabel uniform={uniformOf(event.uniform, team)} />}
+                          {/* A league game's league (tournaments-and-leagues §5) */}
+                          {event.league && (
+                            <Badge variant="outline" className="text-xs font-normal">
+                              {leagueLabel(event.league)}
+                            </Badge>
+                          )}
                         </div>
                         {partOf && <span className="text-xs text-muted-foreground">{partOf}</span>}
                         {/* Date + time shown inline on mobile */}
