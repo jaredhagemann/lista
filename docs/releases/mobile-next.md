@@ -287,6 +287,8 @@ events are made on the web. There is no way to filter the schedule.
   - The filter applies to the list already loaded, with no new reads, and lasts until you leave the screen.
 - **A filter with no events** says so ("No tournaments scheduled."), with **Clear filter**.
 - **An empty schedule** now shows "No events scheduled yet.". Before, the Today divider alone hid that message.
+- **Both empty states can still be pulled to refresh** (review TL-028), so an event just made on the web
+  can be fetched. A refresh keeps the selected type.
 
 No server change. Files: `app/(app)/schedule/index.tsx`, `__tests__/ScheduleTypeFilter.test.tsx`.
 
@@ -459,6 +461,8 @@ TestFlight build (production data: use a test team for anything that writes):
   - Tap each pill: Game shows games, a tournament's included. Practice, Tournament and Other show their own.
   - The list still opens at Today.
   - A type with no events says so, and Clear filter brings everything back.
+  - With a type that has no events, add one of that type on the web, then pull down: it appears, and the
+    type stays selected.
   - On a small phone, the pills scroll sideways.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
