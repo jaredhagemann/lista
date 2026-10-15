@@ -297,6 +297,13 @@ Display and answering only. Creating events stays on the web (D11).
   latest finished tournament (D8, revised 2026-10-14), laid out as a league section: its name, placement and
   dates, beside its own record graphic. Without leagues: the team's last game, then the
   tournament, then Overall, the same way.
+  - **When the card shows (decided 2026-10-15):** once a game has a result, a tournament has finished, or the
+    team has an active league. A new league's section reads "No results yet", with no Overall Record until
+    a result exists.
+  - **Empty state (clarified 2026-10-15):** active leagues alone make the Record card visible, even before
+    any game result or finished tournament. Each league without results shows "No results yet". This
+    applies to web and mobile and supersedes the older rule requiring a result before showing the card
+    for a team with active leagues.
 - **Schedule:** a small league tag on league games.
 - **Tournaments and leagues are independent** (D4): a game can carry either, or both.
 - **The old team fields (D17):** `teams.league` and `teams.league_url` are the team's free-text league

@@ -332,6 +332,31 @@ describe("the Record card with leagues (D9)", () => {
     expect(within(overall).queryByText("Surf Cup")).toBeNull();
   });
 
+  // Decided 2026-10-15 (review of #126): an active league alone shows the card.
+  it("an active league with no result yet shows the card, before any game or tournament", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [DIV3];
+    mocks.tables.results = [];
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(section(card, "Fall 2026 Division 3")).getByText("No results yet")).toBeTruthy();
+    // Nothing to count overall yet.
+    expect(within(card).queryByRole("region", { name: "Overall record" })).toBeNull();
+    expect(within(card).queryByRole("img")).toBeNull();
+  });
+
+  it("with no league, result or tournament, there's no card", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [];
+    mocks.tables.results = [];
+
+    render(await DashboardPage());
+
+    expect(screen.queryByRole("region", { name: "Record" })).toBeNull();
+  });
+
   it("asks for active leagues only (D17); with none, the card has no league sections", async () => {
     mocks.tables.placed = [];
     mocks.tables.leagues = [];

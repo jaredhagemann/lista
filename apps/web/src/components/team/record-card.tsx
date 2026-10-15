@@ -143,8 +143,9 @@ function RecordSection({ heading, label, children }: { heading: string; label: s
  *
  * The graphic is the wins, losses and ties with a bar split in those
  * proportions: wins in the club's secondary color (lista blue outside a club),
- * losses black, ties grey. The card shows once a game has a result or a
- * tournament has finished (review TL-022).
+ * losses black, ties grey. The card shows once a game has a result, a
+ * tournament has finished (review TL-022), or the team has an active league,
+ * which reads "No results yet" until it has one (decided 2026-10-15).
  */
 export function RecordCard({
   teamName,

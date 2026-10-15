@@ -104,6 +104,7 @@ export default async function DashboardPage() {
   ]);
 
   const record = teamRecord(resultGames ?? []);
+  const leagueRows = leagueRecords(teamLeagues ?? [], resultGames ?? []);
   // D8, revised 2026-10-14: the latest finished tournament always shows its
   // results, under the last game, until a newer one finishes. With no game
   // results at all, it's still shown (review TL-022).
@@ -211,14 +212,16 @@ export default async function DashboardPage() {
 
         <TeamCard team={{ ...team, organizations: org }} members={members ?? []} />
 
-        {(record || lastTournament) && (
+        {/* A result, a finished tournament, or an active league shows the card: a new
+            league reads "No results yet" (decided 2026-10-15, review of #126). */}
+        {(record || lastTournament || leagueRows.length > 0) && (
           <RecordCard
             teamName={team.name}
             record={record}
             teamTimeZone={team.timezone}
             winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
             lastTournament={lastTournament}
-            leagues={leagueRecords(teamLeagues ?? [], resultGames ?? [])}
+            leagues={leagueRows}
           />
         )}
       </div>
