@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-15, [PR #127](https://github.com/jaredhagemann/lista/pull/127) at `e96bbbe9a9ffcad900ad003a01b1fa13d09504b3`.
-**Current outcome:** TL-001 through TL-026 are resolved. TL-027 (mobile kept the previous team's record when the new team's read failed) is implemented in `f722cc2ed`, awaiting review. Empty-league visibility and same-team failure/retry behavior are verified. TestFlight/device verification remains outstanding.
+**Last reviewed:** 2026-10-15, [PR #127](https://github.com/jaredhagemann/lista/pull/127) at `d414cf81260735ec4f5380d153a435fc0950321c`.
+**Current outcome:** TL-001 through TL-027 are resolved. Independent follow-up review verified team-scoped retained records, retries and rejection of delayed replies, with no new actionable findings. TestFlight/device verification remains outstanding.
 
 ## Using this document as the feature changes
 
@@ -44,7 +44,7 @@
 | [TL-024](#tl-024--use-calendar-day-boundaries-in-an-explicit-zone) | P2 | League game date filters omit valid games across zones and DST | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 | [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 | [TL-026](#tl-026--distinguish-failed-result-reads-from-empty-leagues) | P2 | Failed result reads display "No results yet" on web and mobile | Resolved | Fix `bbf112c65`; independently verified at `e96bbbe9a` |
-| [TL-027](#tl-027--scope-the-retained-mobile-record-to-its-team) | P2 | Failed read after a team switch shows the previous team's record | Implemented — awaiting review | Reproduced at `e96bbbe9a`; fix `f722cc2ed` |
+| [TL-027](#tl-027--scope-the-retained-mobile-record-to-its-team) | P2 | Failed read after a team switch shows the previous team's record | Resolved | Fix `f722cc2ed`; independently verified at `d414cf812` |
 
 ## Implementation progress as of 2026-10-15
 
@@ -62,7 +62,7 @@
 | Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
 | Leagues, web management | Merged via #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
 | Leagues, web display | #126 merged; #127 empty-state and TL-026 fixes verified | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags. Active leagues alone now show the card |
-| Leagues, mobile | Reviewed at `e96bbbe9a`; TL-026 resolved; TL-027 implemented (`f722cc2ed`), awaiting review; TestFlight pending | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen |
+| Leagues, mobile | Reviewed at `d414cf812`; TL-026–TL-027 resolved; TestFlight pending | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen |
 
 ## Part 1 — database findings
 
@@ -1132,7 +1132,7 @@ Implemented in `bbf112c65` (2026-10-15), independently verified:
 
 ### TL-027 — Scope the retained mobile record to its team
 
-**Priority / status:** P2 / Open.
+**Priority / status:** P2 / Resolved.
 **Source:** [mobile home, lines 152–158](https://github.com/jaredhagemann/lista/blob/e96bbbe9a9ffcad900ad003a01b1fa13d09504b3/apps/mobile/app/%28app%29/index.tsx#L152-L158),
 with the stale-status decision at line 390.
 
@@ -1156,10 +1156,13 @@ reads succeed. Also prevent an older in-flight response from restoring data for 
 successful retry for B; and delayed responses across a switch. Same-team failed refreshes should still
 retain their last successful record with the warning.
 
-**Resolution and verification:** Open as of 2026-10-15. Two expected-behavior assertions failed and the
-successful-switch control passed at `e96bbbe9a`. Temporary probe source removed after review.
+**Resolution and verification:** Resolved on 2026-10-15. Fix `f722cc2ed`, independently reviewed at
+`d414cf812`. Both new-team read-failure cases now show the initial-load error without the previous team's
+record, and retry loads the selected team's record. The delayed old-team response is ignored, while a
+same-team failed refresh preserves its own record with a warning. All four TL-027 regressions passed
+within the 214-test mobile suite; mobile TypeScript passed. No new actionable findings.
 
-Implemented in `f722cc2ed` (2026-10-15), awaiting review:
+Implemented in `f722cc2ed` (2026-10-15), independently verified:
 - **Scoped to its team:** home records which team the shown record belongs to (`recordTeam`). A failed read
   for any other team clears the record, its leagues and its last tournament, and the card shows the
   first-load failure with Try again. Only a failed refresh of the same team keeps its record, with the
@@ -1801,5 +1804,23 @@ than reopen them implicitly. The source code review below is separate from accep
   - Against `bbf112c65`'s home screen, the first 3 tests fail. The control passes.
   - Mobile passes 214 of 214 in 24 suites, and `tsc --noEmit` is clean.
 - **Web:** not affected. Its card is a server render per request, with no state kept across teams.
+
+### 2026-10-15 — Independent verification of TL-027, PR #127
+
+- **Revision:** `d414cf81260735ec4f5380d153a435fc0950321c`; implementation `f722cc2ed`, compared with
+  previously reviewed `e96bbbe9a`.
+- **Scope:** all follow-up application and test changes: retained-record ownership, request sequencing,
+  failed reads after switching teams, retry, and preservation of same-team records on refresh failure.
+- **Outcome:** TL-027 → Resolved. No new actionable findings. TL-001–TL-026 remain resolved; there are
+  no open findings in this log.
+- **Independent verification:** all 214 mobile tests in 24 suites passed, including the four TL-027
+  regressions and prior TL-026 coverage. Mobile TypeScript passed (`--noEmit`). Jest used the same
+  temporary in-memory Babel runtime mapping and `NODE_ENV=test` as earlier reviews; no dependency or
+  configuration changes. The unchanged web code was not retested locally in this follow-up.
+- **CI:** web, mobile, unit, RLS, staging migration and Vercel checks pass; production migration is
+  skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/38768951008).
+- **Limits / review changes:** no TestFlight/device or visual layout smoke test; release checks remain
+  outstanding. This log is the only retained edit. No application edits, commits, pushes, notifications
+  or published GitHub comments. Existing untracked screenshot preserved.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
