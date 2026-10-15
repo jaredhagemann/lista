@@ -87,17 +87,7 @@ function formatOccurrence(iso: string, timeZone: string) {
  * ids, availability and results; dates dropped from the pattern are cancelled,
  * not deleted; new dates are added. The whole change applies in one transaction.
  */
-export function SeriesEditForm({
-  series,
-  openedId,
-  scope,
-  teamId,
-  fallbackTimeZone,
-  teamTimeZone,
-  team,
-  onSave,
-  onCancel,
-}: {
+type SeriesEditFormProps = {
   /** Every occurrence of the opened event's series, head included. */
   series: Event[];
   openedId: string;
@@ -110,14 +100,60 @@ export function SeriesEditForm({
   team: TeamDisplay;
   onSave: () => void;
   onCancel: () => void;
+};
+
+export function SeriesEditForm(props: SeriesEditFormProps) {
+  const { series, openedId, scope, onCancel } = props;
+  // Where this edit begins. A scope with nothing upcoming has nowhere to begin:
+  // say so, rather than throw while rendering (BUG-034). The event page refuses
+  // that choice before it gets here; this covers a series whose last upcoming
+  // event starts while the page is open.
+  const resolved = useMemo(() => {
+    try {
+      return resolveSeriesEdit(series, openedId, scope, new Date());
+    } catch (err) {
+      if (err instanceof SeriesEditError) return err;
+      throw err;
+    }
+  }, [series, openedId, scope]);
+
+  if (resolved instanceof SeriesEditError) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{scope === "series" ? "Edit entire series" : "Edit this and following events"}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">{resolved.message}</p>
+          <Button variant="outline" onClick={onCancel}>
+            Back
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <SeriesEditFormBody {...props} head={resolved.head} anchor={resolved.anchor} />;
+}
+
+function SeriesEditFormBody({
+  series,
+  openedId,
+  scope,
+  teamId,
+  fallbackTimeZone,
+  teamTimeZone,
+  team,
+  onSave,
+  onCancel,
+  head,
+  anchor,
+}: SeriesEditFormProps & {
+  head: Event;
+  /** The occurrence the form is prefilled from: where this edit begins. */
+  anchor: Event;
 }) {
   const supabase = createClient();
 
-  // The occurrence the form is prefilled from: where this edit begins.
-  const { head, anchor } = useMemo(
-    () => resolveSeriesEdit(series, openedId, scope, new Date()),
-    [series, openedId, scope]
-  );
   // The pattern's zone, never the opened occurrence's: that may be an exception (PR #81 review).
   const seriesZone = useMemo(() => seriesTimeZone(head, fallbackTimeZone), [head, fallbackTimeZone]);
   const original = useMemo(() => parseRRule(head.recurrence_rule!), [head]);
