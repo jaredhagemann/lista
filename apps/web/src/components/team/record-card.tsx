@@ -154,7 +154,10 @@ export function RecordCard({
   winColor,
   lastTournament = null,
   leagues = [],
+  failed = false,
 }: {
+  /** A read behind the card failed: say so, rather than show a record from part of it (TL-026). */
+  failed?: boolean;
   teamName: string;
   /** Null before any game has a result. */
   record: TeamRecord | null;
@@ -172,39 +175,45 @@ export function RecordCard({
         <CardHeader className="border-b">
           <CardTitle className="text-sm font-medium">Record</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6 divide-y [&>*:not(:first-child)]:pt-6">
-          {leagues.length > 0
-            ? leagues.map((l) => (
-                <RecordSection key={l.id} heading={l.label} label={l.label}>
-                  {l.record ? (
-                    <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
-                      <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
-                      <Stats record={l.record} winColor={winColor} heading="League Record" />
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No results yet</p>
+        {failed ? (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Couldn&apos;t load the record. Refresh the page to try again.</p>
+          </CardContent>
+        ) : (
+          <CardContent className="space-y-6 divide-y [&>*:not(:first-child)]:pt-6">
+            {leagues.length > 0
+              ? leagues.map((l) => (
+                  <RecordSection key={l.id} heading={l.label} label={l.label}>
+                    {l.record ? (
+                      <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
+                        <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
+                        <Stats record={l.record} winColor={winColor} heading="League Record" />
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No results yet</p>
+                    )}
+                  </RecordSection>
+                ))
+              : record && <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />}
+            {/* Laid out as a league section is: the summary, and its own record graphic (2026-10-14). */}
+            {lastTournament && (
+              <RecordSection heading="Last tournament" label="Last tournament">
+                <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
+                  <LastTournamentSummary tournament={lastTournament} />
+                  {lastTournament.record && (
+                    <Stats record={lastTournament.record} winColor={winColor} heading="Tournament Record" />
                   )}
-                </RecordSection>
-              ))
-            : record && <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />}
-          {/* Laid out as a league section is: the summary, and its own record graphic (2026-10-14). */}
-          {lastTournament && (
-            <RecordSection heading="Last tournament" label="Last tournament">
-              <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
-                <LastTournamentSummary tournament={lastTournament} />
-                {lastTournament.record && (
-                  <Stats record={lastTournament.record} winColor={winColor} heading="Tournament Record" />
-                )}
-              </div>
-            </RecordSection>
-          )}
-          {/* Always last, across the card: every game counts here (D3). */}
-          {record && (
-            <RecordSection heading="Overall Record" label="Overall record">
-              <Stats record={record} winColor={winColor} />
-            </RecordSection>
-          )}
-        </CardContent>
+                </div>
+              </RecordSection>
+            )}
+            {/* Always last, across the card: every game counts here (D3). */}
+            {record && (
+              <RecordSection heading="Overall Record" label="Overall record">
+                <Stats record={record} winColor={winColor} />
+              </RecordSection>
+            )}
+          </CardContent>
+        )}
       </Card>
     </section>
   );

@@ -12,23 +12,31 @@
  */
 
 import React from "react";
-import { render, screen, within } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
+import { RefreshControl } from "react-native";
 import { leagueLabel, leagueRecords } from "../lib/leagues";
 
 type Row = Record<string, unknown>;
 const mockTables: Record<string, Row[]> = {};
 const mockFilters: { table: string; method: string; column: string; value: unknown }[] = [];
+/** Reads that fail, as "table:column=value" (TL-026), e.g. the results read "events:event_type=game". */
+const mockFailing = new Set<string>();
 
 jest.mock("../lib/supabase", () => {
   const from = (table: string) => {
     const filters: ((row: Row) => boolean)[] = [];
+    const eqs: string[] = [];
     const keep = (method: string, column: string, value: unknown, test: (row: Row) => boolean) => {
       mockFilters.push({ table, method, column, value });
+      if (method === "eq") eqs.push(`${column}=${String(value)}`);
       filters.push((row) => !(column in row) || test(row));
       return chain;
     };
     const at = (v: unknown) => Date.parse(String(v));
     const result = () => {
+      if (eqs.some((e) => mockFailing.has(`${table}:${e}`))) {
+        return Promise.resolve({ data: null, error: { message: "statement timeout" }, count: null });
+      }
       const data = (mockTables[table] ?? []).filter((row) => filters.every((f) => f(row))).map((r) => ({ ...r }));
       return Promise.resolve({ data, error: null, count: data.length });
     };
@@ -135,6 +143,7 @@ const played = (id: string, days: number, result: string, extra: Row = {}) =>
 beforeEach(() => {
   for (const key of Object.keys(mockTables)) delete mockTables[key];
   mockFilters.length = 0;
+  mockFailing.clear();
   mockTables.team_members = [];
   mockTables.leagues = [];
   mockTables.availability = [];
@@ -287,5 +296,64 @@ describe("a game's screen", () => {
     expect(within(details).getByText("League")).toBeTruthy();
     expect(within(details).getByText("Fall 2026 Division 3")).toBeTruthy();
     expect(within(details).getByText("Home / Away")).toBeTruthy();
+  });
+});
+
+// ── TL-026 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ───────
+
+describe("TL-026: a failed read is never shown as no results", () => {
+  const RESULTS = "events:event_type=game";
+  const leagueWin = () => played("a", 30, "win", { league_id: "div3" });
+
+  it("a first read failing says so, not \"No results yet\", and Try again reads it", async () => {
+    mockTables.leagues = [DIV3];
+    mockTables.events = [leagueWin()];
+    mockFailing.add(RESULTS);
+    render(<HomeScreen />);
+
+    const record = within(await screen.findByLabelText("Record"));
+    expect(record.getByText(/Couldn't load the record/)).toBeTruthy();
+    expect(record.queryByText("No results yet")).toBeNull();
+    expect(record.queryByLabelText("Overall record")).toBeNull();
+
+    mockFailing.clear();
+    fireEvent.press(record.getByLabelText("Try again"));
+    await waitFor(() => expect(screen.getByText("League Record")).toBeTruthy());
+    expect(screen.queryByText(/Couldn't load/)).toBeNull();
+  });
+
+  it("a failed refresh keeps the record it had, and says it may be out of date", async () => {
+    mockTables.leagues = [DIV3];
+    mockTables.events = [leagueWin()];
+    render(<HomeScreen />);
+    await screen.findByText("League Record");
+
+    mockFailing.add(RESULTS);
+    fireEvent(screen.UNSAFE_getByType(RefreshControl), "refresh");
+
+    expect(await screen.findByText(/Couldn't refresh the record/)).toBeTruthy();
+    expect(screen.getByText("League Record")).toBeTruthy();
+    expect(screen.queryByText("No results yet")).toBeNull();
+  });
+
+  it("the leagues read failing is the same: no card that's missing its leagues", async () => {
+    mockTables.leagues = [DIV3];
+    mockTables.events = [leagueWin()];
+    mockFailing.add("leagues:team_id=team-1");
+    render(<HomeScreen />);
+
+    const record = within(await screen.findByLabelText("Record"));
+    expect(record.getByText(/Couldn't load the record/)).toBeTruthy();
+    expect(record.queryByText("Last game")).toBeNull();
+  });
+
+  it("a successful empty read still shows the league's \"No results yet\"", async () => {
+    mockTables.leagues = [DIV3];
+    mockTables.events = [];
+    render(<HomeScreen />);
+
+    const record = within(await screen.findByLabelText("Record"));
+    expect(record.getByText("No results yet")).toBeTruthy();
+    expect(record.queryByText(/Couldn't/)).toBeNull();
   });
 });

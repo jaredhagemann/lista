@@ -92,6 +92,9 @@ export default function HomeScreen() {
   const [lastTournament, setLastTournament] = useState<LastTournament | null>(null);
   const [leagueRows, setLeagueRows] = useState<LeagueRow[]>([]);
   const [teamTimeZone, setTeamTimeZone] = useState<string | null>(null);
+  // TL-026: whether the card's reads have ever all succeeded, and whether the last attempt did.
+  const [recordLoaded, setRecordLoaded] = useState(false);
+  const [recordFailed, setRecordFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -146,6 +149,17 @@ export default function HomeScreen() {
 
     setEvents((eventsResult.data ?? []) as unknown as Event[]);
     setMembers((membersResult.data ?? []) as unknown as TeamCardMember[]);
+
+    // TL-026: a failed read is not an empty one. Keep the record already shown,
+    // if any, and let the card say the reads failed.
+    if (resultsResult.error || placedResult.error || leaguesResult.error) {
+      setRecordFailed(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    setRecordFailed(false);
+    setRecordLoaded(true);
     const results = (resultsResult.data ?? []) as unknown as (ResultGame & {
       tournament_id: string | null;
       league_id: string | null;
@@ -364,7 +378,7 @@ export default function HomeScreen() {
         />
 
         {/* A result, a finished tournament or an active league shows the card (2026-10-15). */}
-        {record || lastTournament || leagueRows.length > 0 ? (
+        {record || lastTournament || leagueRows.length > 0 || recordFailed ? (
           <View className="mt-4">
             <RecordCard
               teamName={membership.teamName}
@@ -373,6 +387,8 @@ export default function HomeScreen() {
               winColor={membership.winColor}
               lastTournament={lastTournament}
               leagues={leagueRows}
+              status={!recordFailed ? "ok" : recordLoaded ? "stale" : "failed"}
+              onRetry={fetchData}
             />
           </View>
         ) : null}

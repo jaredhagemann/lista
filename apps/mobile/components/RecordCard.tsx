@@ -1,4 +1,4 @@
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { TeamRecord } from "../lib/team-record";
 import { eventZone, formatEventClock, formatEventDay } from "../lib/event-time";
 
@@ -84,7 +84,16 @@ export function RecordCard({
   winColor,
   lastTournament = null,
   leagues = [],
+  status = "ok",
+  onRetry,
 }: {
+  /**
+   * A read behind the card failed (TL-026): "failed" when nothing had loaded, so
+   * the card says so rather than show a record from part of the reads; "stale"
+   * when a refresh failed, so it keeps the record it had and says so.
+   */
+  status?: "ok" | "failed" | "stale";
+  onRetry?: () => void;
   teamName: string;
   /** Null before any game has a result. */
   record: TeamRecord | null;
@@ -98,48 +107,62 @@ export function RecordCard({
       <View className="px-4 pt-4 pb-3 border-b border-gray-50">
         <Text className="font-semibold text-gray-900">Record</Text>
       </View>
-      <View className="p-4 gap-6">
-        {leagues.length > 0
-          ? leagues.map((l) => (
-              <Section key={l.id} label={l.label} heading={l.label}>
-                {l.record ? (
-                  <>
-                    <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
-                    <Stats record={l.record} winColor={winColor} heading="League Record" />
-                  </>
-                ) : (
-                  <Text className="text-sm text-gray-500">No results yet</Text>
-                )}
-              </Section>
-            ))
-          : record
-            ? <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />
-            : null}
+      {status === "failed" ? (
+        <View className="p-4 gap-3">
+          <Text className="text-sm text-gray-500">Couldn't load the record.</Text>
+          {onRetry ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={onRetry} className="self-start">
+              <Text className="text-sm font-semibold text-blue-600">Try again</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : (
+        <View className="p-4 gap-6">
+          {status === "stale" ? (
+            <Text className="text-sm text-gray-500">Couldn't refresh the record. Pull down to try again.</Text>
+          ) : null}
+          {leagues.length > 0
+            ? leagues.map((l) => (
+                <Section key={l.id} label={l.label} heading={l.label}>
+                  {l.record ? (
+                    <>
+                      <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
+                      <Stats record={l.record} winColor={winColor} heading="League Record" />
+                    </>
+                  ) : (
+                    <Text className="text-sm text-gray-500">No results yet</Text>
+                  )}
+                </Section>
+              ))
+            : record
+              ? <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />
+              : null}
 
-        {lastTournament ? (
-          <Section label="Last tournament" heading="Last tournament">
-            <View className="gap-1">
-              <Text className="text-lg font-semibold text-gray-900" numberOfLines={1}>
-                {lastTournament.title}
-              </Text>
-              {lastTournament.placement ? (
-                <Text className="text-lg font-semibold text-gray-900">{lastTournament.placement}</Text>
+          {lastTournament ? (
+            <Section label="Last tournament" heading="Last tournament">
+              <View className="gap-1">
+                <Text className="text-lg font-semibold text-gray-900" numberOfLines={1}>
+                  {lastTournament.title}
+                </Text>
+                {lastTournament.placement ? (
+                  <Text className="text-lg font-semibold text-gray-900">{lastTournament.placement}</Text>
+                ) : null}
+                <Text className="text-sm text-gray-500">{lastTournament.dates}</Text>
+              </View>
+              {lastTournament.record ? (
+                <Stats record={lastTournament.record} winColor={winColor} heading="Tournament Record" />
               ) : null}
-              <Text className="text-sm text-gray-500">{lastTournament.dates}</Text>
-            </View>
-            {lastTournament.record ? (
-              <Stats record={lastTournament.record} winColor={winColor} heading="Tournament Record" />
-            ) : null}
-          </Section>
-        ) : null}
+            </Section>
+          ) : null}
 
-        {/* Always last: every game counts here (D3). */}
-        {record ? (
-          <Section label="Overall record" heading="Overall Record">
-            <Stats record={record} winColor={winColor} />
-          </Section>
-        ) : null}
-      </View>
+          {/* Always last: every game counts here (D3). */}
+          {record ? (
+            <Section label="Overall record" heading="Overall Record">
+              <Stats record={record} winColor={winColor} />
+            </Section>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 }
