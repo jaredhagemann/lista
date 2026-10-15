@@ -3,7 +3,7 @@
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
 **Last reviewed:** 2026-10-15, [PR #126](https://github.com/jaredhagemann/lista/pull/126) at `8cb86e58fb339bdb774fdc6466231d8a458baecc`.
-**Current outcome:** TL-001 through TL-025 remain resolved. League web records/display reviewed with no confirmed new code defect. One design clarification remains: whether active leagues alone should show the Record card before any game result or finished tournament (see the latest review history). Mobile league display remains pending; no live browser/device smoke test is claimed.
+**Current outcome:** TL-001 through TL-025 remain resolved. PR #126 is merged. The empty-state decision is now explicit: active leagues alone should show the Record card with "No results yet", even before any game result or finished tournament. The author is adding that follow-up before mobile; implementation verification is pending. No live browser/device smoke test is claimed.
 
 ## Using this document as the feature changes
 
@@ -48,7 +48,7 @@
 
 | Area | Status | Completed behavior / remaining scope |
 | --- | --- | --- |
-| Specification | D1–D21 recorded; D21 clarified in #125; D8/D9 revised in #126 | Tournament and league design, including deletion, per-team name/season uniqueness ignoring repeated internal spaces, and the revised Record card; empty-team card visibility needs clarification |
+| Specification | D1–D21 recorded; D21 clarified in #125; D8/D9 revised in #126 and empty-state visibility clarified on 2026-10-15 | Active leagues show the Record card even before any results, with "No results yet" for each empty league |
 | Tournament database, #114 and #115 | Merged | Tournament/game links, placement and rounds, indexes, atomic create/cancel/delete, bulk-answer rules, durable notification snapshots and concurrency fixes |
 | Tournament web display, #116 | Merged | Overlap queries, schedule rows and calendar bars, tournament/game detail links, placement and record display, dashboard treatment |
 | Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
@@ -59,8 +59,8 @@
 | Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
 | Leagues, web management | Merged via #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
-| Leagues, web display | Reviewed, PR #126 (`8cb86e58f`); empty-team visibility clarification pending | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags |
-| Leagues, mobile | Pending | League rows on the Record card, league tags, the league on a game's screen |
+| Leagues, web display | Merged via #126; empty-state visibility follow-up in progress, review pending | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags |
+| Leagues, mobile | Implemented — awaiting review (this PR) | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen. Also on the web: the card shows for an active league before any result (decided 2026-10-15) |
 
 ## Part 1 — database findings
 
@@ -1620,5 +1620,19 @@ than reopen them implicitly. The source code review below is separate from accep
   through source and component assertions, not visual QA. No outbound notifications. This log is the
   only retained edit; no application edits, commits, pushes or published GitHub comments. Existing
   untracked screenshot preserved.
+
+### 2026-10-15 — Empty-state decision after #126 merged
+
+- **Decision:** the author revised the initial preference to hide the card. Active leagues alone should
+  show the Record card, each empty league displaying "No results yet", even with no game result or
+  finished tournament. This resolves the preceding review's design question and supersedes the initial
+  confirmation of the hidden state.
+- **Status:** #126 merged, as reported by the author. The author is adding the empty-state follow-up
+  before mobile league support. No follow-up implementation has been reviewed or marked resolved here.
+- **Next review:** verify the dashboard with an active league and no results or finished tournaments;
+  retain coverage for the no-league empty dashboard and archived leagues. Carry the clarified D9 rule
+  into mobile support before the next app release.
+- **Changes in this follow-up:** this log and the D9 specification only. Application and test edits in
+  progress belong to the author and were left untouched.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.

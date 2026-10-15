@@ -1,0 +1,291 @@
+/**
+ * Leagues on the phone (docs/specs/tournaments-and-leagues.md §5; D8, D9, D11;
+ * leagues part 3). Display only: leagues are made and tagged on the web.
+ *
+ *   - the Record card, as the web's (D8/D9 revised 2026-10-14 and 2026-10-15):
+ *     a section per active league (its last game and "League Record", or "No
+ *     results yet"), else the team's last game; then the latest finished
+ *     tournament with "Tournament Record"; then "Overall Record", always last.
+ *     An active league alone shows the card
+ *   - a league tag on league games, on home and the schedule
+ *   - a game's screen names its league, and labels Home / Away
+ */
+
+import React from "react";
+import { render, screen, within } from "@testing-library/react-native";
+import { leagueLabel, leagueRecords } from "../lib/leagues";
+
+type Row = Record<string, unknown>;
+const mockTables: Record<string, Row[]> = {};
+const mockFilters: { table: string; method: string; column: string; value: unknown }[] = [];
+
+jest.mock("../lib/supabase", () => {
+  const from = (table: string) => {
+    const filters: ((row: Row) => boolean)[] = [];
+    const keep = (method: string, column: string, value: unknown, test: (row: Row) => boolean) => {
+      mockFilters.push({ table, method, column, value });
+      filters.push((row) => !(column in row) || test(row));
+      return chain;
+    };
+    const at = (v: unknown) => Date.parse(String(v));
+    const result = () => {
+      const data = (mockTables[table] ?? []).filter((row) => filters.every((f) => f(row))).map((r) => ({ ...r }));
+      return Promise.resolve({ data, error: null, count: data.length });
+    };
+    const chain: Record<string, unknown> = {
+      select: () => chain,
+      eq: (c: string, v: unknown) => keep("eq", c, v, (r) => r[c] === v),
+      is: (c: string, v: unknown) => keep("is", c, v, (r) => (r[c] ?? null) === v),
+      in: (c: string, v: unknown[]) => keep("in", c, v, (r) => v.includes(r[c])),
+      gt: (c: string, v: unknown) => keep("gt", c, v, (r) => at(r[c]) > at(v)),
+      gte: (c: string, v: unknown) => keep("gte", c, v, (r) => at(r[c]) >= at(v)),
+      lt: (c: string, v: unknown) => keep("lt", c, v, (r) => at(r[c]) < at(v)),
+      lte: (c: string, v: unknown) => keep("lte", c, v, (r) => at(r[c]) <= at(v)),
+      not: (c: string) => keep("not", c, null, (r) => r[c] != null),
+      or: () => chain,
+      order: () => chain,
+      limit: () => chain,
+      single: () => result().then((r) => ({ ...r, data: Array.isArray(r.data) ? r.data[0] ?? null : r.data })),
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => result().then(res, rej),
+    };
+    chain.maybeSingle = chain.single;
+    return chain;
+  };
+  return { supabase: { from } };
+});
+
+let mockEventId = "g-league";
+jest.mock("expo-router", () => {
+  const React = require("react");
+  return {
+    useRouter: () => ({ push: jest.fn() }),
+    useNavigation: () => ({ setOptions: jest.fn() }),
+    useLocalSearchParams: () => ({ eventId: mockEventId }),
+    useFocusEffect: (cb: () => void) => React.useEffect(cb, []),
+  };
+});
+jest.mock("react-native-safe-area-context", () => {
+  const { View } = require("react-native");
+  return { SafeAreaView: View, useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) };
+});
+jest.mock("@expo/vector-icons", () => ({ Ionicons: "Ionicons" }));
+
+const mockCtx = {
+  membership: {
+    profileId: "me",
+    teamId: "team-1",
+    teamName: "U10 Girls",
+    displayName: "U10 Girls",
+    season: null,
+    logoUrl: null,
+    role: "player",
+    winColor: "#2563eb",
+  },
+  ownProfile: { id: "me" },
+  allMemberships: [{ team_id: "team-1", profile_id: "me", profiles: { first_name: "Mia", last_name: "Chen" } }] as unknown[],
+  loading: false,
+  refresh: jest.fn(() => Promise.resolve()),
+};
+jest.mock("../contexts/AppContext", () => ({ useAppContext: () => mockCtx }));
+
+import HomeScreen from "../app/(app)/index";
+import ScheduleScreen from "../app/(app)/schedule/index";
+import EventDetailScreen from "../app/(app)/schedule/[eventId]";
+
+const LA = "America/Los_Angeles";
+const TEAM = { timezone: LA, name: "U10 Girls", home_uniform: null, away_uniform: null, home_uniform_color: null, away_uniform_color: null };
+const DAY = 24 * 60 * 60 * 1000;
+const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+const ahead = (days: number) => new Date(Date.now() + days * DAY).toISOString();
+
+function event(overrides: Row): Row {
+  return {
+    team_id: "team-1",
+    title: "Game",
+    event_type: "game",
+    is_cancelled: false,
+    notes: null,
+    arrival_time: null,
+    timezone: LA,
+    opponent: "Rivals FC",
+    home_away: "home",
+    uniform: null,
+    score_for: null,
+    score_against: null,
+    game_result: null,
+    tournament_id: null,
+    league_id: null,
+    round: null,
+    placement_rank: null,
+    placement_label: null,
+    tournament: null,
+    league: null,
+    games: [],
+    teams: TEAM,
+    locations: null,
+    ...overrides,
+  };
+}
+
+const DIV3 = { id: "div3", team_id: "team-1", name: "Division 3", season: "Fall 2026", archived_at: null };
+const OLD = { id: "old", team_id: "team-1", name: "Division 4", season: "Fall 2025", archived_at: "2026-01-01T00:00:00Z" };
+const played = (id: string, days: number, result: string, extra: Row = {}) =>
+  event({ id, start_time: ago(days), end_time: ago(days), game_result: result, ...extra });
+
+beforeEach(() => {
+  for (const key of Object.keys(mockTables)) delete mockTables[key];
+  mockFilters.length = 0;
+  mockTables.team_members = [];
+  mockTables.leagues = [];
+  mockTables.availability = [];
+});
+
+// ── The rules (copied from the web) ───────────────────────────────────────────
+
+describe("leagueRecords", () => {
+  it("a row per active league, over its own games with a result", () => {
+    const rows = leagueRecords(
+      [DIV3, OLD],
+      [
+        { start_time: ago(9), game_result: "win", league_id: "div3" },
+        { start_time: ago(8), game_result: "loss", league_id: "div3" },
+        { start_time: ago(7), game_result: "win", league_id: "old" },
+        { start_time: ago(6), game_result: "win", league_id: null },
+      ]
+    );
+    expect(rows.map((r) => [r.label, r.record?.wins, r.record?.losses])).toEqual([["Fall 2026 Division 3", 1, 1]]);
+    expect(leagueLabel(DIV3)).toBe("Fall 2026 Division 3");
+  });
+});
+
+// ── The Record card ───────────────────────────────────────────────────────────
+
+describe("the Record card", () => {
+  const card = async () => screen.findByLabelText("Record");
+  const section = (parent: ReturnType<typeof within>, label: string) => parent.getByLabelText(label);
+  /** The card's sections, in the order they appear. */
+  const sections = (record: ReturnType<typeof within>) =>
+    record
+      .getAllByLabelText(/^(Fall 2026 Division 3|Last tournament|Overall record)$/)
+      .map((e) => e.props.accessibilityLabel);
+
+  it("with a league: its own last game and League Record, then Overall Record last", async () => {
+    mockTables.leagues = [DIV3];
+    mockTables.events = [
+      played("a", 30, "win", { league_id: "div3" }),
+      played("b", 20, "loss", { league_id: "div3", opponent: "Eagles" }),
+      played("c", 10, "tie", { opponent: "Hawks" }),
+    ];
+    render(<HomeScreen />);
+
+    const record = within(await card());
+    const div3 = within(section(record, "Fall 2026 Division 3"));
+    expect(div3.getByText("Last game")).toBeTruthy();
+    // Its own last game: the loss to Eagles, not the overall tie with Hawks.
+    expect(div3.getByLabelText("vs Eagles")).toBeTruthy();
+    expect(div3.getByText("League Record")).toBeTruthy();
+    expect(div3.getByLabelText("1 win, 1 loss, 0 ties")).toBeTruthy();
+
+    const overall = within(section(record, "Overall record"));
+    expect(overall.getByText("Overall Record")).toBeTruthy();
+    expect(overall.getByLabelText("1 win, 1 loss, 1 tie")).toBeTruthy();
+    expect(sections(record)).toEqual(["Fall 2026 Division 3", "Overall record"]);
+  });
+
+  it("a league with no result yet says so, and shows the card on its own", async () => {
+    mockTables.leagues = [DIV3];
+    mockTables.events = [];
+    render(<HomeScreen />);
+
+    const record = within(await card());
+    expect(within(section(record, "Fall 2026 Division 3")).getByText("No results yet")).toBeTruthy();
+    expect(record.queryByLabelText("Overall record")).toBeNull();
+  });
+
+  it("an archived league has no section", async () => {
+    mockTables.leagues = [OLD];
+    mockTables.events = [played("a", 30, "win", { league_id: "old" })];
+    render(<HomeScreen />);
+
+    const record = within(await card());
+    expect(record.queryByLabelText("Fall 2025 Division 4")).toBeNull();
+    // Without an active league, the team's last game.
+    expect(record.getByText("Last game")).toBeTruthy();
+  });
+
+  it("the latest finished tournament, placed or not, sits above Overall Record and stays after newer games", async () => {
+    mockTables.events = [
+      event({ id: "t-1", title: "Fall Classic", event_type: "tournament", opponent: null, home_away: null, start_time: ago(12), end_time: ago(10) }),
+      played("tg", 11, "win", { tournament_id: "t-1" }),
+      played("later", 3, "loss", { opponent: "Owls" }),
+    ];
+    render(<HomeScreen />);
+
+    const record = within(await card());
+    const tournament = within(section(record, "Last tournament"));
+    expect(tournament.getByText("Fall Classic")).toBeTruthy();
+    expect(tournament.getByText("Tournament Record")).toBeTruthy();
+    expect(tournament.getByLabelText("1 win, 0 losses, 0 ties")).toBeTruthy();
+    // The newer game is still the last game.
+    expect(record.getByLabelText("vs Owls")).toBeTruthy();
+    expect(sections(record)).toEqual(["Last tournament", "Overall record"]);
+  });
+
+  it("a placement shows when there is one", async () => {
+    mockTables.events = [
+      event({ id: "t-1", title: "Fall Classic", event_type: "tournament", opponent: null, home_away: null, start_time: ago(12), end_time: ago(10), placement_rank: 2 }),
+    ];
+    render(<HomeScreen />);
+
+    expect(within(section(within(await card()), "Last tournament")).getByText("2nd place")).toBeTruthy();
+  });
+
+  it("asks for active leagues, and the latest finished tournament placed or not", async () => {
+    mockTables.events = [];
+    render(<HomeScreen />);
+    await screen.findByText("Upcoming Events");
+
+    expect(mockFilters.some((f) => f.table === "leagues" && f.method === "is" && f.column === "archived_at")).toBe(true);
+    expect(screen.queryByLabelText("Record")).toBeNull();
+  });
+});
+
+// ── Tags and the game screen ──────────────────────────────────────────────────
+
+const LEAGUE_GAME = event({
+  id: "g-league",
+  start_time: ahead(5),
+  end_time: ahead(5),
+  league_id: "div3",
+  league: { name: "Division 3", season: "Fall 2026" },
+});
+
+describe("league tags", () => {
+  it("on the schedule", async () => {
+    mockTables.events = [LEAGUE_GAME, event({ id: "g-free", opponent: "Hawks", start_time: ahead(6), end_time: ahead(6) })];
+    render(<ScheduleScreen />);
+
+    expect(await screen.findByText("Fall 2026 Division 3")).toBeTruthy();
+    expect(screen.getAllByText("Fall 2026 Division 3")).toHaveLength(1);
+  });
+
+  it("on home's Upcoming", async () => {
+    mockTables.events = [LEAGUE_GAME];
+    render(<HomeScreen />);
+
+    expect(await screen.findByText("Fall 2026 Division 3")).toBeTruthy();
+  });
+});
+
+describe("a game's screen", () => {
+  it("names its league, and labels Home / Away", async () => {
+    mockEventId = "g-league";
+    mockTables.events = [LEAGUE_GAME];
+    render(<EventDetailScreen />);
+
+    const details = await screen.findByLabelText("Game details");
+    expect(within(details).getByText("League")).toBeTruthy();
+    expect(within(details).getByText("Fall 2026 Division 3")).toBeTruthy();
+    expect(within(details).getByText("Home / Away")).toBeTruthy();
+  });
+});

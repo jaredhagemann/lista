@@ -62,6 +62,7 @@ jest.mock("../lib/supabase", () => {
         return keep("eq", c, v, (r) => r[c] === v);
       },
       in: (c: string, v: unknown[]) => keep("in", c, v, (r) => v.includes(r[c])),
+      is: (c: string, v: unknown) => keep("is", c, v, (r) => (r[c] ?? null) === v),
       gt: (c: string, v: unknown) => keep("gt", c, v, (r) => at(r[c]) > at(v)),
       gte: (c: string, v: unknown) => keep("gte", c, v, (r) => at(r[c]) >= at(v)),
       lt: (c: string, v: unknown) => keep("lt", c, v, (r) => at(r[c]) < at(v)),
@@ -278,7 +279,8 @@ describe("home", () => {
     expect(screen.getByText("Surf Cup · Pool A")).toBeTruthy();
   });
 
-  it("shows the last placed tournament on the Record card until a newer game (D8)", async () => {
+  // D8 revised 2026-10-14: the latest finished tournament, with its own record graphic.
+  it("shows the last tournament on the Record card, with its placement and its own record (D8)", async () => {
     const past = (days: number) => new Date(Date.now() - days * 24 * HOUR).toISOString();
     mockTables.events = [
       event({ id: "old", opponent: "Eagles", start_time: past(30), end_time: past(30), game_result: "win" }),
@@ -299,10 +301,11 @@ describe("home", () => {
     expect(within(card).getByText("Last tournament")).toBeTruthy();
     expect(within(card).getByText("Fall Classic")).toBeTruthy();
     expect(within(card).getByText("2nd place")).toBeTruthy();
-    expect(within(card).getByLabelText("Tournament record 1–1–0")).toBeTruthy();
+    expect(within(card).getByText("Tournament Record")).toBeTruthy();
+    expect(within(card).getByLabelText("1 win, 1 loss, 0 ties")).toBeTruthy();
   });
 
-  it("a game after the tournament is the last result again", async () => {
+  it("a game after the tournament is the last game, and the tournament stays (D8 revised)", async () => {
     const past = (days: number) => new Date(Date.now() - days * 24 * HOUR).toISOString();
     mockTables.events = [
       event({ id: "t-past", title: "Fall Classic", event_type: "tournament", start_time: past(10), end_time: past(8), placement_rank: 2 }),
@@ -312,7 +315,8 @@ describe("home", () => {
 
     const card = await screen.findByLabelText("Record");
     expect(within(card).getByText("Last game")).toBeTruthy();
-    expect(within(card).queryByText("Fall Classic")).toBeNull();
+    expect(within(card).getByLabelText("vs Eagles")).toBeTruthy();
+    expect(within(card).getByText("Fall Classic")).toBeTruthy();
   });
 });
 

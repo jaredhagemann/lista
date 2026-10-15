@@ -235,8 +235,9 @@ Files: `components/TeamCard.tsx`, `components/RecordCard.tsx`, `components/Remot
     Choosing sets the game's own answer, and tapping it again goes back to the tournament's.
   - Responses group by each person's resulting answer, with inherited ones marked "from Surf Cup".
 - **Schedule answer badges:** a game's badge is its resulting answer. An inherited one is dashed and faded.
-- **Record card (D8):** after a tournament with a placement, it shows "Last tournament", with its name,
-  placement, record (W–L–T) and dates, until a game starts after it.
+- **Record card (D8, revised 2026-10-14):** a "Last tournament" section shows the latest finished tournament,
+  placed or not. It has the name, placement and dates, and its own "Tournament Record" graphic, and it stays
+  until a newer tournament finishes. See **Leagues** below for the whole card.
 - **Type colors, as on the web (2026-10-08):**
   - Practice blue, game green, tournament purple, and **other yellow** (other was purple).
   - They're defined once, in `lib/event-type-colors.ts`.
@@ -249,6 +250,29 @@ No server change: the columns, embeds and rows are part 1's.
 Files: `lib/tournament.ts`, `lib/availability.ts`, `lib/event-type-colors.ts`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx`,
 `app/(app)/schedule/[eventId].tsx`, `components/RecordCard.tsx`, `__tests__/tournament.test.ts`,
 `__tests__/TournamentScreens.test.tsx`, `__tests__/event-type-colors.test.tsx`.
+
+### Leagues, as on the web — [spec §5](../specs/tournaments-and-leagues.md)
+
+**Installed build (1.0.12):** a league game shows as an ordinary game, without its league. 1.0.12 never reads
+leagues (see the compatibility review below).
+
+**New build:** display only. Leagues are made and tagged on the web (D11).
+- **The Record card** (D8 and D9, revised 2026-10-14 and 2026-10-15), top to bottom:
+  - **Leagues:** a section per active league, with its own **Last game** and **League Record** graphic, or
+    "No results yet". Without leagues, the team's last game sits here instead.
+  - **Last tournament:** the latest finished tournament, with its **Tournament Record** graphic.
+  - **Overall Record:** every game counts, always last.
+  - **When it shows:** once a game has a result, a tournament has finished, or the team has an active league.
+- **League tags:** a league game shows its league ("Fall 2026 Division 3"), on the schedule and on home's
+  Upcoming list.
+- **A game's screen:** its Game details name its **League**. The home-or-away row is labelled
+  **Home / Away**, as on the web; it was "Playing".
+
+These are the web's rules, copied (`lib/leagues.ts`). No server change: the reads are of part 1's table, and
+the same `league:league_id(...)` embed the web uses.
+
+Files: `lib/leagues.ts`, `components/RecordCard.tsx`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx`,
+`app/(app)/schedule/[eventId].tsx`, `__tests__/LeaguesMobile.test.tsx`.
 
 ---
 
@@ -407,7 +431,14 @@ TestFlight build (production data: use a test team for anything that writes):
   - The tournament screen shows dates, not "Ends", and lists its games, each opening its screen.
   - Answer the tournament. A game's picker shows that answer "From your Surf Cup answer".
   - Set the game to something else, then tap it again: it goes back to the tournament's answer.
-  - Set a placement on the web after the tournament: the Record card shows "Last tournament".
+  - After the tournament ends, the Record card shows its "Last tournament" section with its Tournament Record.
+    It stays after later games.
+- **Leagues:** on the web, add a league and tag a few played games with League games.
+  - The Record card shows that league's section (Last game and League Record), then Last tournament if any,
+    then Overall Record last.
+  - A new league with no results shows "No results yet".
+  - League games carry the league's name on the schedule and on home.
+  - A league game's screen names its League, and reads "Home / Away".
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.

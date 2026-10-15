@@ -20,6 +20,7 @@ import { gameTitle } from "../../../lib/game-display";
 import { gameCount, isTournament, isUnderway, tournamentDates, tournamentLine } from "../../../lib/tournament";
 import { effectiveAnswer } from "../../../lib/availability";
 import { buildScheduleItems, type ScheduleItem } from "../../../lib/schedule-items";
+import { leagueLabel } from "../../../lib/leagues";
 import { eventTypeColors, PART_OF_COLOR } from "../../../lib/event-type-colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ type Event = {
   tournament_id: string | null;
   round: string | null;
   tournament: { title: string } | null;
+  /** A game's league, for its tag (tournaments-and-leagues §5). */
+  league: { name: string; season: string } | null;
   /** A tournament's game count. */
   games: { count: number }[] | null;
 };
@@ -128,7 +131,7 @@ export default function ScheduleScreen() {
       supabase
         .from("events")
         .select(
-          "id, title, event_type, start_time, end_time, is_cancelled, timezone, opponent, home_away, score_for, score_against, tournament_id, round, teams(timezone, name), locations(name), tournament:tournament_id(title), games:events!tournament_id(count)"
+          "id, title, event_type, start_time, end_time, is_cancelled, timezone, opponent, home_away, score_for, score_against, tournament_id, round, teams(timezone, name), locations(name), tournament:tournament_id(title), games:events!tournament_id(count), league:league_id(name, season)"
         )
         .eq("team_id", membership.teamId)
         .order("start_time", { ascending: true }),
@@ -284,6 +287,7 @@ export default function ScheduleScreen() {
                     {title}
                   </Text>
                   {partOf ? <Text style={styles.partOf}>{partOf}</Text> : null}
+                  {event.league ? <Text style={styles.leagueTag}>{leagueLabel(event.league)}</Text> : null}
                   {tournament ? (
                     games > 0 ? <Text style={styles.cardTime}>{gameCount(games)}</Text> : null
                   ) : (
@@ -388,6 +392,7 @@ const styles = StyleSheet.create({
   nowPill: { backgroundColor: "#0f172a", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99 },
   nowPillText: { color: "#ffffff", fontSize: 10, fontWeight: "700" },
   partOf: { fontSize: 12, color: PART_OF_COLOR, marginTop: 1 },
+  leagueTag: { fontSize: 12, color: "#6b7280", marginTop: 1 },
   cardBody: {
     flexDirection: "row",
     alignItems: "flex-start",
