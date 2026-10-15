@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-15, [PR #126](https://github.com/jaredhagemann/lista/pull/126) at `8cb86e58fb339bdb774fdc6466231d8a458baecc`.
-**Current outcome:** TL-001 through TL-025 remain resolved. PR #126 is merged. The empty-state decision is now explicit: active leagues alone should show the Record card with "No results yet", even before any game result or finished tournament. The author is adding that follow-up before mobile; implementation verification is pending. No live browser/device smoke test is claimed.
+**Last reviewed:** 2026-10-15, [PR #127](https://github.com/jaredhagemann/lista/pull/127) at `5d6ae08a0821afe7099faf9758abc4dcec448c04`.
+**Current outcome:** TL-001 through TL-025 remain resolved. The clarified empty-league visibility works on web and mobile. TL-026 is open: failed game-result reads produce a false "No results yet" state on both platforms. Mobile league display and the revised Record card are reviewed; TestFlight/device verification remains outstanding.
 
 ## Using this document as the feature changes
 
@@ -43,6 +43,7 @@
 | [TL-023](#tl-023--only-clear-a-game-still-in-the-selected-league) | P2 | A stale uncheck removes another league's newer assignment | Resolved | Fix `03472d716`, RLS check `bd7960fcd`; verified at `1e67d0d42` |
 | [TL-024](#tl-024--use-calendar-day-boundaries-in-an-explicit-zone) | P2 | League game date filters omit valid games across zones and DST | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 | [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
+| [TL-026](#tl-026--distinguish-failed-result-reads-from-empty-leagues) | P2 | Failed result reads display "No results yet" on web and mobile | Open | Reproduced at `5d6ae08a0`; successful empty-read controls pass |
 
 ## Implementation progress as of 2026-10-15
 
@@ -59,8 +60,8 @@
 | Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
 | Leagues, web management | Merged via #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
-| Leagues, web display | Merged via #126; empty-state visibility follow-up in progress, review pending | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags |
-| Leagues, mobile | Implemented — awaiting review, PR #127 (`340faa14a`) | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen. Also on the web: the card shows for an active league before any result (decided 2026-10-15) |
+| Leagues, web display | #126 merged; #127 empty-state follow-up verified; TL-026 open | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags. Active leagues alone now show the card |
+| Leagues, mobile | Reviewed, PR #127 (`5d6ae08a0`); TL-026 open; TestFlight pending | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen |
 
 ## Part 1 — database findings
 
@@ -1086,6 +1087,35 @@ regressions passed within the 26-test management suite; retry does not write sel
 
   All three fail on the old dialog.
 
+## League display findings — web and mobile
+
+### TL-026 — Distinguish failed result reads from empty leagues
+
+**Priority / status:** P2 / Open.
+**Source:** [mobile home, lines 149–154](https://github.com/jaredhagemann/lista/blob/5d6ae08a0821afe7099faf9758abc4dcec448c04/apps/mobile/app/%28app%29/index.tsx#L149-L154),
+and [web dashboard, line 107](https://github.com/jaredhagemann/lista/blob/5d6ae08a0821afe7099faf9758abc4dcec448c04/apps/web/src/app/dashboard/page.tsx#L107).
+
+Both dashboards turn a failed game-result read (`data: null`, non-null `error`) into an empty array.
+When the separate leagues read succeeds, the new sections then render "No results yet", even for a
+league that has played games with recorded results. The Overall section disappears as well. The new
+active-league visibility condition makes this false empty state visible even without a finished tournament.
+
+**Reproduction / observed:** on each platform, provide an active league and a past league win; return a
+read error only for the game-results query while the leagues query succeeds. The real dashboard/home
+component displays "No results yet". Independent assertions rejecting that false empty state fail on
+both platforms. Controls with a successful empty game-results read pass and show the intended message.
+
+**Requested change:** retain and check read errors before deriving league records. Use an error/retry
+state, or retain a previous successful record with an explicit failed-refresh indication. Only show
+"No results yet" after a successful read establishes that the league has no results. Apply the same
+distinction on web and mobile.
+
+**Regression coverage:** failed initial results read with successful leagues read; failed refresh after
+displaying a nonempty record; successful retry; and a successful empty read that still shows the card.
+
+**Resolution and verification:** Open as of 2026-10-15. No implementation fix reviewed. Temporary probe
+files were removed after recording the two failing assertions and two passing controls.
+
 ## Review history
 
 ### 2026-10-01 — Specification, PR #111
@@ -1634,5 +1664,36 @@ than reopen them implicitly. The source code review below is separate from accep
   into mobile support before the next app release.
 - **Changes in this follow-up:** this log and the D9 specification only. Application and test edits in
   progress belong to the author and were left untouched.
+
+### 2026-10-15 — Mobile league display and web empty-state follow-up, PR #127
+
+- **Revision:** `5d6ae08a0821afe7099faf9758abc4dcec448c04`, against main
+  `18a4ceef6bdfefed6a52d8ab21d53b001bf0ae19` (#126 merged). Mobile implementation `340faa14a`;
+  web empty-state implementation `102f967e5`.
+- **Scope:** all 15 changed files: mobile reads, league helper, Record card, tags and game details;
+  web card visibility; tests, specification and release/review notes.
+- **Outcome:** opened TL-026 (P2), one shared failed-read/empty-state issue on web and mobile.
+  TL-001–TL-025 remain resolved. The earlier empty-card design question is closed: active leagues
+  alone now display the card, and the successful empty-read regressions pass on both platforms.
+- **Completed behavior:** mobile league-specific last games and records, empty-league sections,
+  archived-league exclusion from the card, latest finished tournament retained after newer games,
+  Overall Record last, league labels on schedule/Upcoming/game details, and Home / Away labelling.
+  Creating/managing leagues stays on web. No server or migration changes are included.
+- **Independent checks:** all 206 mobile tests in 24 suites passed; all 16 web tournament-dashboard
+  tests passed. Both apps passed TypeScript (web with `--incremental false`). The initial local Jest
+  invocation could not resolve `@babel/runtime`; the successful run used `NODE_ENV=test` and an
+  in-memory mapping to the already installed runtime, as in earlier reviews. No dependency or
+  configuration files changed.
+- **Additional probes:** each platform failed an assertion that a result-query error must not display
+  "No results yet"; each platform's successful-empty-read control passed. These used the real screen
+  components with mocked read results. Temporary test files removed afterward.
+- **CI:** web, mobile, unit, RLS, staging migration and Vercel checks pass; production migration is
+  skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/38758064225).
+  No local database reset or repeat RLS run; this PR has no database changes and CI supplies RLS evidence.
+- **Release limitation:** no TestFlight/device or visual layout smoke test was performed. The release
+  checklist's tournament and league checks remain necessary evidence before shipping; this review
+  does not certify those checks or mark the release ready.
+- **Review changes:** this log only; no application edits, commits, pushes, outbound notifications or
+  published GitHub comments. Existing untracked screenshot preserved.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
