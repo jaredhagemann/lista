@@ -3,7 +3,7 @@
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
 **Last reviewed:** 2026-10-15, [PR #127](https://github.com/jaredhagemann/lista/pull/127) at `e96bbbe9a9ffcad900ad003a01b1fa13d09504b3`.
-**Current outcome:** TL-001 through TL-026 are resolved. TL-027 is open: mobile retains the previous team's record after a team switch if the new team's read fails. Empty-league visibility and same-team failure/retry behavior are verified. TestFlight/device verification remains outstanding.
+**Current outcome:** TL-001 through TL-026 are resolved. TL-027 (mobile kept the previous team's record when the new team's read failed) is implemented in `f722cc2ed`, awaiting review. Empty-league visibility and same-team failure/retry behavior are verified. TestFlight/device verification remains outstanding.
 
 ## Using this document as the feature changes
 
@@ -44,7 +44,7 @@
 | [TL-024](#tl-024--use-calendar-day-boundaries-in-an-explicit-zone) | P2 | League game date filters omit valid games across zones and DST | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 | [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 | [TL-026](#tl-026--distinguish-failed-result-reads-from-empty-leagues) | P2 | Failed result reads display "No results yet" on web and mobile | Resolved | Fix `bbf112c65`; independently verified at `e96bbbe9a` |
-| [TL-027](#tl-027--scope-the-retained-mobile-record-to-its-team) | P2 | Failed read after a team switch shows the previous team's record | Open | Reproduced at `e96bbbe9a`; results and leagues failures, successful-switch control |
+| [TL-027](#tl-027--scope-the-retained-mobile-record-to-its-team) | P2 | Failed read after a team switch shows the previous team's record | Implemented — awaiting review | Reproduced at `e96bbbe9a`; fix `f722cc2ed` |
 
 ## Implementation progress as of 2026-10-15
 
@@ -62,7 +62,7 @@
 | Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
 | Leagues, web management | Merged via #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
 | Leagues, web display | #126 merged; #127 empty-state and TL-026 fixes verified | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags. Active leagues alone now show the card |
-| Leagues, mobile | Reviewed at `e96bbbe9a`; TL-026 resolved; TL-027 open; TestFlight pending | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen |
+| Leagues, mobile | Reviewed at `e96bbbe9a`; TL-026 resolved; TL-027 implemented (`f722cc2ed`), awaiting review; TestFlight pending | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen |
 
 ## Part 1 — database findings
 
@@ -1159,6 +1159,14 @@ retain their last successful record with the warning.
 **Resolution and verification:** Open as of 2026-10-15. Two expected-behavior assertions failed and the
 successful-switch control passed at `e96bbbe9a`. Temporary probe source removed after review.
 
+Implemented in `f722cc2ed` (2026-10-15), awaiting review:
+- **Scoped to its team:** home records which team the shown record belongs to (`recordTeam`). A failed read
+  for any other team clears the record, its leagues and its last tournament, and the card shows the
+  first-load failure with Try again. Only a failed refresh of the same team keeps its record, with the
+  "Couldn't refresh" note.
+- **No stale replies:** each read is numbered (`latestRead`), and a reply that isn't the latest is dropped
+  whole, so a slow reply for a team no longer selected can't restore its data.
+
 ## Review history
 
 ### 2026-10-01 — Specification, PR #111
@@ -1776,5 +1784,22 @@ than reopen them implicitly. The source code review below is separate from accep
 - **Limits / review changes:** no TestFlight/device or production smoke test; no outbound notifications.
   This log is the only retained edit. No application edits, commits, pushes or published GitHub comments.
   Existing untracked screenshot preserved.
+
+### 2026-10-15 — TL-027 fix, PR #127
+
+- **Revision:** `f722cc2ed`, on `28c3e9a97`. The review round above was committed as written in `28c3e9a97`.
+- **Scope:** mobile `app/(app)/index.tsx`, with tests in `LeaguesMobile`. The test mock can now hold a read
+  until released, and the membership can be switched between renders.
+- **Status changes:** TL-027, Open → Implemented — awaiting review.
+- **Regression coverage, 4 tests:**
+  - team A loaded, then team B's results read failing: a first-load failure with no Division 3, then Try
+    again shows B's Division 5
+  - the same, with B's leagues read failing
+  - A's reply held until after the switch to B: B's record stays
+  - a same-team failed refresh still keeps its record, with the warning (a control)
+- **Local verification:**
+  - Against `bbf112c65`'s home screen, the first 3 tests fail. The control passes.
+  - Mobile passes 214 of 214 in 24 suites, and `tsc --noEmit` is clean.
+- **Web:** not affected. Its card is a server render per request, with no state kept across teams.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
