@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-10, [PR #125](https://github.com/jaredhagemann/lista/pull/125) at `1e67d0d429c446cc9d17e2014516c934f1371afd`, fixes in `03472d716` and RLS coverage in `bd7960fcd`.
-**Current outcome:** TL-001 through TL-025 are resolved. Independent follow-up review verified the League games fixes with no new actionable findings. D21's clarification remains verified. League records/display and mobile remain later parts; no live browser/device smoke test is claimed.
+**Last reviewed:** 2026-10-15, [PR #126](https://github.com/jaredhagemann/lista/pull/126) at `8cb86e58fb339bdb774fdc6466231d8a458baecc`.
+**Current outcome:** TL-001 through TL-025 remain resolved. League web records/display reviewed with no confirmed new code defect. One design clarification remains: whether active leagues alone should show the Record card before any game result or finished tournament (see the latest review history). Mobile league display remains pending; no live browser/device smoke test is claimed.
 
 ## Using this document as the feature changes
 
@@ -44,11 +44,11 @@
 | [TL-024](#tl-024--use-calendar-day-boundaries-in-an-explicit-zone) | P2 | League game date filters omit valid games across zones and DST | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 | [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 
-## Implementation progress as of 2026-10-10
+## Implementation progress as of 2026-10-15
 
 | Area | Status | Completed behavior / remaining scope |
 | --- | --- | --- |
-| Specification | D1–D21 recorded; D21 clarified in #125 | Tournament and league design, including deletion and per-team name/season uniqueness ignoring repeated internal spaces |
+| Specification | D1–D21 recorded; D21 clarified in #125; D8/D9 revised in #126 | Tournament and league design, including deletion, per-team name/season uniqueness ignoring repeated internal spaces, and the revised Record card; empty-team card visibility needs clarification |
 | Tournament database, #114 and #115 | Merged | Tournament/game links, placement and rounds, indexes, atomic create/cancel/delete, bulk-answer rules, durable notification snapshots and concurrency fixes |
 | Tournament web display, #116 | Merged | Overlap queries, schedule rows and calendar bars, tournament/game detail links, placement and record display, dashboard treatment |
 | Tournament web management, #117 | Merged; part 2c dependency now present on main | Create with games; edit days, zone, location, notes and placement; add games; cancel both ways, restore, delete; game round editing and outside-days warnings |
@@ -58,8 +58,8 @@
 | Tournament mobile support | Merged via #122; TL-019–TL-022 resolved | Date spans, underway display, game counts and links, detail games/placement/record, inherited availability and overrides, last tournament on the dashboard; create/manage remains on web |
 | Event-type colors | Merged via #122 mobile / #123 web; no actionable findings | Shared platform maps: purple tournaments, yellow other events, blue practice, green games; browser/device visual QA not performed |
 | Leagues, database | #124 merged; #125 migration reviewed, D21 clarification verified | `leagues` table (D17 archiving, D20 refused delete with games, D21 unique name and season), `events.league_id` (games only, own team, silent tagging); tournament creation accepts a league per game |
-| Leagues, web management | Reviewed, PR #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
-| Leagues, web display | Implemented — awaiting review, PR #126 (`251b2aa91`) | Record card rows per active league (D9), schedule league tags, the league on a game's page |
+| Leagues, web management | Merged via #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
+| Leagues, web display | Reviewed, PR #126 (`8cb86e58f`); empty-team visibility clarification pending | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags |
 | Leagues, mobile | Pending | League rows on the Record card, league tags, the league on a game's screen |
 
 ## Part 1 — database findings
@@ -1581,5 +1581,44 @@ than reopen them implicitly. The source code review below is separate from accep
 - **Limitations / review changes:** no live browser/device or production smoke test; no outbound
   notifications. This log is the only retained edit. No application edits, commits, pushes or published
   GitHub comments. Existing untracked screenshot preserved. `git diff --check` passed.
+
+### 2026-10-15 — League web records and display, PR #126
+
+- **Revision:** `8cb86e58fb339bdb774fdc6466231d8a458baecc`, against main
+  `45108c56697b567c484bf6b888199fe024ad6692` (#125 merged).
+- **Scope:** all 13 changed files: dashboard reads and Record card composition, league record helper,
+  schedule list projection and badges, game-page projection and details, tests, and revised D8/D9.
+- **Outcome:** no confirmed new code defect; TL-001–TL-025 remain resolved. The revised spec explicitly
+  retains the latest finished tournament, placed or not, after newer games and puts Overall Record last.
+  Calendar chips and Upcoming league tags are excluded from this PR; mobile league support is part 3.
+- **Completed behavior:** each active league has its own last game and W/L/T graphic or "No results yet"
+  within a visible Record card; archived leagues are excluded from those sections but their games still
+  count overall. The latest finished tournament has its own summary/record. Schedule list rows and game
+  details show the season/name league label, including archived tags. Home / Away is now labelled.
+- **Design clarification — Record card before the first result:** the revised league spec §5/D9 says
+  active leagues show sections with "No results yet", whereas the older team-branding spec §4 and the
+  current RecordCard comment require a result (or finished tournament) before showing the card.
+  [Dashboard line 214](https://github.com/jaredhagemann/lista/blob/8cb86e58fb339bdb774fdc6466231d8a458baecc/apps/web/src/app/dashboard/page.tsx#L214-L222)
+  still gates rendering on `record || lastTournament`. A temporary component probe confirmed that an
+  active league alone is invisible; adding an unrelated past game result makes that same empty league
+  appear. Asked whether leagues should be visible before any results. This is an unresolved product
+  interpretation, not a confirmed defect or an accepted decision. If yes, include active leagues in the
+  card's visibility condition and add dashboard regression coverage; if no, clarify the new D9 wording
+  and retain a regression asserting the intended hidden state.
+- **Independent checks:** 72 focused web tests passed: tournament-dashboard 14, leagues-lib 7,
+  leagues-display 6, team-branding 13, tournament-event-page 13, tournament-schedule 10, and
+  schedule-list-pagination 9. Web TypeScript passed (`--noEmit --incremental false`). All 21 league RLS
+  tests passed against the existing local stack, including the real schedule projection's league embed;
+  no database reset. Existing React `act` warnings in the tournament detail suite did not fail tests.
+- **Additional probe:** the expectation that an active league alone appears failed; the control with an
+  unrelated game result passed. This establishes current behavior, not the intended visibility policy.
+  Temporary probe source removed after review.
+- **CI:** all reported checks pass: web, mobile, unit, RLS, staging migration and Vercel; production
+  migration is skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/38685877511).
+  Full local suites were not repeated after the affected checks passed.
+- **Limitations / review changes:** no live browser/device or production smoke test; layout reviewed
+  through source and component assertions, not visual QA. No outbound notifications. This log is the
+  only retained edit; no application edits, commits, pushes or published GitHub comments. Existing
+  untracked screenshot preserved.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
