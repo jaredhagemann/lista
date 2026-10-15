@@ -41,7 +41,7 @@ keeps counting in the team's Record card: overall, in its league and in its tour
 
 | Question | Recommendation | Decision | Date | Reference |
 | --- | --- | --- | --- | --- |
-| Should choosing "No result" also clear the scores? | No. The fields stay independent, as in the database, and the score boxes can already be emptied | Open | | |
+| Should choosing "No result" also clear the scores? | No. The fields stay independent, as in the database, and the score boxes can already be emptied | As recommended: scores are left as they are | 2026-10-15 | Product owner |
 
 ## Cause
 

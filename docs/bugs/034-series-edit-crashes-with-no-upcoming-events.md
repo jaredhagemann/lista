@@ -43,7 +43,7 @@ only this event.
 
 | Question | Recommendation | Decision | Date | Reference |
 | --- | --- | --- | --- | --- |
-| What should a bulk edit do when no occurrence is upcoming? | Refuse it at the scope choice, with the planner's message ("There are no upcoming events in this series to change."). Don't open the form, and leave "This event" available. Past events are never rewritten by a bulk edit (the series-edit rules) | Open | | `series-edit.ts` header |
+| What should a bulk edit do when no occurrence is upcoming? | Refuse it at the scope choice, with the planner's message ("There are no upcoming events in this series to change."). Don't open the form, and leave "This event" available. Past events are never rewritten by a bulk edit (the series-edit rules) | As recommended | 2026-10-15 | Product owner; `series-edit.ts` header |
 
 ## Cause
 
