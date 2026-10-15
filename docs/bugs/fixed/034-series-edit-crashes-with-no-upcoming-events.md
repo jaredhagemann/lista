@@ -1,7 +1,7 @@
 # BUG-034 — Editing a series with no upcoming events crashes the page
 
 **Severity:** P2
-**Status:** Open
+**Status:** Fixed
 **Reported:** 2026-10-15 by the product owner, using the web app
 **Area:** events, web
 **Evidence class:** Mixed — see below
@@ -74,9 +74,27 @@ The first two tests fail against the current code, which throws during render.
 ## Fix as implemented
 
 **Branch:** `fix/034-series-edit-no-upcoming`
-**PR:** #NN
+**PR:** #130
 **Migration:** none
+
+- **The event page** (`event-detail.tsx`, `handleChooseScope`): after loading the series, it runs
+  `resolveSeriesEdit` for the chosen scope. On a `SeriesEditError`, it shows the error's message as a toast and
+  stays on the event, without opening the form. This is the decided refusal at the scope choice. **This event**
+  is unaffected.
+- **The form** (`series-edit-form.tsx`): `SeriesEditForm` resolves the edit in a `useMemo` that catches
+  `SeriesEditError`. In that case it renders the message and a Back button (`onCancel`) instead of throwing.
+  Otherwise it renders `SeriesEditFormBody`, the unchanged form, with the resolved `head` and `anchor`. This
+  is the backstop for a series whose last upcoming event starts while the page is open. Other errors still throw.
 
 ## Verification
 
-**Test:** `apps/web/tests/…`
+**Test:** `apps/web/tests/series-edit-no-upcoming.test.tsx`, against the real `EventDetail` and `SeriesEditForm`:
+- "Entire series is refused with the message, and the form doesn't open": fails against the unfixed code
+- "This and following, the same": fails against it
+- "the form itself … says so instead of throwing": fails against it
+- legitimate paths, which pass on both: a series with an upcoming event still opens the form, and **This event**
+  still opens the single-event form for a past event
+
+The full web suite passes (110 files, 1,514 tests). `tsc --noEmit` and eslint are clean.
+
+**Deployment verification:** none required. This is a UI change with no migration or configuration.
