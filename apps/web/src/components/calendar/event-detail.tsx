@@ -55,7 +55,7 @@ import { EditRecurringPrompt, type RecurringEditScope } from "./edit-recurring-p
 import { SeriesEditForm } from "./series-edit-form";
 import { EventAvailability } from "@/components/availability/event-availability";
 import { getRecurrenceDescription } from "@/lib/utils/rrule";
-import { pinnedStartRule } from "@/lib/events/series-edit";
+import { pinnedStartRule, resolveSeriesEdit, SeriesEditError } from "@/lib/events/series-edit";
 import { eventTimeZone, instantFromWallClock, wallClockIn } from "@/lib/events/event-timezone";
 import { browserTimeZone } from "@/lib/events/team-timezone";
 import { formatEventDate, formatEventTime, formatEventTimeRange } from "@/lib/notifications/event-time";
@@ -867,6 +867,16 @@ export function EventDetail({
     }
     const rows = await loadSeries();
     if (!rows) {
+      setEditState(null);
+      return;
+    }
+    // A bulk edit changes upcoming events only. With none in this scope, refuse
+    // it here, with the planner's reason; "This event" stays available (BUG-034).
+    try {
+      resolveSeriesEdit(rows, event.id, scope, new Date());
+    } catch (err) {
+      if (!(err instanceof SeriesEditError)) throw err;
+      toast.error(err.message);
       setEditState(null);
       return;
     }
