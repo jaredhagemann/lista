@@ -76,8 +76,12 @@ function LastTournamentSummary({ tournament }: { tournament: LastTournament }) {
   );
 }
 
-/** Wins, losses and ties, with a bar split in those proportions. */
-function Stats({ record, winColor }: { record: TeamRecord; winColor: string }) {
+/**
+ * Wins, losses and ties, with a bar split in those proportions. Beside a last
+ * game or tournament it has its own heading, matching the "Last game" tag
+ * (2026-10-14).
+ */
+function Stats({ record, winColor, heading }: { record: TeamRecord; winColor: string; heading?: string }) {
   const { wins, losses, ties } = record;
   const played = wins + losses + ties;
   const share = (n: number) => `${(n / played) * 100}%`;
@@ -88,6 +92,11 @@ function Stats({ record, winColor }: { record: TeamRecord; winColor: string }) {
   ];
   return (
     <div className="flex flex-col justify-center gap-4">
+      {heading && (
+        <div>
+          <Tag>{heading}</Tag>
+        </div>
+      )}
       <div className="grid grid-cols-3 text-center">
         {stats.map(({ label, value }) => (
           <div key={label}>
@@ -169,7 +178,7 @@ export function RecordCard({
                   {l.record ? (
                     <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
                       <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
-                      <Stats record={l.record} winColor={winColor} />
+                      <Stats record={l.record} winColor={winColor} heading="League Record" />
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">No results yet</p>
@@ -182,7 +191,9 @@ export function RecordCard({
             <RecordSection heading="Last tournament" label="Last tournament">
               <div className="grid gap-6 sm:grid-cols-2 sm:gap-10">
                 <LastTournamentSummary tournament={lastTournament} />
-                {lastTournament.record && <Stats record={lastTournament.record} winColor={winColor} />}
+                {lastTournament.record && (
+                  <Stats record={lastTournament.record} winColor={winColor} heading="Tournament Record" />
+                )}
               </div>
             </RecordSection>
           )}

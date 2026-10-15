@@ -150,6 +150,8 @@ describe("the Record card after a tournament (D8)", () => {
     const tournament = within(card).getByRole("region", { name: "Last tournament" });
     expect(within(tournament).getByRole("heading", { name: "Last tournament" })).toBeTruthy();
     expect(within(tournament).getByRole("img").getAttribute("aria-label")).toBe("2 wins, 1 loss, 0 ties");
+    // A heading above the graphic (2026-10-14).
+    expect(within(tournament).getByText("Tournament Record")).toBeTruthy();
     // The season's record still counts every game, under "Overall Record".
     const overall = within(card).getByRole("region", { name: "Overall record" });
     expect(within(overall).getByRole("heading", { name: "Overall Record" })).toBeTruthy();
@@ -279,6 +281,8 @@ describe("the Record card with leagues (D9)", () => {
     // Its own last game: the loss to Eagles, not the overall last (a tie with Hawks).
     expect(within(div3).getByText("vs Eagles")).toBeTruthy();
     expect(within(div3).getByRole("img").getAttribute("aria-label")).toBe("2 wins, 1 loss, 0 ties");
+    // A heading above the graphic (2026-10-14).
+    expect(within(div3).getByText("League Record")).toBeTruthy();
   });
 
   it("ends with the Overall record, counting every game (D3)", async () => {
