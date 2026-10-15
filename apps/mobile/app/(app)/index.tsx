@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -92,19 +92,25 @@ export default function HomeScreen() {
   const [lastTournament, setLastTournament] = useState<LastTournament | null>(null);
   const [leagueRows, setLeagueRows] = useState<LeagueRow[]>([]);
   const [teamTimeZone, setTeamTimeZone] = useState<string | null>(null);
-  // TL-026: whether the card's reads have ever all succeeded, and whether the last attempt did.
-  const [recordLoaded, setRecordLoaded] = useState(false);
+  // TL-026: whether the last attempt at the card's reads failed. TL-027: the
+  // team whose record is shown, so a failed read only keeps that team's record.
+  const [recordTeam, setRecordTeam] = useState<string | null>(null);
   const [recordFailed, setRecordFailed] = useState(false);
+  // TL-027: each read is numbered, and only the latest one's reply is used, so
+  // a slow reply for a team no longer selected can't land over the new one's.
+  const latestRead = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   async function fetchData() {
+    const read = ++latestRead.current;
     if (!membership?.teamId) {
       setLoading(false);
       setRefreshing(false);
       return;
     }
 
+    const teamId = membership.teamId;
     const now = new Date().toISOString();
     const [eventsResult, membersResult, resultsResult, placedResult, leaguesResult] = await Promise.all([
       supabase
@@ -146,6 +152,7 @@ export default function HomeScreen() {
         .eq("team_id", membership.teamId)
         .is("archived_at", null),
     ]);
+    if (read !== latestRead.current) return;
 
     setEvents((eventsResult.data ?? []) as unknown as Event[]);
     setMembers((membersResult.data ?? []) as unknown as TeamCardMember[]);
@@ -154,12 +161,19 @@ export default function HomeScreen() {
     // if any, and let the card say the reads failed.
     if (resultsResult.error || placedResult.error || leaguesResult.error) {
       setRecordFailed(true);
+      // Another team's record is never kept (TL-027): this is a first load for this team.
+      if (recordTeam !== teamId) {
+        setRecord(null);
+        setLeagueRows([]);
+        setLastTournament(null);
+        setRecordTeam(null);
+      }
       setLoading(false);
       setRefreshing(false);
       return;
     }
     setRecordFailed(false);
-    setRecordLoaded(true);
+    setRecordTeam(teamId);
     const results = (resultsResult.data ?? []) as unknown as (ResultGame & {
       tournament_id: string | null;
       league_id: string | null;
@@ -387,7 +401,7 @@ export default function HomeScreen() {
               winColor={membership.winColor}
               lastTournament={lastTournament}
               leagues={leagueRows}
-              status={!recordFailed ? "ok" : recordLoaded ? "stale" : "failed"}
+              status={!recordFailed ? "ok" : recordTeam === membership.teamId ? "stale" : "failed"}
               onRetry={fetchData}
             />
           </View>

@@ -21,6 +21,8 @@ const mockTables: Record<string, Row[]> = {};
 const mockFilters: { table: string; method: string; column: string; value: unknown }[] = [];
 /** Reads that fail, as "table:column=value" (TL-026), e.g. the results read "events:event_type=game". */
 const mockFailing = new Set<string>();
+/** Reads held until their promise resolves, keyed as mockFailing is (TL-027). */
+const mockGates = new Map<string, Promise<void>>();
 
 jest.mock("../lib/supabase", () => {
   const from = (table: string) => {
@@ -34,6 +36,10 @@ jest.mock("../lib/supabase", () => {
     };
     const at = (v: unknown) => Date.parse(String(v));
     const result = () => {
+      const gate = eqs.map((e) => mockGates.get(`${table}:${e}`)).find(Boolean);
+      return gate ? gate.then(read) : read();
+    };
+    const read = (): Promise<{ data: Row[] | null; error: { message: string } | null; count: number | null }> => {
       if (eqs.some((e) => mockFailing.has(`${table}:${e}`))) {
         return Promise.resolve({ data: null, error: { message: "statement timeout" }, count: null });
       }
@@ -78,8 +84,7 @@ jest.mock("react-native-safe-area-context", () => {
 });
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Ionicons" }));
 
-const mockCtx = {
-  membership: {
+const TEAM_ONE = {
     profileId: "me",
     teamId: "team-1",
     teamName: "U10 Girls",
@@ -88,7 +93,9 @@ const mockCtx = {
     logoUrl: null,
     role: "player",
     winColor: "#2563eb",
-  },
+};
+const mockCtx = {
+  membership: TEAM_ONE,
   ownProfile: { id: "me" },
   allMemberships: [{ team_id: "team-1", profile_id: "me", profiles: { first_name: "Mia", last_name: "Chen" } }] as unknown[],
   loading: false,
@@ -144,6 +151,8 @@ beforeEach(() => {
   for (const key of Object.keys(mockTables)) delete mockTables[key];
   mockFilters.length = 0;
   mockFailing.clear();
+  mockGates.clear();
+  mockCtx.membership = TEAM_ONE;
   mockTables.team_members = [];
   mockTables.leagues = [];
   mockTables.availability = [];
@@ -355,5 +364,76 @@ describe("TL-026: a failed read is never shown as no results", () => {
     const record = within(await screen.findByLabelText("Record"));
     expect(record.getByText("No results yet")).toBeTruthy();
     expect(record.queryByText(/Couldn't/)).toBeNull();
+  });
+});
+
+// ── TL-027 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ───────
+
+describe("TL-027: a record kept after a failed read is only ever the same team's", () => {
+  const TEAM_TWO = { ...TEAM_ONE, teamId: "team-2", teamName: "U12 Boys", displayName: "U12 Boys" };
+  const DIV5 = { id: "div5", team_id: "team-2", name: "Division 5", season: "Fall 2026", archived_at: null };
+  const seed = () => {
+    mockTables.leagues = [DIV3, DIV5];
+    mockTables.events = [
+      played("a", 30, "win", { league_id: "div3" }),
+      played("b", 20, "loss", { league_id: "div5", team_id: "team-2" }),
+    ];
+  };
+  const switchTeam = (rerender: (el: React.ReactElement) => void) => {
+    mockCtx.membership = TEAM_TWO;
+    rerender(<HomeScreen />);
+  };
+
+  for (const [read, key] of [
+    ["results", "events:team_id=team-2"],
+    ["leagues", "leagues:team_id=team-2"],
+  ] as const) {
+    it(`the new team's ${read} read failing shows a failed load, not the old team's record`, async () => {
+      seed();
+      const { rerender } = render(<HomeScreen />);
+      await screen.findByText("Fall 2026 Division 3");
+
+      mockFailing.add(key);
+      switchTeam(rerender);
+
+      const record = within(await screen.findByLabelText("Record"));
+      expect(await record.findByText(/Couldn't load the record/)).toBeTruthy();
+      expect(screen.queryByText("Fall 2026 Division 3")).toBeNull();
+      expect(screen.queryByText(/Couldn't refresh/)).toBeNull();
+
+      mockFailing.clear();
+      fireEvent.press(record.getByLabelText("Try again"));
+      expect(await screen.findByText("Fall 2026 Division 5")).toBeTruthy();
+      expect(screen.queryByText("Fall 2026 Division 3")).toBeNull();
+    });
+  }
+
+  it("the old team's slow reply, landing after the switch, doesn't replace the new team's record", async () => {
+    seed();
+    let release!: () => void;
+    mockGates.set("leagues:team_id=team-1", new Promise<void>((r) => (release = r)));
+    const { rerender } = render(<HomeScreen />);
+
+    switchTeam(rerender);
+    expect(await screen.findByText("Fall 2026 Division 5")).toBeTruthy();
+
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    await waitFor(() => expect(screen.getByText("Fall 2026 Division 5")).toBeTruthy());
+    expect(screen.queryByText("Fall 2026 Division 3")).toBeNull();
+  });
+
+  it("a failed refresh of the same team still keeps its record", async () => {
+    seed();
+    const { rerender } = render(<HomeScreen />);
+    await screen.findByText("Fall 2026 Division 3");
+    switchTeam(rerender);
+    await screen.findByText("Fall 2026 Division 5");
+
+    mockFailing.add("events:team_id=team-2");
+    fireEvent(screen.UNSAFE_getByType(RefreshControl), "refresh");
+
+    expect(await screen.findByText(/Couldn't refresh the record/)).toBeTruthy();
+    expect(screen.getByText("Fall 2026 Division 5")).toBeTruthy();
   });
 });
