@@ -118,6 +118,8 @@ const shiftWall = (wall: string, ms: number) => new Date(wallMs(wall) + ms).toIS
 
 // ── Inline edit form ──────────────────────────────────────────────────────────
 
+const NO_RESULT = "none";
+
 export function EventEditForm({
   editingEvent,
   teamId,
@@ -168,7 +170,9 @@ export function EventEditForm({
   const [opponent, setOpponent] = useState(editingEvent.opponent ?? "");
   const [homeAway, setHomeAway] = useState(editingEvent.home_away ?? "");
   const [uniform, setUniform] = useState(editingEvent.uniform ?? "");
-  const [gameResult, setGameResult] = useState(editingEvent.game_result ?? "");
+  // "none" stands for no result: a select can't offer an empty value, nor go back
+  // to its placeholder once set, so a mistaken result could never be cleared (BUG-033).
+  const [gameResult, setGameResult] = useState(editingEvent.game_result ?? NO_RESULT);
   const [scoreFor, setScoreFor] = useState(
     editingEvent.score_for?.toString() ?? ""
   );
@@ -266,7 +270,7 @@ export function EventEditForm({
       opponent: eventType === "game" ? opponent || null : null,
       home_away: eventType === "game" ? homeAway || null : null,
       uniform: eventType === "game" ? uniform || null : null,
-      game_result: eventType === "game" ? gameResult || null : null,
+      game_result: eventType === "game" && gameResult !== NO_RESULT ? gameResult : null,
       score_for:
         eventType === "game" && scoreFor !== ""
           ? parseInt(scoreFor, 10)
@@ -543,12 +547,13 @@ export function EventEditForm({
                 </div>
               </div>
                 <div className="space-y-2">
-                  <Label>Result</Label>
+                  <Label htmlFor="gameResult">Result</Label>
                   <Select value={gameResult} onValueChange={setGameResult}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select result" />
+                    <SelectTrigger id="gameResult">
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={NO_RESULT}>No result</SelectItem>
                       <SelectItem value="win">Win</SelectItem>
                       <SelectItem value="loss">Loss</SelectItem>
                       <SelectItem value="tie">Tie</SelectItem>
