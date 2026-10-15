@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useFocusEffect } from "expo-router";
 import {
   View,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -54,6 +55,20 @@ type Event = {
 
 type ListItem = ScheduleItem<Event>;
 
+/**
+ * The type filter, as on the web's schedule (2026-10-15): Game is every game, a
+ * tournament's included; Tournament is the tournaments themselves.
+ */
+type TypeFilter = "all" | "game" | "practice" | "tournament" | "other";
+
+const TYPE_FILTERS: { value: TypeFilter; label: string; none: string }[] = [
+  { value: "all", label: "All", none: "No events scheduled yet." },
+  { value: "game", label: "Game", none: "No games scheduled." },
+  { value: "practice", label: "Practice", none: "No practices scheduled." },
+  { value: "tournament", label: "Tournament", none: "No tournaments scheduled." },
+  { value: "other", label: "Other", none: "No other events scheduled." },
+];
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -99,26 +114,23 @@ export default function ScheduleScreen() {
   const { membership, loading: membershipLoading } = useAppContext();
   const listRef = useRef<FlatList<ListItem>>(null);
 
-  const [items, setItems] = useState<ListItem[]>([]);
-  const [firstUpcomingIndex, setFirstUpcomingIndex] = useState(-1);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [myAvailability, setMyAvailability] = useState<Map<string, AvailabilityStatus>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const isAdmin = membership?.role === "coach" || membership?.role === "manager";
-
+  // No "+": events are made on the web, so the header has only its title.
   useEffect(() => {
-    navigation.setOptions({
-      title: "Schedule",
-      headerRight: isAdmin
-        ? () => (
-            <TouchableOpacity onPress={() => {}} style={{ marginRight: 4 }}>
-              <Ionicons name="add" size={26} color="#0f172a" />
-            </TouchableOpacity>
-          )
-        : undefined,
-    });
-  }, [isAdmin]);
+    navigation.setOptions({ title: "Schedule" });
+  }, []);
+
+  // The filter applies to what was read: changing it reads nothing.
+  const { items, firstUpcomingIndex } = useMemo(
+    () => buildScheduleItems(typeFilter === "all" ? events : events.filter((e) => e.event_type === typeFilter)),
+    [events, typeFilter]
+  );
+  const shownCount = items.length - (items.some((i) => i.type === "today-divider") ? 1 : 0);
 
   const fetchEvents = useCallback(async () => {
     if (!membership?.teamId || !membership?.profileId) {
@@ -141,10 +153,7 @@ export default function ScheduleScreen() {
         .eq("profile_id", membership.profileId),
     ]);
 
-    const events = (eventsResult.data ?? []) as unknown as Event[];
-    const { items: newItems, firstUpcomingIndex: idx } = buildScheduleItems(events);
-    setItems(newItems);
-    setFirstUpcomingIndex(idx);
+    setEvents((eventsResult.data ?? []) as unknown as Event[]);
 
     const statusMap = new Map<string, AvailabilityStatus>();
     for (const row of availResult.data ?? []) {
@@ -207,7 +216,7 @@ export default function ScheduleScreen() {
     );
   }
 
-  if (items.length === 0) {
+  if (events.length === 0) {
     return (
       <SafeAreaView style={styles.center} edges={["bottom"]}>
         <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
@@ -216,116 +225,146 @@ export default function ScheduleScreen() {
     );
   }
 
+  const filter = TYPE_FILTERS.find((t) => t.value === typeFilter)!;
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <FlatList
-        ref={listRef}
-        data={items}
-        keyExtractor={(item, index) =>
-          item.type === "today-divider" ? "today-divider" : item.event.id
-        }
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={styles.listContent}
-        onScrollToIndexFailed={(info) => {
-          // Fallback if index isn't rendered yet — scroll to approximate offset
-          listRef.current?.scrollToOffset({
-            offset: info.averageItemLength * info.index,
-            animated: false,
-          });
-        }}
-        renderItem={({ item }) => {
-          if (item.type === "today-divider") {
+      <View style={styles.filterBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {TYPE_FILTERS.map((t) => {
+            const selected = t.value === typeFilter;
             return (
-              <View style={styles.todayDivider}>
-                <View style={styles.todayLine} />
-                <Text style={styles.todayLabel}>Today</Text>
-                <View style={styles.todayLine} />
-              </View>
+              <TouchableOpacity
+                key={t.value}
+                accessibilityRole="button"
+                accessibilityLabel={t.label}
+                accessibilityState={{ selected }}
+                onPress={() => setTypeFilter(t.value)}
+                style={[styles.filterPill, selected && styles.filterPillSelected]}
+              >
+                <Text style={[styles.filterPillText, selected && styles.filterPillTextSelected]}>{t.label}</Text>
+              </TouchableOpacity>
             );
+          })}
+        </ScrollView>
+      </View>
+      {shownCount === 0 ? (
+        <View style={styles.center}>
+          <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
+          <Text style={styles.emptyText}>{filter.none}</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Clear filter" onPress={() => setTypeFilter("all")}>
+            <Text style={styles.clearFilter}>Clear filter</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          ref={listRef}
+          data={items}
+          keyExtractor={(item, index) =>
+            item.type === "today-divider" ? "today-divider" : item.event.id
           }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={styles.listContent}
+          onScrollToIndexFailed={(info) => {
+            // Fallback if index isn't rendered yet — scroll to approximate offset
+            listRef.current?.scrollToOffset({
+              offset: info.averageItemLength * info.index,
+              animated: false,
+            });
+          }}
+          renderItem={({ item }) => {
+            if (item.type === "today-divider") {
+              return (
+                <View style={styles.todayDivider}>
+                  <View style={styles.todayLine} />
+                  <Text style={styles.todayLabel}>Today</Text>
+                  <View style={styles.todayLine} />
+                </View>
+              );
+            }
 
-          const { event } = item;
-          const badge = eventTypeColors(event.event_type);
-          // A game's own answer, else its tournament's (spec §4, Availability).
-          const rsvp = effectiveAnswer(
-            myAvailability.get(event.id),
-            event.tournament_id ? myAvailability.get(event.tournament_id) : null
-          );
-          const title = gameTitle(event, event.teams?.name);
-          // A tournament spans whole days: its dates and games, never times (D13).
-          const tournament = isTournament(event);
-          const games = event.games?.[0]?.count ?? 0;
-          const partOf = tournamentLine(event);
+            const { event } = item;
+            const badge = eventTypeColors(event.event_type);
+            // A game's own answer, else its tournament's (spec §4, Availability).
+            const rsvp = effectiveAnswer(
+              myAvailability.get(event.id),
+              event.tournament_id ? myAvailability.get(event.tournament_id) : null
+            );
+            const title = gameTitle(event, event.teams?.name);
+            // A tournament spans whole days: its dates and games, never times (D13).
+            const tournament = isTournament(event);
+            const games = event.games?.[0]?.count ?? 0;
+            const partOf = tournamentLine(event);
 
-          return (
-            <TouchableOpacity
-              onPress={() => router.push(`/(app)/schedule/${event.id}` as any)}
-              accessibilityLabel={tournament ? `${event.title}, tournament` : undefined}
-              style={styles.card}
-            >
-              {/* Date header inside card */}
-              <View style={styles.dateRow}>
-                <Text style={styles.cardDate}>
-                  {tournament ? tournamentDates(event) : formatEventDay(event.start_time, eventZone(event))}
-                </Text>
-                {tournament && !event.is_cancelled && isUnderway(event) ? (
-                  <View style={styles.nowPill}>
-                    <Text style={styles.nowPillText}>Now</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              <View style={styles.cardBody}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text
-                    style={[
-                      styles.cardTitle,
-                      event.is_cancelled && styles.cardTitleCancelled,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {title}
+            return (
+              <TouchableOpacity
+                onPress={() => router.push(`/(app)/schedule/${event.id}` as any)}
+                accessibilityLabel={tournament ? `${event.title}, tournament` : undefined}
+                style={styles.card}
+              >
+                {/* Date header inside card */}
+                <View style={styles.dateRow}>
+                  <Text style={styles.cardDate}>
+                    {tournament ? tournamentDates(event) : formatEventDay(event.start_time, eventZone(event))}
                   </Text>
-                  {partOf ? <Text style={styles.partOf}>{partOf}</Text> : null}
-                  {event.league ? <Text style={styles.leagueTag}>{leagueLabel(event.league)}</Text> : null}
-                  {tournament ? (
-                    games > 0 ? <Text style={styles.cardTime}>{gameCount(games)}</Text> : null
-                  ) : (
-                    <Text style={styles.cardTime}>
-                      {formatEventClock(event.start_time, eventZone(event))} – {formatEventClock(event.end_time, eventZone(event))}
-                    </Text>
-                  )}
-                  {event.locations?.name ? (
-                    <View style={styles.locationRow}>
-                      <Ionicons name="location-outline" size={12} color="#9ca3af" />
-                      <Text style={styles.locationText}>{event.locations.name}</Text>
+                  {tournament && !event.is_cancelled && isUnderway(event) ? (
+                    <View style={styles.nowPill}>
+                      <Text style={styles.nowPillText}>Now</Text>
                     </View>
                   ) : null}
                 </View>
 
-                {/* Right column: type pill + RSVP */}
-                <View style={styles.rightCol}>
-                  <View style={[styles.typePill, { backgroundColor: badge.bg }]}>
-                    <Text style={[styles.typePillText, { color: badge.text }]}>
-                      {displayLabel(event.event_type)}
+                <View style={styles.cardBody}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text
+                      style={[
+                        styles.cardTitle,
+                        event.is_cancelled && styles.cardTitleCancelled,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {title}
                     </Text>
+                    {partOf ? <Text style={styles.partOf}>{partOf}</Text> : null}
+                    {event.league ? <Text style={styles.leagueTag}>{leagueLabel(event.league)}</Text> : null}
+                    {tournament ? (
+                      games > 0 ? <Text style={styles.cardTime}>{gameCount(games)}</Text> : null
+                    ) : (
+                      <Text style={styles.cardTime}>
+                        {formatEventClock(event.start_time, eventZone(event))} – {formatEventClock(event.end_time, eventZone(event))}
+                      </Text>
+                    )}
+                    {event.locations?.name ? (
+                      <View style={styles.locationRow}>
+                        <Ionicons name="location-outline" size={12} color="#9ca3af" />
+                        <Text style={styles.locationText}>{event.locations.name}</Text>
+                      </View>
+                    ) : null}
                   </View>
 
-                  {event.is_cancelled ? (
-                    <View style={styles.cancelledPill}>
-                      <Text style={styles.cancelledPillText}>Cancelled</Text>
+                  {/* Right column: type pill + RSVP */}
+                  <View style={styles.rightCol}>
+                    <View style={[styles.typePill, { backgroundColor: badge.bg }]}>
+                      <Text style={[styles.typePillText, { color: badge.text }]}>
+                        {displayLabel(event.event_type)}
+                      </Text>
                     </View>
-                  ) : rsvp.status ? (
-                    <RsvpBadge status={rsvp.status} inherited={rsvp.inherited} label={title} />
-                  ) : (
-                    <View style={styles.rsvpEmpty} />
-                  )}
+
+                    {event.is_cancelled ? (
+                      <View style={styles.cancelledPill}>
+                        <Text style={styles.cancelledPillText}>Cancelled</Text>
+                      </View>
+                    ) : rsvp.status ? (
+                      <RsvpBadge status={rsvp.status} inherited={rsvp.inherited} label={title} />
+                    ) : (
+                      <View style={styles.rsvpEmpty} />
+                    )}
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-      />
+              </TouchableOpacity>
+            );
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -342,6 +381,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyText: { color: "#9ca3af", fontSize: 15, textAlign: "center", paddingHorizontal: 32 },
+  clearFilter: { color: "#0f172a", fontSize: 14, fontWeight: "600", textDecorationLine: "underline", marginTop: 4 },
+
+  // Type filter
+  filterBar: { backgroundColor: "#ffffff", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
+  filterRow: { paddingHorizontal: 12, paddingVertical: 8, gap: 6 },
+  filterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
+  },
+  filterPillSelected: { backgroundColor: "#0f172a", borderColor: "#0f172a" },
+  filterPillText: { fontSize: 13, fontWeight: "500", color: "#6b7280" },
+  filterPillTextSelected: { color: "#ffffff" },
   createButton: {
     marginTop: 16,
     backgroundColor: "#0f172a",

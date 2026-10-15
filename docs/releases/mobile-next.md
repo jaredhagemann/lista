@@ -274,6 +274,22 @@ the same `league:league_id(...)` embed the web uses.
 Files: `lib/leagues.ts`, `components/RecordCard.tsx`, `app/(app)/index.tsx`, `app/(app)/schedule/index.tsx`,
 `app/(app)/schedule/[eventId].tsx`, `__tests__/LeaguesMobile.test.tsx`.
 
+### The schedule filters by type, as on the web (2026-10-15)
+
+**Installed build (1.0.12):** a coach or manager sees a "+" in the Schedule header that does nothing, because
+events are made on the web. There is no way to filter the schedule.
+
+**New build:**
+- **The "+" is gone.**
+- **A row of pills above the list** filters it: All, Game, Practice, Tournament and Other. The rules are the web's:
+  - Game shows every game, including a tournament's games.
+  - Tournament shows the tournaments themselves.
+  - The filter applies to the list already loaded, with no new reads, and lasts until you leave the screen.
+- **A filter with no events** says so ("No tournaments scheduled."), with **Clear filter**.
+- **An empty schedule** now shows "No events scheduled yet.". Before, the Today divider alone hid that message.
+
+No server change. Files: `app/(app)/schedule/index.tsx`, `__tests__/ScheduleTypeFilter.test.tsx`.
+
 ---
 
 ## Before shipping
@@ -439,6 +455,11 @@ TestFlight build (production data: use a test team for anything that writes):
   - A new league with no results shows "No results yet".
   - League games carry the league's name on the schedule and on home.
   - A league game's screen names its League, and reads "Home / Away".
+- **Schedule filter:** as a coach, the Schedule header has no "+".
+  - Tap each pill: Game shows games, a tournament's included. Practice, Tournament and Other show their own.
+  - The list still opens at Today.
+  - A type with no events says so, and Clear filter brings everything back.
+  - On a small phone, the pills scroll sideways.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.
