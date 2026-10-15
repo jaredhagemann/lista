@@ -11,7 +11,8 @@
  */
 
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { RefreshControl } from "react-native";
 
 type Row = Record<string, unknown>;
 const mockTables: Record<string, Row[]> = {};
@@ -204,5 +205,54 @@ describe("the type filter", () => {
 
     expect(await screen.findByText("No events scheduled yet.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Game" })).toBeNull();
+  });
+});
+
+// ── TL-028 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ───────
+
+describe("TL-028: an empty schedule can still be pulled to refresh", () => {
+  /** Pulls the list down, as a person would, and waits for the read. */
+  async function pullToRefresh() {
+    await act(async () => {
+      screen.UNSAFE_getByType(RefreshControl).props.onRefresh();
+    });
+  }
+
+  it("an empty schedule refreshes, and shows an event made on the web since", async () => {
+    mockTables.events = [];
+    render(<ScheduleScreen />);
+    await screen.findByText("No events scheduled yet.");
+
+    mockTables.events = [GAME];
+    await pullToRefresh();
+
+    expect(await screen.findByText(/Rivals FC/)).toBeTruthy();
+    expect(screen.queryByText("No events scheduled yet.")).toBeNull();
+  });
+
+  it("a type with no events refreshes, keeping the type selected", async () => {
+    mockTables.events = [PRACTICE];
+    render(<ScheduleScreen />);
+    await screen.findByText("Tuesday practice");
+    fireEvent.press(pill("Game"));
+    expect(screen.getByText("No games scheduled.")).toBeTruthy();
+
+    mockTables.events = [PRACTICE, GAME];
+    await pullToRefresh();
+
+    expect(await screen.findByText(/Rivals FC/)).toBeTruthy();
+    expect(pill("Game").props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.queryByText("Tuesday practice")).toBeNull();
+  });
+
+  it("a schedule with events still refreshes (a control)", async () => {
+    mockTables.events = [PRACTICE];
+    render(<ScheduleScreen />);
+    await screen.findByText("Tuesday practice");
+
+    mockTables.events = [PRACTICE, GAME];
+    await pullToRefresh();
+
+    expect(await screen.findByText(/Rivals FC/)).toBeTruthy();
   });
 });

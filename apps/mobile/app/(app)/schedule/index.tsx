@@ -216,155 +216,157 @@ export default function ScheduleScreen() {
     );
   }
 
-  if (events.length === 0) {
-    return (
-      <SafeAreaView style={styles.center} edges={["bottom"]}>
-        <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
-        <Text style={styles.emptyText}>No events scheduled yet.</Text>
-      </SafeAreaView>
-    );
-  }
-
   const filter = TYPE_FILTERS.find((t) => t.value === typeFilter)!;
+  const empty = shownCount === 0;
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <View style={styles.filterBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          {TYPE_FILTERS.map((t) => {
-            const selected = t.value === typeFilter;
-            return (
-              <TouchableOpacity
-                key={t.value}
-                accessibilityRole="button"
-                accessibilityLabel={t.label}
-                accessibilityState={{ selected }}
-                onPress={() => setTypeFilter(t.value)}
-                style={[styles.filterPill, selected && styles.filterPillSelected]}
-              >
-                <Text style={[styles.filterPillText, selected && styles.filterPillTextSelected]}>{t.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-      {shownCount === 0 ? (
-        <View style={styles.center}>
-          <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
-          <Text style={styles.emptyText}>{filter.none}</Text>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Clear filter" onPress={() => setTypeFilter("all")}>
-            <Text style={styles.clearFilter}>Clear filter</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          ref={listRef}
-          data={items}
-          keyExtractor={(item, index) =>
-            item.type === "today-divider" ? "today-divider" : item.event.id
-          }
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={styles.listContent}
-          onScrollToIndexFailed={(info) => {
-            // Fallback if index isn't rendered yet — scroll to approximate offset
-            listRef.current?.scrollToOffset({
-              offset: info.averageItemLength * info.index,
-              animated: false,
-            });
-          }}
-          renderItem={({ item }) => {
-            if (item.type === "today-divider") {
+      {/* Nothing to filter on a team with no events. */}
+      {events.length > 0 ? (
+        <View style={styles.filterBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            {TYPE_FILTERS.map((t) => {
+              const selected = t.value === typeFilter;
               return (
-                <View style={styles.todayDivider}>
-                  <View style={styles.todayLine} />
-                  <Text style={styles.todayLabel}>Today</Text>
-                  <View style={styles.todayLine} />
-                </View>
+                <TouchableOpacity
+                  key={t.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.label}
+                  accessibilityState={{ selected }}
+                  onPress={() => setTypeFilter(t.value)}
+                  style={[styles.filterPill, selected && styles.filterPillSelected]}
+                >
+                  <Text style={[styles.filterPillText, selected && styles.filterPillTextSelected]}>{t.label}</Text>
+                </TouchableOpacity>
               );
-            }
-
-            const { event } = item;
-            const badge = eventTypeColors(event.event_type);
-            // A game's own answer, else its tournament's (spec §4, Availability).
-            const rsvp = effectiveAnswer(
-              myAvailability.get(event.id),
-              event.tournament_id ? myAvailability.get(event.tournament_id) : null
-            );
-            const title = gameTitle(event, event.teams?.name);
-            // A tournament spans whole days: its dates and games, never times (D13).
-            const tournament = isTournament(event);
-            const games = event.games?.[0]?.count ?? 0;
-            const partOf = tournamentLine(event);
-
-            return (
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+      {/* Empty, the list stays, with its message inside, so it can still be
+          pulled to refresh: events are made on the web (TL-028). */}
+      <FlatList
+        ref={listRef}
+        data={empty ? [] : items}
+        ListEmptyComponent={
+          <View style={styles.emptyList}>
+            <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
+            <Text style={styles.emptyText}>{events.length === 0 ? "No events scheduled yet." : filter.none}</Text>
+            {events.length > 0 ? (
               <TouchableOpacity
-                onPress={() => router.push(`/(app)/schedule/${event.id}` as any)}
-                accessibilityLabel={tournament ? `${event.title}, tournament` : undefined}
-                style={styles.card}
+                accessibilityRole="button"
+                accessibilityLabel="Clear filter"
+                onPress={() => setTypeFilter("all")}
               >
-                {/* Date header inside card */}
-                <View style={styles.dateRow}>
-                  <Text style={styles.cardDate}>
-                    {tournament ? tournamentDates(event) : formatEventDay(event.start_time, eventZone(event))}
+                <Text style={styles.clearFilter}>Clear filter</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        }
+        keyExtractor={(item, index) =>
+          item.type === "today-divider" ? "today-divider" : item.event.id
+        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={[styles.listContent, empty && { flexGrow: 1 }]}
+        onScrollToIndexFailed={(info) => {
+          // Fallback if index isn't rendered yet — scroll to approximate offset
+          listRef.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: false,
+          });
+        }}
+        renderItem={({ item }) => {
+          if (item.type === "today-divider") {
+            return (
+              <View style={styles.todayDivider}>
+                <View style={styles.todayLine} />
+                <Text style={styles.todayLabel}>Today</Text>
+                <View style={styles.todayLine} />
+              </View>
+            );
+          }
+
+          const { event } = item;
+          const badge = eventTypeColors(event.event_type);
+          // A game's own answer, else its tournament's (spec §4, Availability).
+          const rsvp = effectiveAnswer(
+            myAvailability.get(event.id),
+            event.tournament_id ? myAvailability.get(event.tournament_id) : null
+          );
+          const title = gameTitle(event, event.teams?.name);
+          // A tournament spans whole days: its dates and games, never times (D13).
+          const tournament = isTournament(event);
+          const games = event.games?.[0]?.count ?? 0;
+          const partOf = tournamentLine(event);
+
+          return (
+            <TouchableOpacity
+              onPress={() => router.push(`/(app)/schedule/${event.id}` as any)}
+              accessibilityLabel={tournament ? `${event.title}, tournament` : undefined}
+              style={styles.card}
+            >
+              {/* Date header inside card */}
+              <View style={styles.dateRow}>
+                <Text style={styles.cardDate}>
+                  {tournament ? tournamentDates(event) : formatEventDay(event.start_time, eventZone(event))}
+                </Text>
+                {tournament && !event.is_cancelled && isUnderway(event) ? (
+                  <View style={styles.nowPill}>
+                    <Text style={styles.nowPillText}>Now</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.cardBody}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text
+                    style={[
+                      styles.cardTitle,
+                      event.is_cancelled && styles.cardTitleCancelled,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {title}
                   </Text>
-                  {tournament && !event.is_cancelled && isUnderway(event) ? (
-                    <View style={styles.nowPill}>
-                      <Text style={styles.nowPillText}>Now</Text>
+                  {partOf ? <Text style={styles.partOf}>{partOf}</Text> : null}
+                  {event.league ? <Text style={styles.leagueTag}>{leagueLabel(event.league)}</Text> : null}
+                  {tournament ? (
+                    games > 0 ? <Text style={styles.cardTime}>{gameCount(games)}</Text> : null
+                  ) : (
+                    <Text style={styles.cardTime}>
+                      {formatEventClock(event.start_time, eventZone(event))} – {formatEventClock(event.end_time, eventZone(event))}
+                    </Text>
+                  )}
+                  {event.locations?.name ? (
+                    <View style={styles.locationRow}>
+                      <Ionicons name="location-outline" size={12} color="#9ca3af" />
+                      <Text style={styles.locationText}>{event.locations.name}</Text>
                     </View>
                   ) : null}
                 </View>
 
-                <View style={styles.cardBody}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text
-                      style={[
-                        styles.cardTitle,
-                        event.is_cancelled && styles.cardTitleCancelled,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {title}
+                {/* Right column: type pill + RSVP */}
+                <View style={styles.rightCol}>
+                  <View style={[styles.typePill, { backgroundColor: badge.bg }]}>
+                    <Text style={[styles.typePillText, { color: badge.text }]}>
+                      {displayLabel(event.event_type)}
                     </Text>
-                    {partOf ? <Text style={styles.partOf}>{partOf}</Text> : null}
-                    {event.league ? <Text style={styles.leagueTag}>{leagueLabel(event.league)}</Text> : null}
-                    {tournament ? (
-                      games > 0 ? <Text style={styles.cardTime}>{gameCount(games)}</Text> : null
-                    ) : (
-                      <Text style={styles.cardTime}>
-                        {formatEventClock(event.start_time, eventZone(event))} – {formatEventClock(event.end_time, eventZone(event))}
-                      </Text>
-                    )}
-                    {event.locations?.name ? (
-                      <View style={styles.locationRow}>
-                        <Ionicons name="location-outline" size={12} color="#9ca3af" />
-                        <Text style={styles.locationText}>{event.locations.name}</Text>
-                      </View>
-                    ) : null}
                   </View>
 
-                  {/* Right column: type pill + RSVP */}
-                  <View style={styles.rightCol}>
-                    <View style={[styles.typePill, { backgroundColor: badge.bg }]}>
-                      <Text style={[styles.typePillText, { color: badge.text }]}>
-                        {displayLabel(event.event_type)}
-                      </Text>
+                  {event.is_cancelled ? (
+                    <View style={styles.cancelledPill}>
+                      <Text style={styles.cancelledPillText}>Cancelled</Text>
                     </View>
-
-                    {event.is_cancelled ? (
-                      <View style={styles.cancelledPill}>
-                        <Text style={styles.cancelledPillText}>Cancelled</Text>
-                      </View>
-                    ) : rsvp.status ? (
-                      <RsvpBadge status={rsvp.status} inherited={rsvp.inherited} label={title} />
-                    ) : (
-                      <View style={styles.rsvpEmpty} />
-                    )}
-                  </View>
+                  ) : rsvp.status ? (
+                    <RsvpBadge status={rsvp.status} inherited={rsvp.inherited} label={title} />
+                  ) : (
+                    <View style={styles.rsvpEmpty} />
+                  )}
                 </View>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      )}
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -381,6 +383,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyText: { color: "#9ca3af", fontSize: 15, textAlign: "center", paddingHorizontal: 32 },
+  emptyList: { flex: 1, justifyContent: "center", alignItems: "center", gap: 8 },
   clearFilter: { color: "#0f172a", fontSize: 14, fontWeight: "600", textDecorationLine: "underline", marginTop: 4 },
 
   // Type filter
