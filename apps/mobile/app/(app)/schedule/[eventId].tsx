@@ -19,6 +19,7 @@ import { gameTitle, homeAwayLabel, scoreLine, uniformOf, type TeamUniforms } fro
 import { UniformLabel } from "../../../components/UniformLabel";
 import { isTournament, isUnderway, placementText, tournamentDates, tournamentLine, tournamentRecord } from "../../../lib/tournament";
 import { eventTypeColors } from "../../../lib/event-type-colors";
+import { leagueLabel } from "../../../lib/leagues";
 import {
   answerersFor,
   effectiveAnswer,
@@ -56,6 +57,8 @@ type EventDetail = {
   placement_rank: number | null;
   placement_label: string | null;
   tournament: { id: string; title: string } | null;
+  /** A game's league (tournaments-and-leagues §5). */
+  league: { name: string; season: string } | null;
 };
 
 /** A tournament's game, as its screen lists it. */
@@ -104,7 +107,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
  */
 function GameDetails({ event }: { event: EventDetail }) {
   const uniform = uniformOf(event.uniform, event.teams);
-  if (event.event_type !== "game" || !(event.opponent || event.home_away || uniform || event.game_result)) {
+  if (event.event_type !== "game" || !(event.opponent || event.home_away || uniform || event.game_result || event.league)) {
     return null;
   }
   const result = event.game_result ? RESULT_STYLE[event.game_result] ?? RESULT_STYLE.tie : null;
@@ -115,13 +118,18 @@ function GameDetails({ event }: { event: EventDetail }) {
       className="bg-white rounded-2xl border border-gray-100 px-4 py-4 gap-2"
     >
       <Text className="font-semibold text-gray-900 mb-1">Game details</Text>
+      {event.league ? (
+        <DetailRow label="League">
+          <Text className="text-sm text-gray-700">{leagueLabel(event.league)}</Text>
+        </DetailRow>
+      ) : null}
       {event.opponent ? (
         <DetailRow label="Opponent">
           <Text className="text-sm text-gray-700">{event.opponent}</Text>
         </DetailRow>
       ) : null}
       {event.home_away ? (
-        <DetailRow label="Playing">
+        <DetailRow label="Home / Away">
           <Text className="text-sm text-gray-700">{homeAwayLabel(event.home_away)}</Text>
         </DetailRow>
       ) : null}
@@ -429,7 +437,7 @@ export default function EventDetailScreen() {
       supabase
         .from("events")
         .select(
-          "id, team_id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, opponent, home_away, uniform, score_for, score_against, game_result, tournament_id, round, placement_rank, placement_label, teams(timezone, name, home_uniform, away_uniform, home_uniform_color, away_uniform_color), locations(name, address), tournament:tournament_id(id, title)"
+          "id, team_id, title, event_type, start_time, end_time, is_cancelled, notes, arrival_time, timezone, opponent, home_away, uniform, score_for, score_against, game_result, tournament_id, round, placement_rank, placement_label, teams(timezone, name, home_uniform, away_uniform, home_uniform_color, away_uniform_color), locations(name, address), tournament:tournament_id(id, title), league:league_id(name, season)"
         )
         .eq("id", eventId)
         .single(),

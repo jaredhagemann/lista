@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,8 @@ import { displayLabel } from "../../lib/labels";
 import { gameTitle } from "../../lib/game-display";
 import { teamRecord, type ResultGame, type TeamRecord } from "../../lib/team-record";
 import { TeamCard, type TeamCardMember } from "../../components/TeamCard";
-import { RecordCard, type LastTournament } from "../../components/RecordCard";
+import { RecordCard, type LastTournament, type LeagueRow } from "../../components/RecordCard";
+import { leagueLabel, leagueRecords, type League } from "../../lib/leagues";
 import { eventTypeColors, PART_OF_COLOR } from "../../lib/event-type-colors";
 import {
   gameCount,
@@ -50,9 +51,11 @@ type Event = {
   round: string | null;
   tournament: { title: string } | null;
   games: { count: number }[] | null;
+  /** A game's league, for its tag (tournaments-and-leagues §5). */
+  league: { name: string; season: string } | null;
 };
 
-/** A finished tournament with a placement, for the Record card (D8). */
+/** A finished tournament, placed or not, for the Record card (D8, revised 2026-10-14). */
 type PlacedTournament = {
   id: string;
   title: string;
@@ -87,23 +90,33 @@ export default function HomeScreen() {
   // Games with a result, for the Record card; the team's zone for its date line.
   const [record, setRecord] = useState<TeamRecord | null>(null);
   const [lastTournament, setLastTournament] = useState<LastTournament | null>(null);
+  const [leagueRows, setLeagueRows] = useState<LeagueRow[]>([]);
   const [teamTimeZone, setTeamTimeZone] = useState<string | null>(null);
+  // TL-026: whether the last attempt at the card's reads failed. TL-027: the
+  // team whose record is shown, so a failed read only keeps that team's record.
+  const [recordTeam, setRecordTeam] = useState<string | null>(null);
+  const [recordFailed, setRecordFailed] = useState(false);
+  // TL-027: each read is numbered, and only the latest one's reply is used, so
+  // a slow reply for a team no longer selected can't land over the new one's.
+  const latestRead = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   async function fetchData() {
+    const read = ++latestRead.current;
     if (!membership?.teamId) {
       setLoading(false);
       setRefreshing(false);
       return;
     }
 
+    const teamId = membership.teamId;
     const now = new Date().toISOString();
-    const [eventsResult, membersResult, resultsResult, placedResult] = await Promise.all([
+    const [eventsResult, membersResult, resultsResult, placedResult, leaguesResult] = await Promise.all([
       supabase
         .from("events")
         .select(
-          "id, title, event_type, start_time, end_time, is_cancelled, timezone, opponent, home_away, score_for, score_against, tournament_id, round, teams(timezone, name), locations(name), tournament:tournament_id(title), games:events!tournament_id(count)"
+          "id, title, event_type, start_time, end_time, is_cancelled, timezone, opponent, home_away, score_for, score_against, tournament_id, round, teams(timezone, name), locations(name), tournament:tournament_id(title), games:events!tournament_id(count), league:league_id(name, season)"
         )
         .eq("team_id", membership.teamId)
         .eq("is_cancelled", false)
@@ -117,11 +130,12 @@ export default function HomeScreen() {
         .eq("team_id", membership.teamId),
       supabase
         .from("events")
-        .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, teams(timezone)")
+        .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, league_id, teams(timezone)")
         .eq("team_id", membership.teamId)
         .eq("event_type", "game")
         .not("game_result", "is", null),
-      // The latest finished tournament with a placement, for the Record card (D8).
+      // The latest finished tournament, placed or not, for the Record card (D8,
+      // revised 2026-10-14).
       supabase
         .from("events")
         .select("id, title, start_time, end_time, timezone, placement_rank, placement_label, teams(timezone)")
@@ -129,30 +143,57 @@ export default function HomeScreen() {
         .eq("event_type", "tournament")
         .eq("is_cancelled", false)
         .lte("end_time", now)
-        .or("placement_rank.not.is.null,placement_label.not.is.null")
         .order("end_time", { ascending: false })
         .limit(1),
+      // The team's active leagues, a section each on the Record card (D9, D17).
+      supabase
+        .from("leagues")
+        .select("id, name, season, archived_at")
+        .eq("team_id", membership.teamId)
+        .is("archived_at", null),
     ]);
+    if (read !== latestRead.current) return;
 
     setEvents((eventsResult.data ?? []) as unknown as Event[]);
     setMembers((membersResult.data ?? []) as unknown as TeamCardMember[]);
+
+    // TL-026: a failed read is not an empty one. Keep the record already shown,
+    // if any, and let the card say the reads failed.
+    if (resultsResult.error || placedResult.error || leaguesResult.error) {
+      setRecordFailed(true);
+      // Another team's record is never kept (TL-027): this is a first load for this team.
+      if (recordTeam !== teamId) {
+        setRecord(null);
+        setLeagueRows([]);
+        setLastTournament(null);
+        setRecordTeam(null);
+      }
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    setRecordFailed(false);
+    setRecordTeam(teamId);
     const results = (resultsResult.data ?? []) as unknown as (ResultGame & {
       tournament_id: string | null;
+      league_id: string | null;
       teams: { timezone: string | null } | null;
     })[];
+    setLeagueRows(leagueRecords((leaguesResult.data ?? []) as unknown as League[], results));
     const overall = teamRecord(results);
     setRecord(overall);
-    // D8: the tournament is the last result until a game starts after it ended.
-    const placed = ((placedResult.data ?? []) as unknown as PlacedTournament[])[0];
-    const placement = placed ? placementText(placed) : null;
+    // D8, revised 2026-10-14: the latest finished tournament always shows its
+    // results, until a newer one finishes. The latest by end, whatever order arrived.
+    const finished = ((placedResult.data ?? []) as unknown as PlacedTournament[]).sort(
+      (a, b) => Date.parse(b.end_time) - Date.parse(a.end_time)
+    )[0];
     setLastTournament(
-      // With no game results at all, a placement is still a result (review TL-022).
-      placed && placement && (!overall || Date.parse(placed.end_time) > Date.parse(overall.last.startTime))
+      finished
         ? {
-            title: placed.title,
-            placement,
-            record: tournamentRecord(placed.id, results),
-            dates: tournamentDates(placed),
+            title: finished.title,
+            placement: placementText(finished) ?? "",
+            record: tournamentRecord(finished.id, results),
+            dates: tournamentDates(finished),
           }
         : null
     );
@@ -307,6 +348,9 @@ export default function HomeScreen() {
                     {partOf ? (
                       <Text style={{ fontSize: 12, color: PART_OF_COLOR, marginTop: 1 }}>{partOf}</Text>
                     ) : null}
+                    {event.league ? (
+                      <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 1 }}>{leagueLabel(event.league)}</Text>
+                    ) : null}
                     <View className="flex-row items-center gap-2 mt-0.5">
                       <Text className="text-sm text-gray-500 flex-shrink">
                         {formatEventTime(event)}
@@ -347,7 +391,8 @@ export default function HomeScreen() {
           onOpenRoster={() => router.push("/(app)/team" as any)}
         />
 
-        {record || lastTournament ? (
+        {/* A result, a finished tournament or an active league shows the card (2026-10-15). */}
+        {record || lastTournament || leagueRows.length > 0 || recordFailed ? (
           <View className="mt-4">
             <RecordCard
               teamName={membership.teamName}
@@ -355,6 +400,9 @@ export default function HomeScreen() {
               teamTimeZone={teamTimeZone}
               winColor={membership.winColor}
               lastTournament={lastTournament}
+              leagues={leagueRows}
+              status={!recordFailed ? "ok" : recordTeam === membership.teamId ? "stale" : "failed"}
+              onRetry={fetchData}
             />
           </View>
         ) : null}

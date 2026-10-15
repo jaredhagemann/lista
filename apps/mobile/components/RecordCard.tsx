@@ -1,20 +1,26 @@
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { TeamRecord } from "../lib/team-record";
 import { eventZone, formatEventClock, formatEventDay } from "../lib/event-time";
 
 const RESULT = { win: "Win", loss: "Loss", tie: "Tie" } as const;
 
+type Counts = Pick<TeamRecord, "wins" | "losses" | "ties">;
+
 /**
- * The last tournament with a placement, shown as the last result until a game
- * starts after it ended (docs/specs/tournaments-and-leagues.md, D8).
+ * The latest finished tournament, placed or not (docs/specs/tournaments-and-
+ * leagues.md, D8 revised 2026-10-14). It stays until a newer one finishes.
  */
 export type LastTournament = {
   title: string;
+  /** "2nd place", or "" without a placement. */
   placement: string;
   /** Its own games' record, once one has a result. */
-  record: Pick<TeamRecord, "wins" | "losses" | "ties"> | null;
+  record: Counts | null;
   dates: string;
 };
+
+/** An active league's section (D9): its own record, or null before a result. */
+export type LeagueRow = { id: string; label: string; record: TeamRecord | null };
 
 function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
@@ -37,14 +43,39 @@ function ScoreRow({ name, score }: { name: string; score: string | null }) {
   );
 }
 
+function Tag({ children }: { children: string }) {
+  return (
+    <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
+      <Text className="text-xs font-semibold uppercase tracking-wide text-white">{children}</Text>
+    </View>
+  );
+}
+
+/** A headed part of the card: a league, the last tournament, or the overall record. */
+function Section({ label, heading, children }: { label: string; heading: string; children: React.ReactNode }) {
+  return (
+    <View accessibilityLabel={label} className="gap-3">
+      <Text className="text-sm font-semibold text-gray-900">{heading}</Text>
+      {children}
+    </View>
+  );
+}
+
 /**
  * The home screen's Record card, as the web dashboard's (spec:
- * docs/specs/team-branding-and-labels.md §4): the last game as a scoreline with
- * its date and time, and the wins, losses and ties with a bar split in those
- * proportions: wins in `winColor` (the club's secondary color, else lista
- * blue), losses black, ties grey. Shown once a game has a result, or a
- * tournament a placement: a placement is a result of its own, and without game
- * results the card shows the tournament alone (review TL-022).
+ * docs/specs/team-branding-and-labels.md §4; docs/specs/tournaments-and-leagues.md
+ * D8, D9, revised 2026-10-14 and 2026-10-15). Top to bottom:
+ *
+ *   - a section per active league: its own last game and "League Record", or
+ *     "No results yet". Without leagues, the team's last game instead
+ *   - the last tournament: the latest finished one, placed or not, with its
+ *     placement and dates and its own "Tournament Record"
+ *   - "Overall Record": every game counts (D3)
+ *
+ * A record is the wins, losses and ties with a bar split in those proportions:
+ * wins in `winColor` (the club's secondary color, else lista blue), losses
+ * black, ties grey. The card shows once a game has a result, a tournament has
+ * finished, or the team has an active league.
  */
 export function RecordCard({
   teamName,
@@ -52,48 +83,86 @@ export function RecordCard({
   teamTimeZone,
   winColor,
   lastTournament = null,
+  leagues = [],
+  status = "ok",
+  onRetry,
 }: {
+  /**
+   * A read behind the card failed (TL-026): "failed" when nothing had loaded, so
+   * the card says so rather than show a record from part of the reads; "stale"
+   * when a refresh failed, so it keeps the record it had and says so.
+   */
+  status?: "ok" | "failed" | "stale";
+  onRetry?: () => void;
   teamName: string;
-  /** Null before any game has a result: then only the last tournament shows. */
+  /** Null before any game has a result. */
   record: TeamRecord | null;
   teamTimeZone: string | null;
   winColor: string;
   lastTournament?: LastTournament | null;
+  leagues?: LeagueRow[];
 }) {
-
   return (
     <View accessibilityLabel="Record" className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
       <View className="px-4 pt-4 pb-3 border-b border-gray-50">
         <Text className="font-semibold text-gray-900">Record</Text>
       </View>
-      <View className="p-4 gap-5">
-        {lastTournament ? (
-          <View className="gap-1">
-            <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
-              <Text className="text-xs font-semibold uppercase tracking-wide text-white">Last tournament</Text>
-            </View>
-            <Text className="text-lg font-semibold text-gray-900" numberOfLines={1}>
-              {lastTournament.title}
-            </Text>
-            <View className="flex-row flex-wrap items-baseline gap-3">
-              <Text className="text-lg font-semibold text-gray-900">{lastTournament.placement}</Text>
-              {lastTournament.record ? (
-                <Text
-                  accessibilityLabel={`Tournament record ${lastTournament.record.wins}–${lastTournament.record.losses}–${lastTournament.record.ties}`}
-                  className="text-sm text-gray-500"
-                >
-                  {lastTournament.record.wins}–{lastTournament.record.losses}–{lastTournament.record.ties}
-                </Text>
-              ) : null}
-            </View>
-            <Text className="text-sm text-gray-500">{lastTournament.dates}</Text>
-          </View>
-        ) : record ? (
-          <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />
-        ) : null}
+      {status === "failed" ? (
+        <View className="p-4 gap-3">
+          <Text className="text-sm text-gray-500">Couldn't load the record.</Text>
+          {onRetry ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={onRetry} className="self-start">
+              <Text className="text-sm font-semibold text-blue-600">Try again</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : (
+        <View className="p-4 gap-6">
+          {status === "stale" ? (
+            <Text className="text-sm text-gray-500">Couldn't refresh the record. Pull down to try again.</Text>
+          ) : null}
+          {leagues.length > 0
+            ? leagues.map((l) => (
+                <Section key={l.id} label={l.label} heading={l.label}>
+                  {l.record ? (
+                    <>
+                      <LastGame teamName={teamName} last={l.record.last} teamTimeZone={teamTimeZone} />
+                      <Stats record={l.record} winColor={winColor} heading="League Record" />
+                    </>
+                  ) : (
+                    <Text className="text-sm text-gray-500">No results yet</Text>
+                  )}
+                </Section>
+              ))
+            : record
+              ? <LastGame teamName={teamName} last={record.last} teamTimeZone={teamTimeZone} />
+              : null}
 
-        {record ? <Stats record={record} winColor={winColor} /> : null}
-      </View>
+          {lastTournament ? (
+            <Section label="Last tournament" heading="Last tournament">
+              <View className="gap-1">
+                <Text className="text-lg font-semibold text-gray-900" numberOfLines={1}>
+                  {lastTournament.title}
+                </Text>
+                {lastTournament.placement ? (
+                  <Text className="text-lg font-semibold text-gray-900">{lastTournament.placement}</Text>
+                ) : null}
+                <Text className="text-sm text-gray-500">{lastTournament.dates}</Text>
+              </View>
+              {lastTournament.record ? (
+                <Stats record={lastTournament.record} winColor={winColor} heading="Tournament Record" />
+              ) : null}
+            </Section>
+          ) : null}
+
+          {/* Always last: every game counts here (D3). */}
+          {record ? (
+            <Section label="Overall record" heading="Overall Record">
+              <Stats record={record} winColor={winColor} />
+            </Section>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 }
@@ -113,9 +182,7 @@ function LastGame({
   const zone = eventZone({ timezone: last.timeZone, teams: { timezone: teamTimeZone } });
   return (
     <View className="gap-1">
-      <View className="self-start bg-gray-900 rounded px-2 py-0.5 mb-1">
-        <Text className="text-xs font-semibold uppercase tracking-wide text-white">Last game</Text>
-      </View>
+      <Tag>Last game</Tag>
       <ScoreRow name={teamName} score={scored ? String(last.scoreFor) : RESULT[last.result]} />
       <ScoreRow name={opponent} score={scored ? String(last.scoreAgainst) : null} />
       <Text className="text-sm text-gray-500">
@@ -125,8 +192,11 @@ function LastGame({
   );
 }
 
-/** Wins, losses and ties, with a bar split in those proportions. */
-function Stats({ record, winColor }: { record: TeamRecord; winColor: string }) {
+/**
+ * Wins, losses and ties, with a bar split in those proportions. A league's or a
+ * tournament's has its own heading, as on the web.
+ */
+function Stats({ record, winColor, heading }: { record: Counts; winColor: string; heading?: string }) {
   const { wins, losses, ties } = record;
   const played = wins + losses + ties;
   const share = (n: number): `${number}%` => `${(n / played) * 100}%`;
@@ -137,6 +207,7 @@ function Stats({ record, winColor }: { record: TeamRecord; winColor: string }) {
   ];
   return (
     <View className="gap-3">
+      {heading ? <Tag>{heading}</Tag> : null}
       <View className="flex-row">
         {stats.map(({ label, value }) => (
           <View key={label} accessible accessibilityLabel={`${value} ${label}`} style={{ flex: 1, alignItems: "center" }}>

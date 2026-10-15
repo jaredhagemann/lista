@@ -73,7 +73,13 @@ export default async function DashboardPage() {
 
   // The Team card: the club's branding, and the team's games with a result
   // (spec: team-branding-and-labels §4).
-  const [{ data: members }, { data: org }, { data: resultGames }, { data: placedTournaments }, { data: teamLeagues }] = await Promise.all([
+  const [
+    { data: members },
+    { data: org },
+    { data: resultGames, error: resultsError },
+    { data: placedTournaments, error: placedError },
+    { data: teamLeagues, error: leaguesError },
+  ] = await Promise.all([
     supabase.from("team_members").select("id, role, profiles(first_name, last_name)").eq("team_id", team.id),
     team.organization_id
       ? supabase
@@ -103,7 +109,11 @@ export default async function DashboardPage() {
     supabase.from("leagues").select("id, name, season, archived_at").eq("team_id", team.id).is("archived_at", null),
   ]);
 
+  // A read that failed is never shown as no results: the card says it couldn't
+  // load rather than "No results yet" or a record missing its leagues (TL-026).
+  const recordFailed = !!(resultsError || placedError || leaguesError);
   const record = teamRecord(resultGames ?? []);
+  const leagueRows = leagueRecords(teamLeagues ?? [], resultGames ?? []);
   // D8, revised 2026-10-14: the latest finished tournament always shows its
   // results, under the last game, until a newer one finishes. With no game
   // results at all, it's still shown (review TL-022).
@@ -211,14 +221,17 @@ export default async function DashboardPage() {
 
         <TeamCard team={{ ...team, organizations: org }} members={members ?? []} />
 
-        {(record || lastTournament) && (
+        {/* A result, a finished tournament, or an active league shows the card: a new
+            league reads "No results yet" (decided 2026-10-15, review of #126). */}
+        {(record || lastTournament || leagueRows.length > 0 || recordFailed) && (
           <RecordCard
+            failed={recordFailed}
             teamName={team.name}
             record={record}
             teamTimeZone={team.timezone}
             winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
             lastTournament={lastTournament}
-            leagues={leagueRecords(teamLeagues ?? [], resultGames ?? [])}
+            leagues={leagueRows}
           />
         )}
       </div>

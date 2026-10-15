@@ -16,6 +16,8 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 const mocks = vi.hoisted(() => {
   const tables: Record<string, unknown> = {};
   const calls: { table: string; method: string; args: unknown[] }[] = [];
+  /** Reads that fail (TL-026): "results", "leagues" or "placed". */
+  const failing = new Set<string>();
   const from = (table: string) => {
     const filters: string[] = [];
     const chain: Record<string, unknown> = {};
@@ -27,7 +29,20 @@ const mocks = vi.hoisted(() => {
       if (filters.includes("not:game_result")) return tables.results ?? [];
       return tables.upcoming ?? [];
     };
-    const result = () => Promise.resolve({ data: data(), error: null, count: 0 });
+    const kind = () =>
+      table === "leagues"
+        ? "leagues"
+        : table !== "events"
+          ? table
+          : filters.includes("event_type=tournament")
+            ? "placed"
+            : filters.includes("not:game_result")
+              ? "results"
+              : "upcoming";
+    const result = () =>
+      failing.has(kind())
+        ? Promise.resolve({ data: null, error: { message: "statement timeout" }, count: null })
+        : Promise.resolve({ data: data(), error: null, count: 0 });
     for (const m of ["select", "neq", "in", "gte", "gt", "lte", "lt", "order", "limit", "is", "or"]) {
       chain[m] = (...args: unknown[]) => {
         calls.push({ table, method: m, args });
@@ -48,6 +63,7 @@ const mocks = vi.hoisted(() => {
     return chain;
   };
   return {
+    failing,
     tables,
     calls,
     membership: null as unknown,
@@ -91,6 +107,7 @@ function played(id: string, start: string, result: string, tournamentId: string 
 beforeEach(() => {
   for (const key of Object.keys(mocks.tables)) delete mocks.tables[key];
   mocks.calls.length = 0;
+  mocks.failing.clear();
   mocks.membership = { team_id: "team-1", role: "coach", profile_id: "coach-1", teams: TEAM };
   mocks.tables.team_members = [];
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -332,6 +349,31 @@ describe("the Record card with leagues (D9)", () => {
     expect(within(overall).queryByText("Surf Cup")).toBeNull();
   });
 
+  // Decided 2026-10-15 (review of #126): an active league alone shows the card.
+  it("an active league with no result yet shows the card, before any game or tournament", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [DIV3];
+    mocks.tables.results = [];
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(section(card, "Fall 2026 Division 3")).getByText("No results yet")).toBeTruthy();
+    // Nothing to count overall yet.
+    expect(within(card).queryByRole("region", { name: "Overall record" })).toBeNull();
+    expect(within(card).queryByRole("img")).toBeNull();
+  });
+
+  it("with no league, result or tournament, there's no card", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [];
+    mocks.tables.results = [];
+
+    render(await DashboardPage());
+
+    expect(screen.queryByRole("region", { name: "Record" })).toBeNull();
+  });
+
   it("asks for active leagues only (D17); with none, the card has no league sections", async () => {
     mocks.tables.placed = [];
     mocks.tables.leagues = [];
@@ -344,5 +386,63 @@ describe("the Record card with leagues (D9)", () => {
     const card = screen.getByRole("region", { name: "Record" });
     expect(within(card).getByRole("region", { name: "Overall record" })).toBeTruthy();
     expect(within(card).getByText("Last game")).toBeTruthy();
+  });
+});
+
+// ── TL-026 (docs/reviews/2026-10-01-tournaments-and-leagues-review.md) ───────
+
+describe("TL-026: a failed read is never shown as no results", () => {
+  beforeEach(() => {
+    vi.setSystemTime(new Date("2026-12-20T12:00:00.000Z"));
+  });
+  const DIV3 = { id: "div3", team_id: "team-1", name: "Division 3", season: "Fall 2026", archived_at: null };
+
+  it("the results failing: the card says it couldn't load, not \"No results yet\"", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [DIV3];
+    mocks.tables.results = [{ ...played("a", "2026-10-03T17:00:00Z", "win", null), league_id: "div3" }];
+    mocks.failing.add("results");
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(card).getByText(/Couldn't load the record/)).toBeTruthy();
+    expect(within(card).queryByText("No results yet")).toBeNull();
+    expect(within(card).queryByRole("region", { name: "Overall record" })).toBeNull();
+  });
+
+  it("the leagues failing: the same, not a card without its leagues", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.results = [{ ...played("a", "2026-10-03T17:00:00Z", "win", null), league_id: "div3" }];
+    mocks.failing.add("leagues");
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(card).getByText(/Couldn't load the record/)).toBeTruthy();
+    expect(within(card).queryByText("Last game")).toBeNull();
+  });
+
+  it("the last tournament failing: the same", async () => {
+    mocks.tables.placed = [SURF_CUP];
+    mocks.tables.leagues = [];
+    mocks.tables.results = [played("a", "2026-12-12T17:00:00Z", "win", "t-1")];
+    mocks.failing.add("placed");
+
+    render(await DashboardPage());
+
+    expect(within(screen.getByRole("region", { name: "Record" })).getByText(/Couldn't load the record/)).toBeTruthy();
+  });
+
+  it("a successful empty read still shows an active league's \"No results yet\"", async () => {
+    mocks.tables.placed = [];
+    mocks.tables.leagues = [DIV3];
+    mocks.tables.results = [];
+
+    render(await DashboardPage());
+
+    const card = screen.getByRole("region", { name: "Record" });
+    expect(within(card).getByText("No results yet")).toBeTruthy();
+    expect(within(card).queryByText(/Couldn't load/)).toBeNull();
   });
 });
