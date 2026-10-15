@@ -1,7 +1,7 @@
 # BUG-033 — A game's result can't be cleared once set
 
 **Severity:** P2
-**Status:** Open
+**Status:** Fixed
 **Reported:** 2026-10-15 by the product owner, using the web app
 **Area:** events, web
 **Evidence class:** Mixed — see below
@@ -71,9 +71,24 @@ The first test fails against the current code, because there is no "No result" o
 ## Fix as implemented
 
 **Branch:** `fix/033-game-result-cannot-be-cleared`
-**PR:** #NN
+**PR:** #129
 **Migration:** none
+
+- `apps/web/src/components/calendar/event-detail.tsx`: the Result select's first item is **No result**, with
+  the value `"none"` (`NO_RESULT`), because a Radix select item can't have an empty value. A game with no
+  result opens showing it. Saving maps it to `game_result: null`.
+- Choosing it leaves the scores as they are, as decided.
+- The Result label is now linked to its select (`id="gameResult"`).
+- No other web form sets a result, and mobile only displays results.
 
 ## Verification
 
-**Test:** `apps/web/tests/…`
+**Test:** `apps/web/tests/game-result-clear.test.tsx`, against the real `EventEditForm`:
+- "choosing No result saves no result, and leaves the scores": fails against the unfixed form, which has no
+  such option
+- "a game with no result shows No result": also fails against it
+- "choosing another result still saves it": the legitimate path, which passes on both
+
+The full web suite passes (110 files, 1,512 tests). `tsc --noEmit` and eslint are clean.
+
+**Deployment verification:** none required. This is a UI change with no migration or configuration.
