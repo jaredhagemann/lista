@@ -46,8 +46,9 @@ export type ContextChoice<M extends ContextMembership> = {
  *   2. Otherwise a person, in order: the saved one, the old profile cookie's, the
  *      account's own. Each must be the account's own or managed. The first with
  *      a team wins, at their last-picked team (D2), else their first.
- *   3. Otherwise any team of the account's people: a parent with no team of
- *      their own views as a child. The person follows the team.
+ *   3. Otherwise the account's other people, in the order they joined their
+ *      teams, by the same rule: a parent with no team of their own views as a
+ *      child, at that child's last-picked team. The person follows the team.
  *
  * Archived teams are passed over while another exists (D4).
  */
@@ -82,7 +83,9 @@ export function chooseContext<M extends ContextMembership>(input: {
 
   const lastPicked = (profileId: string) =>
     profileId === userId ? ownProfile?.active_team_id : managed.find((m) => m.id === profileId)?.active_team_id;
-  const people = [savedForMe?.profileId, legacyProfileId, userId].filter(
+  // The people to try, in order; then the rest of the account's people, in
+  // the order they joined their teams (a parent with no team of their own).
+  const people = [savedForMe?.profileId, legacyProfileId, userId, ...pool.map((m) => m.profile_id)].filter(
     (id, i, all): id is string => !!id && allowed.has(id) && all.indexOf(id) === i
   );
   for (const profileId of people) {
@@ -90,7 +93,6 @@ export function chooseContext<M extends ContextMembership>(input: {
     if (membership) return chosen(membership);
   }
 
-  if (pool[0]) return chosen(pool[0]);
   return { profileId: people[0] ?? userId, membership: null, save: null };
 }
 
