@@ -1,7 +1,7 @@
 # BUG-036 — A web tab keeps acting as the account it loaded with after another sign-in
 
 **Severity:** P2 (see Severity note)
-**Status:** Open
+**Status:** Fixed
 **Reported:** 2026-10-16 by the product owner, testing with two accounts in one browser
 **Area:** auth, web
 **Evidence class:** Mixed — see below
@@ -92,9 +92,39 @@ The first and last fail against the current code, which has no listener.
 ## Fix as implemented
 
 **Branch:** `fix/036-web-session-switch`
-**PR:** #NN
+**PR:** #137
 **Migration:** none
+
+- **New `apps/web/src/components/layout/session-watch.tsx`:** a client component the dashboard layout mounts with
+  `user.id`, the account the page was rendered for. It also covers the club pages, which sit under that layout.
+- **How it notices:**
+  - It subscribes to `onAuthStateChange`.
+  - It calls `getUser()` again on `focus` and `visibilitychange`. A sign-in in another tab reaches this one
+    only when it next reads the session cookies.
+- **What it does,** as decided:
+  - a session for another account: `window.location.assign("/dashboard")`, a full reload
+  - `SIGNED_OUT`, or `AuthSessionMissingError` from the check: `/login`
+  - the same account (`INITIAL_SESSION`, `TOKEN_REFRESHED`) or a failed check: nothing
+  - it navigates at most once
+- **Not covered:** pages outside `/dashboard`, such as `/invite/*`, have no watcher.
+- **Related:** BUG-037's fix makes a refused profile save report a failure, so a mismatch that gets past this
+  shows up instead of being hidden.
 
 ## Verification
 
-**Test:** `apps/web/tests/…`
+**Test:** `apps/web/tests/session-watch.test.tsx`, 7 tests, with the browser auth client mocked:
+- another account's `SIGNED_IN` reloads `/dashboard`
+- `SIGNED_OUT` goes to `/login`
+- the same account's events do nothing (the legitimate path)
+- regaining focus with another account reloads, and with a missing session goes to `/login`
+- regaining focus with the same account, or after a network failure, does nothing
+- unmounting unsubscribes
+
+`apps/web/tests/dashboard-layout-branding.test.tsx` adds "watches the session for the signed-in account". It
+failed before the layout mounted the component.
+
+None of these can pass against the unfixed code, which has no session listener. The full web suite passes
+(113 files, 1,528 tests). `tsc --noEmit` and eslint are clean.
+
+**Deployment verification:** after deploy, in one browser, open a dashboard tab as account A, then sign in as
+B in another tab. Going back to the first tab reloads it as B. Sending a chat message from it then works.
