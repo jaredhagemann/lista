@@ -30,7 +30,7 @@ export default async function MemberProfilePage({
 
   if (!user) redirect("/login");
 
-  const activeProfileId = await getActiveProfileId(user.id);
+  const activeProfileId = await getActiveProfileId(supabase, user.id);
 
   // Fetch the target team member with profile
   const { data: rawMember } = await supabase

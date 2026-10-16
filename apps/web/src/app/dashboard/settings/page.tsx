@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
@@ -30,6 +29,7 @@ function computeTrialDaysRemaining(
 }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getActiveMembership } from "@/lib/get-active-membership";
+import { loadActiveContext } from "@/lib/active-context";
 import type { Database } from "@/types/database";
 import type { Sport } from "@/lib/training";
 
@@ -119,23 +119,23 @@ export default async function SettingsPage({
   // the Plan tab's `orgPlan`: that is scoped to organization_members
   // (owners/directors), so reusing it would hide the toggle from ordinary
   // players, who are the people the toggle is actually for. This mirrors the
-  // Training page — org derived from the active profile's active_team_id, so a
+  // Training page — org derived from this device's team (device-local-active-context), so a
   // parent viewing a managed child gets the CHILD's team/org, not the viewer's.
-  const cookieStore = await cookies();
-  const activeProfileId = cookieStore.get("active_profile_id")?.value ?? user.id;
+  // The same context as `membership` above (one read per request).
+  const context = await loadActiveContext(supabase, user.id);
   let trainingProfile:
     | { id: string; firstName: string | null; optedOut: boolean }
     | null = null;
   const { data: ap } = await supabase
     .from("profiles")
-    .select("id, first_name, training_leaderboard_opt_out, active_team_id")
-    .eq("id", activeProfileId)
+    .select("id, first_name, training_leaderboard_opt_out")
+    .eq("id", context.activeProfileId)
     .maybeSingle();
-  if (ap?.active_team_id) {
+  if (ap && activeTeamId) {
     const { data: apTeam } = await supabase
       .from("teams")
       .select("organization_id")
-      .eq("id", ap.active_team_id)
+      .eq("id", activeTeamId)
       .maybeSingle();
     if (apTeam?.organization_id) {
       const { data: apOrg } = await supabase

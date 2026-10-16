@@ -1,6 +1,6 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { loadActiveContext } from "@/lib/active-context";
 import { hasClubAccess } from "@/lib/plan";
 import { TrainingView } from "@/components/training/training-view";
 import type { Sport } from "@/lib/training";
@@ -14,22 +14,22 @@ export default async function TrainingPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Resolve the active profile + its active team (same preamble as club/layout).
-  const cookieStore = await cookies();
-  const activeProfileId = cookieStore.get("active_profile_id")?.value ?? user.id;
+  // This device's person and team, together (docs/specs/device-local-active-context.md).
+  const context = await loadActiveContext(supabase, user.id);
+  const activeTeamId = context.activeMembership?.team_id ?? null;
 
   const { data: activeProfile } = await supabase
     .from("profiles")
-    .select("id, first_name, last_name, training_leaderboard_opt_out, active_team_id")
-    .eq("id", activeProfileId)
+    .select("id, first_name, last_name, training_leaderboard_opt_out")
+    .eq("id", context.activeProfileId)
     .single();
 
-  if (!activeProfile?.active_team_id) redirect("/dashboard");
+  if (!activeProfile || !activeTeamId) redirect("/dashboard");
 
   const { data: activeTeam } = await supabase
     .from("teams")
     .select("id, name, timezone, organization_id, sport")
-    .eq("id", activeProfile.active_team_id)
+    .eq("id", activeTeamId)
     .single();
 
   if (!activeTeam?.organization_id) redirect("/dashboard");

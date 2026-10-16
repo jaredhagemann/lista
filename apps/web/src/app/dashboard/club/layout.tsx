@@ -1,6 +1,6 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { loadActiveContext } from "@/lib/active-context";
 import { ClubOrgProvider } from "@/context/club-org-context";
 import { ClubSidebar } from "@/components/club/club-sidebar";
 import { OwnershipOfferBanner } from "@/components/club/ownership-offer-banner";
@@ -20,23 +20,15 @@ export default async function ClubLayout({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Resolve active profile and its active team (mirrors dashboard layout logic)
-  const cookieStore = await cookies();
-  const activeProfileId =
-    cookieStore.get("active_profile_id")?.value ?? user.id;
+  // This device's team (docs/specs/device-local-active-context.md), checked.
+  const activeTeamId = (await loadActiveContext(supabase, user.id)).activeMembership?.team_id ?? null;
 
-  const { data: activeProfile } = await supabase
-    .from("profiles")
-    .select("active_team_id")
-    .eq("id", activeProfileId)
-    .single();
-
-  if (!activeProfile?.active_team_id) redirect("/dashboard");
+  if (!activeTeamId) redirect("/dashboard");
 
   const { data: team } = await supabase
     .from("teams")
     .select("organization_id")
-    .eq("id", activeProfile.active_team_id)
+    .eq("id", activeTeamId)
     .single();
 
   if (!team?.organization_id) redirect("/dashboard");

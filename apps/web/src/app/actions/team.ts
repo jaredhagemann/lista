@@ -7,6 +7,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Database } from "@/types/database";
 import { ACTIVE_PROFILE_COOKIE } from "./constants";
+import { contextCookieOptions } from "@/lib/active-context-cookie";
+import { saveContextCookie } from "@/lib/active-context-save";
 import { getActiveProfileId } from "@/lib/get-active-membership";
 import {
   collectTeamDeletionRecipients,
@@ -16,24 +18,14 @@ import { isClubPlan } from "@/lib/plan";
 
 const BASE_DOMAIN = "lista.team";
 
-function activeProfileCookieOptions(overrides: { maxAge?: number } = {}) {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    domain:
-      process.env.SUBDOMAIN_ROUTING_ENABLED !== "false" &&
-      process.env.NODE_ENV === "production"
-        ? `.${BASE_DOMAIN}`
-        : undefined,
-    ...overrides,
-  };
-}
-
+/**
+ * Clears the old profile-only cookie. The device's context now lives in its own
+ * cookie (lib/active-context-cookie.ts), which team creation sets for the new
+ * team, so this leaves that alone.
+ */
 export async function clearActiveProfile() {
   const cookieStore = await cookies();
-  cookieStore.set(ACTIVE_PROFILE_COOKIE, "", activeProfileCookieOptions({ maxAge: 0 }));
+  cookieStore.set(ACTIVE_PROFILE_COOKIE, "", contextCookieOptions({ maxAge: 0 }));
 }
 
 export async function setActiveTeam(teamId: string) {
@@ -72,7 +64,9 @@ export async function setActiveTeam(teamId: string) {
     ? user.id
     : memberships[0].profile_id!;
 
-  // Update active_team_id on the chosen profile (use service role to allow updating managed profiles)
+  // The team is also recorded on the profile as its "last picked" team: the
+  // default for a device with no context of its own (spec D2). Service role, to
+  // reach managed profiles.
   const admin = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -83,13 +77,8 @@ export async function setActiveTeam(teamId: string) {
     .update({ active_team_id: teamId })
     .eq("id", chosenProfileId);
 
-  // Update the active_profile_id cookie
-  const cookieStore = await cookies();
-  if (chosenProfileId === user.id) {
-    cookieStore.set(ACTIVE_PROFILE_COOKIE, "", activeProfileCookieOptions({ maxAge: 0 }));
-  } else {
-    cookieStore.set(ACTIVE_PROFILE_COOKIE, chosenProfileId, activeProfileCookieOptions());
-  }
+  // The switch itself is this device's alone (spec D1).
+  await saveContextCookie({ accountId: user.id, profileId: chosenProfileId, teamId });
 
   revalidatePath("/dashboard", "layout");
 
@@ -145,7 +134,7 @@ export async function removeTeamMember(memberId: string, teamId: string) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const activeProfileId = await getActiveProfileId(user.id);
+  const activeProfileId = await getActiveProfileId(supabase, user.id);
 
   // Verify caller is an admin on this team
   const { data: callerMembership } = await supabase
