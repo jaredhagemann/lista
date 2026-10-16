@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useFocusEffect } from "expo-router";
 import {
   View,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -54,6 +55,20 @@ type Event = {
 
 type ListItem = ScheduleItem<Event>;
 
+/**
+ * The type filter, as on the web's schedule (2026-10-15): Game is every game, a
+ * tournament's included; Tournament is the tournaments themselves.
+ */
+type TypeFilter = "all" | "game" | "practice" | "tournament" | "other";
+
+const TYPE_FILTERS: { value: TypeFilter; label: string; none: string }[] = [
+  { value: "all", label: "All", none: "No events scheduled yet." },
+  { value: "game", label: "Game", none: "No games scheduled." },
+  { value: "practice", label: "Practice", none: "No practices scheduled." },
+  { value: "tournament", label: "Tournament", none: "No tournaments scheduled." },
+  { value: "other", label: "Other", none: "No other events scheduled." },
+];
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -99,26 +114,23 @@ export default function ScheduleScreen() {
   const { membership, loading: membershipLoading } = useAppContext();
   const listRef = useRef<FlatList<ListItem>>(null);
 
-  const [items, setItems] = useState<ListItem[]>([]);
-  const [firstUpcomingIndex, setFirstUpcomingIndex] = useState(-1);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [myAvailability, setMyAvailability] = useState<Map<string, AvailabilityStatus>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const isAdmin = membership?.role === "coach" || membership?.role === "manager";
-
+  // No "+": events are made on the web, so the header has only its title.
   useEffect(() => {
-    navigation.setOptions({
-      title: "Schedule",
-      headerRight: isAdmin
-        ? () => (
-            <TouchableOpacity onPress={() => {}} style={{ marginRight: 4 }}>
-              <Ionicons name="add" size={26} color="#0f172a" />
-            </TouchableOpacity>
-          )
-        : undefined,
-    });
-  }, [isAdmin]);
+    navigation.setOptions({ title: "Schedule" });
+  }, []);
+
+  // The filter applies to what was read: changing it reads nothing.
+  const { items, firstUpcomingIndex } = useMemo(
+    () => buildScheduleItems(typeFilter === "all" ? events : events.filter((e) => e.event_type === typeFilter)),
+    [events, typeFilter]
+  );
+  const shownCount = items.length - (items.some((i) => i.type === "today-divider") ? 1 : 0);
 
   const fetchEvents = useCallback(async () => {
     if (!membership?.teamId || !membership?.profileId) {
@@ -141,10 +153,7 @@ export default function ScheduleScreen() {
         .eq("profile_id", membership.profileId),
     ]);
 
-    const events = (eventsResult.data ?? []) as unknown as Event[];
-    const { items: newItems, firstUpcomingIndex: idx } = buildScheduleItems(events);
-    setItems(newItems);
-    setFirstUpcomingIndex(idx);
+    setEvents((eventsResult.data ?? []) as unknown as Event[]);
 
     const statusMap = new Map<string, AvailabilityStatus>();
     for (const row of availResult.data ?? []) {
@@ -207,25 +216,57 @@ export default function ScheduleScreen() {
     );
   }
 
-  if (items.length === 0) {
-    return (
-      <SafeAreaView style={styles.center} edges={["bottom"]}>
-        <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
-        <Text style={styles.emptyText}>No events scheduled yet.</Text>
-      </SafeAreaView>
-    );
-  }
-
+  const filter = TYPE_FILTERS.find((t) => t.value === typeFilter)!;
+  const empty = shownCount === 0;
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
+      {/* Nothing to filter on a team with no events. */}
+      {events.length > 0 ? (
+        <View style={styles.filterBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            {TYPE_FILTERS.map((t) => {
+              const selected = t.value === typeFilter;
+              return (
+                <TouchableOpacity
+                  key={t.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.label}
+                  accessibilityState={{ selected }}
+                  onPress={() => setTypeFilter(t.value)}
+                  style={[styles.filterPill, selected && styles.filterPillSelected]}
+                >
+                  <Text style={[styles.filterPillText, selected && styles.filterPillTextSelected]}>{t.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+      {/* Empty, the list stays, with its message inside, so it can still be
+          pulled to refresh: events are made on the web (TL-028). */}
       <FlatList
         ref={listRef}
-        data={items}
+        data={empty ? [] : items}
+        ListEmptyComponent={
+          <View style={styles.emptyList}>
+            <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
+            <Text style={styles.emptyText}>{events.length === 0 ? "No events scheduled yet." : filter.none}</Text>
+            {events.length > 0 ? (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Clear filter"
+                onPress={() => setTypeFilter("all")}
+              >
+                <Text style={styles.clearFilter}>Clear filter</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        }
         keyExtractor={(item, index) =>
           item.type === "today-divider" ? "today-divider" : item.event.id
         }
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, empty && { flexGrow: 1 }]}
         onScrollToIndexFailed={(info) => {
           // Fallback if index isn't rendered yet — scroll to approximate offset
           listRef.current?.scrollToOffset({
@@ -342,6 +383,23 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyText: { color: "#9ca3af", fontSize: 15, textAlign: "center", paddingHorizontal: 32 },
+  emptyList: { flex: 1, justifyContent: "center", alignItems: "center", gap: 8 },
+  clearFilter: { color: "#0f172a", fontSize: 14, fontWeight: "600", textDecorationLine: "underline", marginTop: 4 },
+
+  // Type filter
+  filterBar: { backgroundColor: "#ffffff", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
+  filterRow: { paddingHorizontal: 12, paddingVertical: 8, gap: 6 },
+  filterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
+  },
+  filterPillSelected: { backgroundColor: "#0f172a", borderColor: "#0f172a" },
+  filterPillText: { fontSize: 13, fontWeight: "500", color: "#6b7280" },
+  filterPillTextSelected: { color: "#ffffff" },
   createButton: {
     marginTop: 16,
     backgroundColor: "#0f172a",

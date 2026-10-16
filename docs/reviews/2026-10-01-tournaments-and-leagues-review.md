@@ -2,8 +2,8 @@
 
 **Purpose:** the ongoing review record for this feature, covering the specification and each implementation part.
 **Spec:** [Tournaments and leagues](../specs/tournaments-and-leagues.md).
-**Last reviewed:** 2026-10-15, [PR #127](https://github.com/jaredhagemann/lista/pull/127) at `d414cf81260735ec4f5380d153a435fc0950321c`.
-**Current outcome:** TL-001 through TL-027 are resolved. Independent follow-up review verified team-scoped retained records, retries and rejection of delayed replies, with no new actionable findings. TestFlight/device verification remains outstanding.
+**Last reviewed:** 2026-10-15, [PR #131](https://github.com/jaredhagemann/lista/pull/131) at `317b5cc18fe6b97d0c847cd8819c7ff6b8c5e200`.
+**Current outcome:** TL-001 through TL-027 remain resolved. TL-028 (the schedule's empty states lost pull-to-refresh) is implemented in `a2ba3eb2c`, awaiting review. Filtering and the existing mobile suite pass. TestFlight/device verification remains outstanding.
 
 ## Using this document as the feature changes
 
@@ -45,6 +45,7 @@
 | [TL-025](#tl-025--invalidate-selections-when-the-date-range-changes) | P2 | Failed range reload leaves old selections saveable | Resolved | Fix `03472d716`; verified at `1e67d0d42` |
 | [TL-026](#tl-026--distinguish-failed-result-reads-from-empty-leagues) | P2 | Failed result reads display "No results yet" on web and mobile | Resolved | Fix `bbf112c65`; independently verified at `e96bbbe9a` |
 | [TL-027](#tl-027--scope-the-retained-mobile-record-to-its-team) | P2 | Failed read after a team switch shows the previous team's record | Resolved | Fix `f722cc2ed`; independently verified at `d414cf812` |
+| [TL-028](#tl-028--keep-the-empty-schedule-refreshable) | P2 | Empty schedule and filter states remove pull-to-refresh | Implemented — awaiting review | Reproduced at `317b5cc18`; fix `a2ba3eb2c` |
 
 ## Implementation progress as of 2026-10-15
 
@@ -63,6 +64,10 @@
 | Leagues, web management | Merged via #125; TL-023–TL-025 resolved | Leagues in team settings (add, edit, archive and restore, delete with D20's refusal); League games tagging, played games included, silent; League pickers for new games and series, edited games, and tournament games; old team field relabeled (D17) |
 | Leagues, web display | #126 merged; #127 empty-state and TL-026 fixes verified | Per-active-league last game and record or empty state; latest finished tournament persists with its own record; Overall Record last; schedule list league tags and game-page league details, including archived tags. Active leagues alone now show the card |
 | Leagues, mobile | Reviewed at `d414cf812`; TL-026–TL-027 resolved; TestFlight pending | The Record card as the web's (league sections with League Record, Last tournament with Tournament Record, Overall Record last; shown for an active league alone); league tags on the schedule and home; the league and Home / Away on a game's screen |
+
+Schedule type-filter follow-up (#131): reviewed at `317b5cc18`. All/Game/Practice/Tournament/Other
+filtering, removal of the dead create button, and empty messages are implemented. TL-028 implemented, awaiting review;
+device layout and scrolling checks remain pending.
 
 ## Part 1 — database findings
 
@@ -1170,6 +1175,40 @@ Implemented in `f722cc2ed` (2026-10-15), independently verified:
 - **No stale replies:** each read is numbered (`latestRead`), and a reply that isn't the latest is dropped
   whole, so a slow reply for a team no longer selected can't restore its data.
 
+### TL-028 — Keep the empty schedule refreshable
+
+**Priority / status:** P2 / Open.
+**Source:** [schedule screen, lines 219–225](https://github.com/jaredhagemann/lista/blob/317b5cc18fe6b97d0c847cd8819c7ff6b8c5e200/apps/mobile/app/%28app%29/schedule/index.tsx#L219-L225),
+and the empty-filter branch at lines 250–259.
+
+Both empty branches replace the FlatList with a static view, removing its RefreshControl. Previously an
+empty schedule still mounted the list (with Today), so the user could refresh it. Because events are
+created on the web, a user waiting on an empty schedule cannot pull to fetch a newly created event.
+The same problem occurs with a selected type that currently has no matches. The fully empty state has
+no reload action; the filtered state only offers Clear filter, which changes the view without fetching.
+Leaving and returning to Schedule triggers a new focus read, but this is a workaround for lost refresh.
+
+**Reproduction / observed:** render a successful empty read, then make a game available in the mocked
+server data. There is no RefreshControl to request it. Repeat with a practice-only list and Game selected:
+the empty-filter state also has no RefreshControl. Both assertions fail; a nonempty-list control invokes
+refresh and displays the newly available game successfully.
+
+**Requested change:** keep a refreshable list/scroll container around both empty messages, or provide an
+explicit reload action. Refreshing an empty filter should preserve the selected type while fetching data.
+
+**Regression coverage:** empty full schedule → event added → refresh displays it; empty selected type →
+matching event added → refresh displays it without clearing the filter; retain the nonempty refresh control.
+
+**Resolution and verification:** Open on 2026-10-15. Two failing component probes and one passing control
+at `317b5cc18`; temporary probe source removed after review. No implementation fix reviewed.
+
+Implemented in `a2ba3eb2c` (2026-10-15), awaiting review:
+- **The list stays mounted when empty.** Both empty states render the FlatList, with its RefreshControl. The
+  message sits inside as its `ListEmptyComponent`, centred by `flexGrow: 1`.
+- **Fully empty schedule:** "No events scheduled yet.", with no filter pills.
+- **Empty type:** the type's message, plus Clear filter.
+- **Refresh keeps the selected type**, since the filter state is separate from the read.
+
 ## Review history
 
 ### 2026-10-01 — Specification, PR #111
@@ -1822,5 +1861,42 @@ than reopen them implicitly. The source code review below is separate from accep
 - **Limits / review changes:** no TestFlight/device or visual layout smoke test; release checks remain
   outstanding. This log is the only retained edit. No application edits, commits, pushes, notifications
   or published GitHub comments. Existing untracked screenshot preserved.
+
+### 2026-10-15 — Mobile schedule type filter, PR #131
+
+- **Revision:** `317b5cc18fe6b97d0c847cd8819c7ff6b8c5e200`, against main
+  `8aa4f6aff1238ae7298f8443d026d5759e0f0e3e`.
+- **Scope:** all three changed files: schedule screen, ScheduleTypeFilter tests, and mobile release notes.
+  Also traced list construction, Today positioning, focus reads, availability badges and refresh behavior.
+- **Outcome:** opened TL-028 (P2), loss of refresh in both new empty states. No other confirmed actionable
+  findings; TL-001–TL-027 remain resolved.
+- **Completed behavior:** removal of the nonfunctional create button; accessible type-filter pills with
+  selected state; client-side filtering without new reads; Game includes tournament games and Tournament
+  selects parent tournaments; empty-filter messages and Clear filter; a visible fully empty schedule message.
+- **Independent verification:** all 221 mobile tests in 25 suites passed, including the seven new filter
+  tests. Mobile TypeScript passed (`--noEmit`). Jest used `NODE_ENV=test` and the previously documented
+  in-memory Babel runtime mapping; no dependency/configuration changes.
+- **Additional probes:** two refresh-availability assertions failed, for an empty full schedule and an
+  empty selected type. A nonempty-list refresh control passed and displayed a newly fetched event.
+  Temporary probe source removed afterward.
+- **CI:** web, mobile, unit, RLS, staging migration and Vercel checks pass; production migration is
+  skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/38816539489).
+- **Limits / review changes:** no native-device/TestFlight visual or scrolling smoke test. Web/database
+  code is unchanged and was not retested locally. This log is the only retained edit; no application
+  edits, commits, pushes, notifications or published GitHub comments. Existing screenshot preserved.
+
+### 2026-10-15 — TL-028 fix, PR #131
+
+- **Revision:** `a2ba3eb2c`, on `f5c3b019a`. The review round above was committed as written in `f5c3b019a`.
+- **Scope:** `app/(app)/schedule/index.tsx`, tests in `ScheduleTypeFilter`, and the release note and check.
+- **Status changes:** TL-028, Open → Implemented — awaiting review.
+- **Regression coverage, 3 tests:**
+  - an empty schedule, then an event added and a pull to refresh: the event shows
+  - an empty selected type, then a matching event added and a pull to refresh: it shows, with the type still
+    selected
+  - a nonempty schedule's refresh (a control)
+- **Local verification:**
+  - Against `317b5cc18`'s screen, the first 2 tests fail. The control passes.
+  - Mobile passes 224 of 224 in 25 suites, and `tsc --noEmit` is clean.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
