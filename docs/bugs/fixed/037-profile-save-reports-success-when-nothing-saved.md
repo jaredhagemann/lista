@@ -1,7 +1,7 @@
 # BUG-037 — Profile saves report success when nothing was saved
 
 **Severity:** P3 (see Severity note)
-**Status:** Open
+**Status:** Fixed
 **Reported:** 2026-10-16 by the product owner, alongside BUG-036
 **Area:** profiles, web
 **Evidence class:** Mixed — see below
@@ -75,9 +75,30 @@ The failure tests fail against the current forms.
 ## Fix as implemented
 
 **Branch:** `fix/037-profile-save-false-success`
-**PR:** #NN
+**PR:** #136
 **Migration:** none
+
+- **New `apps/web/src/lib/saved.ts`:** `saveFailure(result)` returns the error message for an error. For no rows
+  returned it returns `NOTHING_SAVED`, the decided message; otherwise `null`.
+- **The five writes** each add `.select("id")` and pass the result to it:
+  - `profile-form.tsx`: the profile and the photo
+  - `roster-profile.tsx`: the profile and the photo
+  - `training-leaderboard-toggle.tsx`: it keeps its own message for a real error, shows `NOTHING_SAVED` for no
+    row, and reverts the switch either way
+- **Found while fixing:** no `profiles` UPDATE policy covers a coach or manager editing a player they don't
+  manage. The policy is own or managed only, per `20260303000002_managed_profiles.sql:108` and
+  `tests/rls/profiles.test.ts:65`. The roster shows Edit to admins, though (`dashboard/team/[memberId]/page.tsx:101`).
+  So those edits never saved and reported success. They now show the error. Whether admins may edit players'
+  profiles is a separate product decision. Permissions are unchanged here.
 
 ## Verification
 
-**Test:** `apps/web/tests/…`
+**Test:** `apps/web/tests/profile-save-nothing-saved.test.tsx`, against the real components. The update is mocked,
+returning no row and no error, as PostgREST does for a refused update:
+- the 5 "nothing saved" tests fail against the unfixed components: the profile form, its photo, the roster
+  profile, its photo, and the leaderboard toggle, including its revert
+- the 3 "saved" tests pass on both: the profile form, the roster profile and the toggle
+
+The full web suite passes (113 files, 1,528 tests). `tsc --noEmit` is clean, and eslint has no new findings.
+
+**Deployment verification:** none required. This is a client change with no migration.
