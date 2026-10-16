@@ -68,15 +68,16 @@ const PROFILE = {
   email: "mia@example.com",
 } as never;
 
-function renderRosterEdit() {
+function renderRosterEdit({ canEditProfile = true, isAdmin = true } = {}) {
   render(
     <RosterProfile
+      canEditProfile={canEditProfile}
       member={{ id: "tm-1", team_id: "team-1", profile_id: "p-1", role: "player", jersey_number: null, position: null, profiles: PROFILE } as never}
       managers={[]}
       pendingInvites={[]}
       canEdit
       canRemoveManagers={false}
-      isAdmin
+      isAdmin={isAdmin}
       isOwnProfile={false}
       teamId="team-1"
     />
@@ -176,5 +177,30 @@ describe("BUG-037: the training leaderboard toggle", () => {
     fireEvent.click(screen.getByRole("switch"));
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("You're hidden from training leaderboards."));
+  });
+});
+
+// ── Decided 2026-10-16: coaches don't edit players' profiles ─────────────────
+
+describe("BUG-037: a coach editing a player who isn't theirs", () => {
+  it("edits the team fields only: the profile shows, read-only", () => {
+    renderRosterEdit({ canEditProfile: false });
+
+    // The profile, as on the read-only page, with no form or photo upload.
+    expect(screen.getByText("Mia")).toBeTruthy();
+    expect(screen.queryByLabelText("First name")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Upload photo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+    // The team fields stay.
+    expect(screen.getByText("Admin Actions")).toBeTruthy();
+    expect(screen.getByText("Jersey number")).toBeTruthy();
+  });
+
+  it("the player, or a guardian, still edits the profile", () => {
+    renderRosterEdit({ canEditProfile: true, isAdmin: false });
+
+    expect(screen.getByLabelText("First name")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeTruthy();
+    expect(screen.queryByText("Admin Actions")).toBeNull();
   });
 });

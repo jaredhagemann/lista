@@ -48,6 +48,7 @@ failures like BUG-036 and makes them look like data loss, so fix it alongside.
 | --- | --- | --- | --- | --- |
 | Which saves does the fix cover? | All five listed in Evidence: the profile, the roster profile, both avatar updates, and the leaderboard toggle. Each one counts the rows returned | As recommended | 2026-10-16 | Product owner |
 | What does a save that changed nothing say? | "Couldn't save your changes. Refresh the page and try again." The usual cause is a stale session (BUG-036) or lost access | As recommended | 2026-10-16 | Product owner |
+| Should coaches and managers edit a player's profile (name, photo, birthday, gender)? | No. Hide those fields from them; they keep editing the team fields (role, jersey number, position) | **No profile editing for staff.** Their Edit shows the profile read-only, with the team fields | 2026-10-16 | Product owner |
 
 ## Cause
 
@@ -88,8 +89,13 @@ The failure tests fail against the current forms.
 - **Found while fixing:** no `profiles` UPDATE policy covers a coach or manager editing a player they don't
   manage. The policy is own or managed only, per `20260303000002_managed_profiles.sql:108` and
   `tests/rls/profiles.test.ts:65`. The roster shows Edit to admins, though (`dashboard/team/[memberId]/page.tsx:101`).
-  So those edits never saved and reported success. They now show the error. Whether admins may edit players'
-  profiles is a separate product decision. Permissions are unchanged here.
+  So those edits never saved, and reported success.
+- **Decided 2026-10-16:** staff don't edit players' profiles. Permissions are unchanged; the UI now matches them.
+  - `dashboard/team/[memberId]/page.tsx` computes `canEditProfile`, for the player themselves or a guardian.
+  - `RosterProfile` takes it as a prop.
+  - In edit mode without it, the profile shows read-only, through `ProfileDetails`, the card the read-only page
+    uses, now extracted. Admin Actions and the guardians card are unchanged.
+  - Coaches keep Edit for role, jersey number and position.
 
 ## Verification
 
@@ -98,7 +104,10 @@ returning no row and no error, as PostgREST does for a refused update:
 - the 5 "nothing saved" tests fail against the unfixed components: the profile form, its photo, the roster
   profile, its photo, and the leaderboard toggle, including its revert
 - the 3 "saved" tests pass on both: the profile form, the roster profile and the toggle
+- "a coach editing a player who isn't theirs: edits the team fields only": fails against the unfixed roster,
+  which showed coaches the profile form
+- "the player, or a guardian, still edits the profile": passes on both
 
-The full web suite passes (113 files, 1,528 tests). `tsc --noEmit` is clean, and eslint has no new findings.
+The full web suite passes (113 files, 1,530 tests). `tsc --noEmit` is clean, and eslint has no new findings.
 
 **Deployment verification:** none required. This is a client change with no migration.
