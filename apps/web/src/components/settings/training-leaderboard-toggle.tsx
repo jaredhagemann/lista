@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { NOTHING_SAVED } from "@/lib/saved";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -20,14 +21,16 @@ export function TrainingLeaderboardToggle({
   async function handleChange(next: boolean) {
     setShown(next);
     setSaving(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .update({ training_leaderboard_opt_out: !next })
-      .eq("id", profile.id);
+      .eq("id", profile.id)
+      .select("id");
     setSaving(false);
-    if (error) {
+    // No row back means the update was refused without an error (BUG-037).
+    if (error || !data || data.length === 0) {
       setShown(!next); // revert
-      toast.error("Couldn't update that setting.");
+      toast.error(error ? "Couldn't update that setting." : NOTHING_SAVED);
       return;
     }
     toast.success(next ? "You'll appear on training leaderboards." : "You're hidden from training leaderboards.");

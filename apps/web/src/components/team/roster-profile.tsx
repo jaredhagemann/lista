@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { saveFailure } from "@/lib/saved";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { ManagersCard } from "@/components/team/managers-card";
 import { removeTeamMember } from "@/app/actions/team";
@@ -326,18 +327,21 @@ function EditMode({
     e.preventDefault();
     setSavingProfile(true);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        first_name: firstName,
-        last_name: lastName,
-        birthday: birthday || null,
-        gender: gender || null,
-      })
-      .eq("id", profile.id);
+    const failure = saveFailure(
+      await supabase
+        .from("profiles")
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          birthday: birthday || null,
+          gender: gender || null,
+        })
+        .eq("id", profile.id)
+        .select("id")
+    );
 
-    if (error) {
-      toast.error(error.message);
+    if (failure) {
+      toast.error(failure);
     } else {
       toast.success("Profile updated");
       router.refresh();
@@ -413,12 +417,11 @@ function EditMode({
                 folder={profile.id}
                 currentUrl={profile.avatar_url}
                 onUpload={async (url) => {
-                  const { error } = await supabase
-                    .from("profiles")
-                    .update({ avatar_url: url })
-                    .eq("id", profile.id);
-                  if (error) {
-                    toast.error(error.message);
+                  const failure = saveFailure(
+                    await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile.id).select("id")
+                  );
+                  if (failure) {
+                    toast.error(failure);
                   } else {
                     router.refresh();
                   }
