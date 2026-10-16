@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { saveFailure } from "@/lib/saved";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { ManagersCard } from "@/components/team/managers-card";
 import { removeTeamMember } from "@/app/actions/team";
@@ -55,6 +56,12 @@ interface RosterProfileProps {
   managers: ProfileManagerRow[];
   pendingInvites: InvitationRow[];
   canEdit: boolean;
+  /**
+   * The person's own profile fields (name, photo, birthday, gender): the player
+   * or a guardian only. Staff edit the team fields, never the profile (decided
+   * 2026-10-16, BUG-037); the database refuses their profile updates anyway.
+   */
+  canEditProfile: boolean;
   canRemoveManagers: boolean;
   isAdmin: boolean;
   isOwnProfile: boolean;
@@ -66,6 +73,7 @@ export function RosterProfile({
   managers,
   pendingInvites,
   canEdit,
+  canEditProfile,
   canRemoveManagers,
   isAdmin,
   isOwnProfile,
@@ -141,6 +149,7 @@ export function RosterProfile({
           member={member}
           managers={managers}
           pendingInvites={pendingInvites}
+          canEditProfile={canEditProfile}
           canRemoveManagers={canRemoveManagers}
           isAdmin={isAdmin}
           teamId={teamId}
@@ -204,6 +213,67 @@ export function RosterProfile({
   );
 }
 
+/** A member's profile and team fields, read-only. */
+function ProfileDetails({ member }: { member: TeamMemberWithProfile }) {
+  const profile = member.profiles;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Profile</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {profile.avatar_url && (
+          <div className="mb-4 flex justify-center">
+            <img
+              src={profile.avatar_url}
+              alt={`${profile.first_name} ${profile.last_name}`}
+              className="h-20 w-20 rounded-full object-cover"
+            />
+          </div>
+        )}
+        <dl className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">First name</dt>
+            <dd>{profile.first_name}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Last name</dt>
+            <dd>{profile.last_name}</dd>
+          </div>
+          {profile.birthday && (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Birthday</dt>
+              <dd>{profile.birthday}</dd>
+            </div>
+          )}
+          {profile.gender && (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Gender</dt>
+              <dd>{displayLabel(profile.gender)}</dd>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Role</dt>
+            <dd>{displayLabel(member.role)}</dd>
+          </div>
+          {member.role === "player" && member.jersey_number != null && (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Jersey number</dt>
+              <dd>#{member.jersey_number}</dd>
+            </div>
+          )}
+          {member.role === "player" && member.position && (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Position</dt>
+              <dd>{member.position}</dd>
+            </div>
+          )}
+        </dl>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ReadOnlyMode({
   member,
   managers,
@@ -217,64 +287,9 @@ function ReadOnlyMode({
   canAdd: boolean;
   teamId: string;
 }) {
-  const profile = member.profiles;
-
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {profile.avatar_url && (
-            <div className="mb-4 flex justify-center">
-              <img
-                src={profile.avatar_url}
-                alt={`${profile.first_name} ${profile.last_name}`}
-                className="h-20 w-20 rounded-full object-cover"
-              />
-            </div>
-          )}
-          <dl className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">First name</dt>
-              <dd>{profile.first_name}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Last name</dt>
-              <dd>{profile.last_name}</dd>
-            </div>
-            {profile.birthday && (
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Birthday</dt>
-                <dd>{profile.birthday}</dd>
-              </div>
-            )}
-            {profile.gender && (
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Gender</dt>
-                <dd>{displayLabel(profile.gender)}</dd>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Role</dt>
-              <dd>{displayLabel(member.role)}</dd>
-            </div>
-            {member.role === "player" && member.jersey_number != null && (
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Jersey number</dt>
-                <dd>#{member.jersey_number}</dd>
-              </div>
-            )}
-            {member.role === "player" && member.position && (
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Position</dt>
-                <dd>{member.position}</dd>
-              </div>
-            )}
-          </dl>
-        </CardContent>
-      </Card>
+      <ProfileDetails member={member} />
 
       <ManagersCard
         profileId={member.profile_id!}
@@ -292,6 +307,7 @@ function EditMode({
   member,
   managers,
   pendingInvites,
+  canEditProfile,
   canRemoveManagers,
   isAdmin,
   teamId,
@@ -299,6 +315,7 @@ function EditMode({
   member: TeamMemberWithProfile;
   managers: ProfileManagerRow[];
   pendingInvites: InvitationRow[];
+  canEditProfile: boolean;
   canRemoveManagers: boolean;
   isAdmin: boolean;
   teamId: string;
@@ -326,18 +343,21 @@ function EditMode({
     e.preventDefault();
     setSavingProfile(true);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        first_name: firstName,
-        last_name: lastName,
-        birthday: birthday || null,
-        gender: gender || null,
-      })
-      .eq("id", profile.id);
+    const failure = saveFailure(
+      await supabase
+        .from("profiles")
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          birthday: birthday || null,
+          gender: gender || null,
+        })
+        .eq("id", profile.id)
+        .select("id")
+    );
 
-    if (error) {
-      toast.error(error.message);
+    if (failure) {
+      toast.error(failure);
     } else {
       toast.success("Profile updated");
       router.refresh();
@@ -399,74 +419,77 @@ function EditMode({
 
   return (
     <>
-      {/* Profile edit form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-        </CardHeader>
-        <form onSubmit={handleSaveProfile}>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Profile photo</Label>
-              <ImageUpload
-                bucket="avatars"
-                folder={profile.id}
-                currentUrl={profile.avatar_url}
-                onUpload={async (url) => {
-                  const { error } = await supabase
-                    .from("profiles")
-                    .update({ avatar_url: url })
-                    .eq("id", profile.id);
-                  if (error) {
-                    toast.error(error.message);
-                  } else {
-                    router.refresh();
-                  }
-                }}
-                shape="circle"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="firstName">First name</Label>
-              <Input
-                id="firstName"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Last name</Label>
-              <Input
-                id="lastName"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="birthday">Birthday</Label>
-              <Input
-                id="birthday"
-                type="date"
-                value={birthday}
-                onChange={(e) => setBirthday(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="gender">Gender</Label>
-              <Input
-                id="gender"
-                placeholder="e.g. Male, Female, Non-binary"
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={savingProfile}>
-              {savingProfile ? "Saving..." : "Save changes"}
-            </Button>
-          </CardContent>
-        </form>
-      </Card>
+      {/* Profile edit form: the player or a guardian. Staff see it read-only. */}
+      {!canEditProfile ? (
+        <ProfileDetails member={member} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile</CardTitle>
+          </CardHeader>
+          <form onSubmit={handleSaveProfile}>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Profile photo</Label>
+                <ImageUpload
+                  bucket="avatars"
+                  folder={profile.id}
+                  currentUrl={profile.avatar_url}
+                  onUpload={async (url) => {
+                    const failure = saveFailure(
+                      await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile.id).select("id")
+                    );
+                    if (failure) {
+                      toast.error(failure);
+                    } else {
+                      router.refresh();
+                    }
+                  }}
+                  shape="circle"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First name</Label>
+                <Input
+                  id="firstName"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last name</Label>
+                <Input
+                  id="lastName"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="birthday">Birthday</Label>
+                <Input
+                  id="birthday"
+                  type="date"
+                  value={birthday}
+                  onChange={(e) => setBirthday(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gender">Gender</Label>
+                <Input
+                  id="gender"
+                  placeholder="e.g. Male, Female, Non-binary"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                />
+              </div>
+              <Button type="submit" disabled={savingProfile}>
+                {savingProfile ? "Saving..." : "Save changes"}
+              </Button>
+            </CardContent>
+          </form>
+        </Card>
+      )}
 
       {/* Managers card */}
       <ManagersCard

@@ -99,6 +99,8 @@ export default async function MemberProfilePage({
 
   const isManagerOfProfile = managers.some((m) => m.manager_id === user.id);
   const canEdit = isOwnProfile || isAdmin || isManagerOfProfile;
+  // Staff edit the team fields, not the person's profile (decided 2026-10-16, BUG-037).
+  const canEditProfile = isOwnProfile || isManagerOfProfile;
   // Removing a guardian is for the player or a guardian — not staff (D1, BUG-002).
   // The player is identified by their login, not by their Self link, which may be
   // missing on older accounts (BUG-002 review, finding 3).
@@ -111,6 +113,7 @@ export default async function MemberProfilePage({
       managers={managers}
       pendingInvites={pendingInvites}
       canEdit={canEdit}
+      canEditProfile={canEditProfile}
       canRemoveManagers={canRemoveManagers}
       isAdmin={isAdmin}
       isOwnProfile={isOwnProfile}

@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
+import { saveFailure } from "@/lib/saved";
 import { ImageUpload } from "@/components/ui/image-upload";
 import type { Database } from "@/types/database";
 
@@ -33,18 +34,21 @@ export function ProfileForm({ profile }: { profile: Profile | null }) {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        first_name: firstName,
-        last_name: lastName,
-        birthday: birthday || null,
-        gender: gender || null,
-      })
-      .eq("id", profile!.id);
+    const failure = saveFailure(
+      await supabase
+        .from("profiles")
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          birthday: birthday || null,
+          gender: gender || null,
+        })
+        .eq("id", profile!.id)
+        .select("id")
+    );
 
-    if (error) {
-      toast.error(error.message);
+    if (failure) {
+      toast.error(failure);
     } else {
       toast.success("Profile updated");
       router.refresh();
@@ -68,12 +72,11 @@ export function ProfileForm({ profile }: { profile: Profile | null }) {
               folder={profile!.id}
               currentUrl={profile?.avatar_url ?? null}
               onUpload={async (url) => {
-                const { error } = await supabase
-                  .from("profiles")
-                  .update({ avatar_url: url })
-                  .eq("id", profile!.id);
-                if (error) {
-                  toast.error(error.message);
+                const failure = saveFailure(
+                  await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile!.id).select("id")
+                );
+                if (failure) {
+                  toast.error(failure);
                 } else {
                   router.refresh();
                 }
