@@ -1,7 +1,7 @@
 # BUG-035 — Chat messages lose their line breaks on the web
 
 **Severity:** P3
-**Status:** Open
+**Status:** Fixed
 **Reported:** 2026-10-16 by the product owner, using chat
 **Area:** chat, web
 **Evidence class:** Mixed — see below
@@ -58,9 +58,22 @@ bubble.
 ## Fix as implemented
 
 **Branch:** `fix/035-chat-line-breaks`
-**PR:** #NN
+**PR:** #133
 **Migration:** none
+
+`apps/web/src/components/chat/message-item.tsx`: the bubble has `whitespace-pre-wrap`, so the newlines stored in
+a body display, and long lines still wrap. It also has `break-words`, so a long unbroken link wraps inside the
+bubble. This applies to every message, including those already sent. No change to the input, storage or mobile.
 
 ## Verification
 
-**Test:** `apps/web/tests/…`
+**Test:** `apps/web/tests/chat-message-line-breaks.test.tsx`, against the real `MessageItem`:
+- "a message in sections keeps its line breaks": fails against the unfixed bubble. The body is intact but whitespace isn't preserved
+- "your own message too": also fails against it
+- "a one-line message reads as before": passes on both
+
+The full web suite passes (112 files, 1,520 tests). `tsc --noEmit` and eslint are clean.
+
+**Deployment verification:** none required. This is a style change with no migration. After deploy, a multi-line
+message on the web shows its lines. Checking the phone display on a device would turn its static evidence into
+a reproduction.
