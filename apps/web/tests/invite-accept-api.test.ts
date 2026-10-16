@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 
+// The route also lands a browser caller on the result (device-local-active-context, D5).
+vi.mock("@/lib/active-context-save", () => ({ saveContextCookie: vi.fn() }));
 vi.mock("@/lib/api-auth", () => ({
   resolveRequestUser: async () => mocks.user,
   adminClient: () => ({}),

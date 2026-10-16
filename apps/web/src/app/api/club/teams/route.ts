@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { saveContextCookie } from "@/lib/active-context-save";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 
 /**
@@ -116,10 +117,12 @@ export async function POST(request: Request) {
     role: "director" as const,
   }));
 
+  let creatorEnrolled = false;
   if (memberRows.length > 0) {
     const { error: memberError } = await admin
       .from("team_members")
       .insert(memberRows);
+    creatorEnrolled = !memberError && memberRows.some((m) => m.profile_id === profile.id);
 
     if (memberError) {
       // Non-fatal: team was created successfully; log but don't fail the request.
@@ -128,11 +131,14 @@ export async function POST(request: Request) {
     }
   }
 
-  // Switch the creating user to the new team
+  // The new team is the creator's last-picked team (the default for their other
+  // devices), and this browser lands on it, if they're on it
+  // (device-local-active-context, D2, D5).
   await admin
     .from("profiles")
     .update({ active_team_id: teamId })
     .eq("id", profile.id);
+  if (creatorEnrolled) await saveContextCookie({ accountId: user.id, profileId: profile.id, teamId });
 
-  return NextResponse.json({ ok: true }, { status: 201 });
+  return NextResponse.json({ ok: true, teamId }, { status: 201 });
 }

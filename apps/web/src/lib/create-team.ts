@@ -41,10 +41,9 @@ export async function executeCreateTeam({
     return (data as { error?: string }).error ?? "Something went wrong. Please try again.";
   }
 
-  // Always clear the managed-profile cookie on success — including the
-  // TeamSwitcher path (onSuccess provided). A stale active_profile_id
-  // would cause the dashboard to resolve a managed profile that has no
-  // membership on the new team (§4.6.2).
+  // The API has already landed this browser on the new team, as the account's
+  // own profile (device-local-active-context, D5). This only clears the old
+  // profile-only cookie, on both paths, including the TeamSwitcher's (§4.6.2).
   await clearActiveProfileFn();
 
   if (onSuccess) {

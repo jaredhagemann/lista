@@ -30,7 +30,7 @@ export default async function DashboardLayout({
   // A device with no valid saved context gets one chosen here, and saves it
   // below; after that, other devices' switches don't move it.
   const context = await loadActiveContext(supabase, user.id);
-  const { ownProfile, managedProfiles, allMemberships, activeMembership } = context;
+  const { ownProfile, allMemberships, activeMembership } = context;
   const activeProfile = context.activeProfile ?? ownProfile;
 
   // Find all profiles (own + managed) that are on the active team
