@@ -123,8 +123,9 @@ export function MessageItem({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {/* Keeps the body's line breaks, and wraps a long link (BUG-035). */}
           <div
-            className={`rounded-2xl px-3 py-2 text-sm ${
+            className={`whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm ${
               isOwn
                 ? "bg-primary text-primary-foreground rounded-br-sm"
                 : "bg-muted rounded-bl-sm"
