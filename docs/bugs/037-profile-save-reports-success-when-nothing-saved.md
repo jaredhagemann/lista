@@ -46,8 +46,8 @@ failures like BUG-036 and makes them look like data loss, so fix it alongside.
 
 | Question | Recommendation | Decision | Date | Reference |
 | --- | --- | --- | --- | --- |
-| Which saves does the fix cover? | All five listed in Evidence: the profile, the roster profile, both avatar updates, and the leaderboard toggle. Each one counts the rows returned | Open | | |
-| What does a save that changed nothing say? | "Couldn't save your changes. Refresh the page and try again." The usual cause is a stale session (BUG-036) or lost access | Open | | |
+| Which saves does the fix cover? | All five listed in Evidence: the profile, the roster profile, both avatar updates, and the leaderboard toggle. Each one counts the rows returned | As recommended | 2026-10-16 | Product owner |
+| What does a save that changed nothing say? | "Couldn't save your changes. Refresh the page and try again." The usual cause is a stale session (BUG-036) or lost access | As recommended | 2026-10-16 | Product owner |
 
 ## Cause
 

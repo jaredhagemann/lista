@@ -57,7 +57,7 @@ reload is the workaround. Regrade to P1 if a wrongly attributed write is confirm
 
 | Question | Recommendation | Decision | Date | Reference |
 | --- | --- | --- | --- | --- |
-| What should an open tab do when the signed-in account changes under it? | Do a full reload of the dashboard (`/dashboard`) as the new account, so no state from the old one survives. If the session ends instead (signed out elsewhere), go to `/login`. A token refresh for the same user changes nothing | Open | | |
+| What should an open tab do when the signed-in account changes under it? | Do a full reload of the dashboard (`/dashboard`) as the new account, so no state from the old one survives. If the session ends instead (signed out elsewhere), go to `/login`. A token refresh for the same user changes nothing | As recommended | 2026-10-16 | Product owner |
 
 ## Cause
 
