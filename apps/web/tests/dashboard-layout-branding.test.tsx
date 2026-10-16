@@ -56,6 +56,11 @@ vi.mock("@/components/layout/dashboard-nav", () => ({
   },
 }));
 
+vi.mock("@/components/layout/session-watch", () => ({
+  SessionWatch: ({ userId }: { userId: string }) => <span data-testid="session-watch">{userId}</span>,
+}));
+
+import { screen } from "@testing-library/react";
 import DashboardLayout from "@/app/dashboard/layout";
 
 const SLOFC = { name: "San Luis Obispo FC", org_name_public: "SLOFC", logo_url: "https://x/slofc.png", plan: "club_small" };
@@ -83,5 +88,16 @@ describe("the dashboard layout", () => {
     }
     const memberships = mocks.navProps?.allMemberships as Array<{ teams: { organizations: unknown } }>;
     expect(memberships[0].teams.organizations).toEqual(SLOFC);
+  });
+
+  // BUG-036: the page watches the session for the account it was rendered for.
+  it("watches the session for the signed-in account", async () => {
+    mocks.tables.profiles = { id: "u-1", active_team_id: null };
+    mocks.tables.profile_managers = [];
+    mocks.tables.team_members = [];
+
+    render(await DashboardLayout({ children: null }));
+
+    expect(screen.getByTestId("session-watch").textContent).toBe("u-1");
   });
 });

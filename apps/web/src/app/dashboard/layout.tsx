@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
+import { SessionWatch } from "@/components/layout/session-watch";
 import { Toaster } from "@/components/ui/sonner";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { isClubPlan, hasClubAccess } from "@/lib/plan";
@@ -191,6 +192,8 @@ export default async function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Reloads if the browser's session stops being this account's (BUG-036). */}
+      <SessionWatch userId={user.id} />
       <DashboardNav
         ownProfile={ownProfile}
         activeProfile={activeProfile}
