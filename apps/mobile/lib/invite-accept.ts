@@ -115,3 +115,17 @@ export function inviteCopy(invite: InviteSummary): InviteCopy {
     asksWhoYouAre: true,
   };
 }
+
+/**
+ * Where an accepted invitation lands this phone (device-local-active-context,
+ * D5): its team, as the child for a guardian or manager invitation, else the
+ * account's own profile. None for a director invitation with no team, or a
+ * server that doesn't say.
+ */
+export function invitationLanding(
+  accountId: string,
+  response: { success?: boolean; teamId?: string | null; managedProfileId?: string | null }
+): { accountId: string; profileId: string; teamId: string } | null {
+  if (!response.teamId) return null;
+  return { accountId, profileId: response.managedProfileId ?? accountId, teamId: response.teamId };
+}

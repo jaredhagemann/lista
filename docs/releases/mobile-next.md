@@ -292,6 +292,29 @@ events are made on the web. There is no way to filter the schedule.
 
 No server change. Files: `app/(app)/schedule/index.tsx`, `__tests__/ScheduleTypeFilter.test.tsx`.
 
+### Each phone keeps its own person and team — [spec](../specs/device-local-active-context.md)
+
+**Installed build (1.0.12):** switching team saves it on the person's profile in the database, so every device
+showing that person follows it, including another guardian's. 1.0.12 keeps doing this until people update. Its
+switches also set the default a new device starts from.
+
+**New build:** the phone keeps its own context, the account plus the person and team, in SecureStore under a
+key of the account's own (D1). The web keeps its own in a cookie (PR #138).
+- **Switches** change this phone only. They still record the team as the "last picked" default for devices
+  with no context of their own (D2).
+- **A phone with no context**, or whose team is gone or archived, opens at the last-picked team and saves it
+  (D2-D4). The old `active_profile_id` key seeds the person once, then is deleted.
+- **Landing:** creating a team, or accepting an invitation, lands on it, as the child for a guardian or manager
+  invitation (D5).
+- **Safety:** a load that finishes after the account changed is ignored. Each account on a shared phone keeps
+  its own context.
+
+No migration. The phone reads the `teamId` and `managedProfileId` that the invitation API now returns (#138).
+
+Files: `lib/active-context.ts`, `contexts/AppContext.tsx`, `lib/create-team.ts`, `app/(app)/create-team.tsx`,
+`lib/invite-accept.ts`, `app/invite/[id].tsx`, `__tests__/active-context.test.ts`,
+`__tests__/AppProviderContext.test.tsx`. `hooks/useActiveMembership.ts`, unused, is removed.
+
 ---
 
 ## Before shipping
@@ -464,6 +487,11 @@ TestFlight build (production data: use a test team for anything that writes):
   - With a type that has no events, add one of that type on the web, then pull down: it appears, and the
     type stays selected.
   - On a small phone, the pills scroll sideways.
+- **Per-device context:** sign in on the phone and the web as the same parent, with a child on two teams.
+  - Switch the child's team on the web, then pull to refresh on the phone: the phone stays where it was.
+  - Switch on the phone: the web, reloaded, stays where it was.
+  - A second guardian's switch moves neither.
+  - Accept a guardian invitation in the app: it lands as the child, on the new team.
 - **BUG-023:** sign in as A and confirm a `push_subscriptions` row exists for A with this device's token;
   sign out and confirm it is gone; sign in as B and confirm messages to B arrive while B's own do not come
   back.

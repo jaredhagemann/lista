@@ -12,7 +12,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSession } from "../_layout";
 import { storePendingInvite } from "../_layout";
 import { supabase } from "../../lib/supabase";
-import { buildAcceptBody, inviteCopy, type Identity } from "../../lib/invite-accept";
+import { buildAcceptBody, invitationLanding, inviteCopy, type Identity } from "../../lib/invite-accept";
+import { saveContext } from "../../lib/active-context";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -114,6 +115,9 @@ export default function InviteScreen() {
       return;
     }
 
+    // Land on the invitation's team, as the person it's for (device-local-active-context, D5).
+    const landing = invitationLanding(session.user.id, data);
+    if (landing) await saveContext(landing);
     setAccepted(true);
   }
 

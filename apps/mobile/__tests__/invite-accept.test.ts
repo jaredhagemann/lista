@@ -109,3 +109,34 @@ describe("other invitations keep their wording", () => {
     expect(copy.asksWhoYouAre).toBe(false);
   });
 });
+
+// ── Where an accepted invitation lands (device-local-active-context, D5) ─────
+
+import { invitationLanding } from "../lib/invite-accept";
+
+describe("invitationLanding", () => {
+  const ME = "00000000-0000-4000-8000-000000000001";
+  const CHILD = "00000000-0000-4000-8000-000000000002";
+  const TEAM = "10000000-0000-4000-8000-000000000001";
+
+  it("as yourself: the team, as your own profile", () => {
+    expect(invitationLanding(ME, { success: true, teamId: TEAM, managedProfileId: null })).toEqual({
+      accountId: ME,
+      profileId: ME,
+      teamId: TEAM,
+    });
+  });
+
+  it("for a child, as a guardian or to manage them: the team, as the child", () => {
+    expect(invitationLanding(ME, { success: true, teamId: TEAM, managedProfileId: CHILD })).toEqual({
+      accountId: ME,
+      profileId: CHILD,
+      teamId: TEAM,
+    });
+  });
+
+  it("a director invitation with no team, or an older server without the fields, lands nowhere", () => {
+    expect(invitationLanding(ME, { success: true, teamId: null, managedProfileId: null })).toBeNull();
+    expect(invitationLanding(ME, { success: true })).toBeNull();
+  });
+});

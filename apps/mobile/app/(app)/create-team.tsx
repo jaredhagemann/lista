@@ -12,10 +12,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import { supabase } from "../../lib/supabase";
 import { useAppContext } from "../../contexts/AppContext";
 import { executeCreateTeamMobile } from "../../lib/create-team";
+import { saveContext } from "../../lib/active-context";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -43,7 +43,11 @@ export default function CreateTeamScreen() {
           const { data } = await supabase.auth.getSession();
           return data.session?.access_token ?? null;
         },
-        deleteSecureStoreKey: SecureStore.deleteItemAsync,
+        landOnTeam: async (teamId) => {
+          const { data } = await supabase.auth.getSession();
+          const accountId = data.session?.user.id;
+          if (accountId) await saveContext({ accountId, profileId: accountId, teamId });
+        },
         refresh,
         routerReplace: (path) => router.replace(path as Parameters<typeof router.replace>[0]),
       },

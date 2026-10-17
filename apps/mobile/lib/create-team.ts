@@ -9,8 +9,8 @@ export interface CreateTeamMobileDeps {
   fetchFn?: typeof fetch;
   /** Returns the current access token, or null if not signed in. */
   getAccessToken: () => Promise<string | null>;
-  /** Deletes a key from SecureStore. */
-  deleteSecureStoreKey: (key: string) => Promise<void>;
+  /** Saves this phone's context on the new team, as the account's own profile (device-local-active-context, D5). */
+  landOnTeam: (teamId: string) => Promise<void>;
   /** Refreshes the AppContext membership state. */
   refresh: () => Promise<void>;
   /** Navigates to the given path (replace). */
@@ -26,7 +26,7 @@ export async function executeCreateTeamMobile(
   {
     fetchFn = fetch,
     getAccessToken,
-    deleteSecureStoreKey,
+    landOnTeam,
     refresh,
     routerReplace,
   }: CreateTeamMobileDeps,
@@ -55,11 +55,10 @@ export async function executeCreateTeamMobile(
     return (data as { error?: string }).error ?? "Something went wrong. Please try again.";
   }
 
-  // Reset any active managed profile before refreshing context — the new
-  // team belongs to the own profile, and a stale SecureStore entry would
-  // cause the app to resolve a managed profile with no membership on the
-  // new team (§5.9.2).
-  await deleteSecureStoreKey("active_profile_id");
+  // Land on the new team before refreshing, whatever was active: it's the
+  // account's own team (§5.9.2; device-local-active-context, D5).
+  const { teamId } = (await res.json().catch(() => ({}))) as { teamId?: string };
+  if (teamId) await landOnTeam(teamId);
   await refresh();
   routerReplace("/(app)");
 
