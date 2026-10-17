@@ -43,16 +43,18 @@ export type ContextChoice<M extends ContextMembership> = {
  *
  *   1. A saved tuple for this account, a profile it may act as and one of that
  *      profile's teams: kept as it is.
- *   2. Otherwise a person, in order: the saved one, the old profile cookie's, the
- *      account's own. Each must be the account's own or managed. The first with
- *      a team wins, at their last-picked team (D2), else their first.
+ *   2. Otherwise a person, in order: the saved one, the account's own. Each
+ *      must be the account's own or managed. The first with a team wins, at
+ *      their last-picked team (D2), else their first. Before any tuple was
+ *      saved for this account, the old profile cookie's person comes before
+ *      the account's own; after, it's ignored (review DC-002).
  *   3. Otherwise the account's other people, in the order they joined their
  *      teams, by the same rule: a parent with no team of their own views as a
  *      child, at that child's last-picked team. The person follows the team.
  *
  * Archived teams are passed over while another exists (D4).
  */
-export function chooseContext<M extends ContextMembership>(input: {
+export type ContextInput<M extends ContextMembership> = {
   userId: string;
   ownProfile: { id: string; active_team_id: string | null } | null;
   managed: { id: string; active_team_id: string | null }[];
@@ -60,12 +62,32 @@ export function chooseContext<M extends ContextMembership>(input: {
   memberships: M[];
   saved: SavedContext | null;
   legacyProfileId: string | null;
-}): ContextChoice<M> {
-  const { userId, ownProfile, managed, memberships, saved, legacyProfileId } = input;
+};
+
+/**
+ * The memberships a device's context may name: the account's own and managed
+ * people's, on teams that can be seen, passing over archived teams while
+ * another exists (D4, D6).
+ */
+function contextPool<M extends ContextMembership>({ userId, managed, memberships }: ContextInput<M>) {
   const allowed = new Set([userId, ...managed.map((m) => m.id)]);
   const visible = memberships.filter((m) => m.teams && m.profile_id && allowed.has(m.profile_id));
   const current = visible.filter((m) => !m.teams!.archived_at);
-  const pool = current.length > 0 ? current : visible;
+  return { allowed, pool: current.length > 0 ? current : visible };
+}
+
+/** The membership a context naming this person and team would use, if it may. */
+export function usableMembership<M extends ContextMembership>(
+  input: ContextInput<M>,
+  profileId: string,
+  teamId: string
+): M | null {
+  return contextPool(input).pool.find((m) => m.profile_id === profileId && m.team_id === teamId) ?? null;
+}
+
+export function chooseContext<M extends ContextMembership>(input: ContextInput<M>): ContextChoice<M> {
+  const { userId, ownProfile, managed, saved, legacyProfileId } = input;
+  const { allowed, pool } = contextPool(input);
   const find = (profileId: string, teamId?: string | null) =>
     pool.find((m) => m.profile_id === profileId && (teamId === undefined || m.team_id === teamId)) ?? null;
   const chosen = (membership: M): ContextChoice<M> => {
@@ -85,7 +107,10 @@ export function chooseContext<M extends ContextMembership>(input: {
     profileId === userId ? ownProfile?.active_team_id : managed.find((m) => m.id === profileId)?.active_team_id;
   // The people to try, in order; then the rest of the account's people, in
   // the order they joined their teams (a parent with no team of their own).
-  const people = [savedForMe?.profileId, legacyProfileId, userId, ...pool.map((m) => m.profile_id)].filter(
+  // The old cookie seeds a first context only: once this account has saved a
+  // tuple, a superseded choice must not come back in a repair (DC-002).
+  const migrating = !saved || saved.accountId !== userId;
+  const people = [savedForMe?.profileId, migrating ? legacyProfileId : null, userId, ...pool.map((m) => m.profile_id)].filter(
     (id, i, all): id is string => !!id && allowed.has(id) && all.indexOf(id) === i
   );
   for (const profileId of people) {
@@ -115,6 +140,12 @@ export type ActiveContext = {
   activeMembership: ActiveContextMembership | null;
   /** To save on this device (D2, D3); null when nothing needs saving, or a read failed. */
   save: SavedContext | null;
+  /** Whether any read failed. */
+  failed: boolean;
+  /** Whether the device already has a valid saved context, kept as it is. */
+  keptSaved: boolean;
+  /** Whether a context naming this person and team may be saved now (D6). */
+  allows(profileId: string, teamId: string): boolean;
 };
 
 /**
@@ -149,14 +180,15 @@ export const loadActiveContext = cache(async function loadActiveContext(
     .order("created_at");
   const allMemberships = (rows ?? []) as unknown as ActiveContextMembership[];
 
-  const choice = chooseContext({
+  const input = {
     userId,
     ownProfile: ownProfile ?? null,
     managed: managedProfiles.map((m) => m.profile),
     memberships: allMemberships,
     saved,
     legacyProfileId,
-  });
+  };
+  const choice = chooseContext(input);
   const failed = !!(ownError || linksError || membershipsError);
   const activeProfile =
     choice.profileId === userId
@@ -171,5 +203,8 @@ export const loadActiveContext = cache(async function loadActiveContext(
     activeProfile,
     activeMembership: choice.membership,
     save: failed ? null : choice.save,
+    failed,
+    keptSaved: !!saved && !!choice.membership && choice.save === null,
+    allows: (profileId, teamId) => !!usableMembership(input, profileId, teamId),
   };
 });

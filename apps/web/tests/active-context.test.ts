@@ -120,6 +120,35 @@ describe("D3: a saved team the account no longer belongs to", () => {
   });
 });
 
+describe("DC-002: the old profile cookie seeds a first context only", () => {
+  it("a repair falls back to the account's own team, not the old cookie's person", () => {
+    const result = family({
+      saved: tuple(SON, REC),
+      legacyProfileId: DAUGHTER,
+      memberships: [member(ME, COACHING), member(DAUGHTER, CLUB)], // the son is off Rec
+    });
+
+    expect([result.profileId, result.membership?.team_id]).toEqual([ME, COACHING]);
+  });
+
+  it("nor when the saved person is no longer managed", () => {
+    const result = family({
+      saved: tuple(SON, REC),
+      legacyProfileId: DAUGHTER,
+      managed: [{ id: DAUGHTER, active_team_id: CLUB }],
+      memberships: [member(ME, COACHING), member(DAUGHTER, CLUB)],
+    });
+
+    expect([result.profileId, result.membership?.team_id]).toEqual([ME, COACHING]);
+  });
+
+  it("another account's tuple is no context for this one: the old cookie still seeds", () => {
+    const result = family({ saved: tuple(SON, REC, STRANGER), legacyProfileId: DAUGHTER });
+
+    expect(result.profileId).toBe(DAUGHTER);
+  });
+});
+
 describe("D4: archived teams", () => {
   it("a saved archived team moves to one that isn't", () => {
     const result = family({

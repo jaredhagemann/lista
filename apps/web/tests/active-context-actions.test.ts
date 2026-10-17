@@ -3,8 +3,9 @@
  *
  *   - a switch saves the tuple on this device only, and still records the team
  *     as the "last picked" default for devices without a context (D1, D2)
- *   - the dashboard's seed or repair is saved only if the server itself would
- *     choose it for this account (D2, D3, D6)
+ *   - the dashboard's seed or repair saves what was rendered, if the person and
+ *     team are still usable, nothing newer is saved here, and the reads worked
+ *     (D2, D3, D6; review DC-001)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -74,8 +75,15 @@ beforeEach(() => {
 });
 
 describe("saveActiveContext: the dashboard's seed or repair", () => {
-  it("saves the context the server chose", async () => {
-    mocks.load.mockResolvedValue({ save: { accountId: ME, profileId: CHILD, teamId: TEAM } });
+  const context = (overrides: Record<string, unknown> = {}) => ({
+    failed: false,
+    keptSaved: false,
+    allows: (profileId: string, teamId: string) => profileId === CHILD && teamId === TEAM,
+    ...overrides,
+  });
+
+  it("saves the rendered context", async () => {
+    mocks.load.mockResolvedValue(context());
 
     expect(await saveActiveContext(CHILD, TEAM)).toEqual({ saved: true });
     expect(contextCookie()).toEqual([
@@ -83,15 +91,22 @@ describe("saveActiveContext: the dashboard's seed or repair", () => {
     ]);
   });
 
-  it("refuses a context the server didn't choose: a caller can't pick whom it acts as", async () => {
-    mocks.load.mockResolvedValue({ save: { accountId: ME, profileId: ME, teamId: TEAM } });
+  it("refuses a person or team the account may not use: a caller can't pick whom it acts as", async () => {
+    mocks.load.mockResolvedValue(context());
+
+    expect(await saveActiveContext(ME, TEAM)).toEqual({ saved: false });
+    expect(contextCookie()).toEqual([]);
+  });
+
+  it("keeps a valid context this device saved since", async () => {
+    mocks.load.mockResolvedValue(context({ keptSaved: true }));
 
     expect(await saveActiveContext(CHILD, TEAM)).toEqual({ saved: false });
     expect(contextCookie()).toEqual([]);
   });
 
-  it("saves nothing when nothing needs saving, or a read failed", async () => {
-    mocks.load.mockResolvedValue({ save: null });
+  it("saves nothing when a read failed", async () => {
+    mocks.load.mockResolvedValue(context({ failed: true }));
 
     expect(await saveActiveContext(CHILD, TEAM)).toEqual({ saved: false });
     expect(contextCookie()).toEqual([]);

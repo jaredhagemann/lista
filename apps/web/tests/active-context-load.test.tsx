@@ -4,7 +4,9 @@
  * (docs/specs/device-local-active-context.md, acceptance 1, 2, 4 and 5).
  *
  * Each "device" is its own cookie jar. The database's active_team_id is shared
- * by all of them, as it is in production.
+ * by all of them, as it is in production. A page load renders with the real
+ * resolver, then saves through the real saveActiveContext and cookie writer,
+ * as SaveActiveContext does (review DC-001).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -22,7 +24,7 @@ type Row = Record<string, unknown>;
 const mocks = vi.hoisted(() => {
   const db: Record<string, Row[]> = {};
   const failing = new Set<string>();
-  const jar = { cookies: new Map<string, string>() };
+  const jar = { cookies: new Map<string, string>(), user: null as string | null, sets: [] as { name: string; value: string; options: Record<string, unknown> }[] };
   const from = (table: string) => {
     const filters: ((r: Row) => boolean)[] = [];
     const chain: Record<string, unknown> = {};
@@ -49,6 +51,17 @@ const mocks = vi.hoisted(() => {
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (mocks.jar.cookies.has(name) ? { value: mocks.jar.cookies.get(name) } : undefined),
+    set: (name: string, value: string, options: Record<string, unknown>) => {
+      mocks.jar.sets.push({ name, value, options });
+      if (options?.maxAge === 0) mocks.jar.cookies.delete(name);
+      else mocks.jar.cookies.set(name, value);
+    },
+  }),
+}));
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: async () => ({
+    ...mocks.client,
+    auth: { getUser: async () => ({ data: { user: mocks.jar.user ? { id: mocks.jar.user } : null } }) },
   }),
 }));
 // React's cache() would share results across these "requests"; each read here is its own.
@@ -56,6 +69,7 @@ vi.mock("react", async (importOriginal) => ({ ...(await importOriginal<typeof im
 
 import { loadActiveContext, type ActiveContext } from "@/lib/active-context";
 import { encodeContext } from "@/lib/active-context-cookie";
+import { saveActiveContext } from "@/app/actions/context";
 
 const team = (id: string) => ({ id, name: id === CLUB ? "Club" : "Rec", archived_at: null, organizations: null });
 
@@ -78,18 +92,32 @@ function seed() {
   ];
 }
 
-/** A device: its own cookie jar. Reads the context as `account` would on it. */
+/** A device: its own cookie jar, used as `account`. */
 function device(saved?: { profileId: string; teamId: string; accountId?: string }) {
   const cookies = new Map<string, string>();
   if (saved) cookies.set("lista_context", encodeContext({ accountId: ME, ...saved }));
+  const signIn = (account: string) => {
+    mocks.jar.cookies = cookies;
+    mocks.jar.user = account;
+  };
   return {
     cookies,
+    /** The page renders, with the real resolver. */
+    async render(account = ME): Promise<ActiveContext> {
+      signIn(account);
+      return loadActiveContext(mocks.client as never, account);
+    },
+    /** Then SaveActiveContext saves what was rendered, through the real action. */
+    async save(rendered: ActiveContext, account = ME) {
+      signIn(account);
+      if (!rendered.save) return null;
+      return saveActiveContext(rendered.save.profileId, rendered.save.teamId);
+    },
+    /** A whole page load: render, then save. */
     async read(account = ME): Promise<ActiveContext> {
-      mocks.jar.cookies = cookies;
-      const context = await loadActiveContext(mocks.client as never, account);
-      // What SaveActiveContext would then store on this device.
-      if (context.save) cookies.set("lista_context", encodeContext(context.save));
-      return context;
+      const rendered = await this.render(account);
+      await this.save(rendered, account);
+      return rendered;
     },
   };
 }
@@ -102,8 +130,11 @@ function pickElsewhere(profileId: string, teamId: string) {
 beforeEach(() => {
   for (const key of Object.keys(mocks.db)) delete mocks.db[key];
   mocks.failing.clear();
+  mocks.jar.sets.length = 0;
   seed();
 });
+
+const savedTuple = (d: { cookies: Map<string, string> }) => d.cookies.get("lista_context");
 
 describe("acceptance 1: two devices of one account, one child, different teams", () => {
   it("a switch on one doesn't move the other", async () => {
@@ -176,6 +207,80 @@ describe("acceptance 5: no forgery", () => {
     const context = await shared.read(ME);
     expect(context.activeMembership?.team_id).toBe(REC);
     expect(context.save?.accountId).toBe(ME);
+  });
+});
+
+describe("DC-001: what was rendered is what's saved", () => {
+  it("another device changing the default between render and save doesn't stop the save", async () => {
+    const tablet = device();
+    const rendered = await tablet.render();
+    expect(rendered.activeMembership?.team_id).toBe(REC);
+
+    pickElsewhere(DAUGHTER, CLUB); // before this browser's save lands
+
+    expect(await tablet.save(rendered)).toEqual({ saved: true });
+    expect((await tablet.render()).activeMembership?.team_id).toBe(REC);
+  });
+
+  it("a repair, too", async () => {
+    const SCHOOL = "10000000-0000-4000-8000-000000000003";
+    mocks.db.team_members = mocks.db.team_members.filter((m) => m.id !== "m-1"); // off the club team
+    mocks.db.team_members.push({ id: "m-5", profile_id: DAUGHTER, team_id: SCHOOL, role: "player", teams: team(SCHOOL), profiles: null });
+    const laptop = device({ profileId: DAUGHTER, teamId: CLUB });
+    const rendered = await laptop.render();
+    expect(rendered.activeMembership?.team_id).toBe(REC);
+
+    pickElsewhere(DAUGHTER, SCHOOL); // before this browser's save lands
+
+    expect(await laptop.save(rendered)).toEqual({ saved: true });
+    expect((await laptop.render()).activeMembership?.team_id).toBe(REC);
+  });
+
+  it("a switch on this browser in between wins: the older render doesn't overwrite it", async () => {
+    const tablet = device();
+    const rendered = await tablet.render();
+    tablet.cookies.set("lista_context", encodeContext({ accountId: ME, profileId: DAUGHTER, teamId: CLUB }));
+
+    expect(await tablet.save(rendered)).toEqual({ saved: false });
+    expect(savedTuple(tablet)).toBe(encodeContext({ accountId: ME, profileId: DAUGHTER, teamId: CLUB }));
+  });
+
+  it("a failed read at save time saves nothing", async () => {
+    const tablet = device();
+    const rendered = await tablet.render();
+    mocks.failing.add("team_members");
+
+    expect(await tablet.save(rendered)).toEqual({ saved: false });
+    expect(savedTuple(tablet)).toBeUndefined();
+  });
+
+  it("a team the person is no longer on by then saves nothing", async () => {
+    const tablet = device();
+    const rendered = await tablet.render();
+    mocks.db.team_members = mocks.db.team_members.filter((m) => m.id !== "m-2");
+
+    expect(await tablet.save(rendered)).toEqual({ saved: false });
+  });
+
+  it("a teammate's profile is never saved", async () => {
+    const tablet = device();
+    mocks.jar.cookies = tablet.cookies;
+    mocks.jar.user = ME;
+
+    expect(await saveActiveContext(TEAMMATE, CLUB)).toEqual({ saved: false });
+    expect(savedTuple(tablet)).toBeUndefined();
+  });
+});
+
+describe("DC-002: the old profile cookie is retired once a context is saved", () => {
+  it("saving the context clears it", async () => {
+    mocks.db.team_members.push({ id: "m-4", profile_id: ME, team_id: CLUB, role: "manager", teams: team(CLUB), profiles: null });
+    const laptop = device();
+    laptop.cookies.set("active_profile_id", DAUGHTER);
+
+    expect((await laptop.read()).activeProfileId).toBe(DAUGHTER);
+    expect(laptop.cookies.has("active_profile_id")).toBe(false);
+    expect(mocks.jar.sets).toContainEqual(expect.objectContaining({ name: "active_profile_id", value: "", options: expect.objectContaining({ maxAge: 0 }) }));
   });
 });
 
