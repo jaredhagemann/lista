@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
+import { saveContextCookie } from "@/lib/active-context-save";
 
 export async function POST(request: Request) {
   const user = await resolveRequestUser(request);
@@ -30,6 +31,10 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // This browser lands on the new team (device-local-active-context, D5). The
+  // phone saves its own context from the response.
+  if (teamId) await saveContextCookie({ accountId: user.id, profileId: user.id, teamId });
 
   return NextResponse.json({ teamId });
 }

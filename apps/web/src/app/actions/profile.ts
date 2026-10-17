@@ -1,16 +1,16 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
 import { LAST_GUARDIAN_MESSAGE, SELF_LINK_MESSAGE, isLastGuardianError } from "@/lib/guardians";
-import { ACTIVE_PROFILE_COOKIE } from "./constants";
+import { saveContextCookie } from "@/lib/active-context-save";
 
 /**
- * Switch to viewing as a different profile (own or managed).
- * Also updates active_team_id on that profile so the team context is preserved.
+ * Switch to viewing as a different profile (own or managed), on this device
+ * only (spec D1). The team is also recorded on that profile as its "last
+ * picked" team, the default for a device with no context of its own (D2).
  */
 export async function setActiveProfile(profileId: string, teamId: string) {
   const supabase = await createServerClient();
@@ -51,18 +51,7 @@ export async function setActiveProfile(profileId: string, teamId: string) {
     .update({ active_team_id: teamId })
     .eq("id", profileId);
 
-  // Set cookie
-  const cookieStore = await cookies();
-  if (isOwn) {
-    cookieStore.delete(ACTIVE_PROFILE_COOKIE);
-  } else {
-    cookieStore.set(ACTIVE_PROFILE_COOKIE, profileId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-    });
-  }
+  await saveContextCookie({ accountId: user.id, profileId, teamId });
 
   revalidatePath("/dashboard", "layout");
   return { success: true };

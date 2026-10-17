@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { acceptInvitation, type AcceptFailure } from "@/lib/invitations/accept";
+import { saveInvitationLanding } from "@/lib/invitations/landing";
 
 // Accepts an invitation. Supports both mobile callers (Bearer token) and
 // web callers (cookie session) via the shared resolveRequestUser helper.
@@ -59,5 +60,8 @@ export async function POST(
     return NextResponse.json({ error: error ?? result.message }, { status });
   }
 
-  return NextResponse.json({ success: true });
+  // Where to land (device-local-active-context, D5): this browser saves it; the
+  // phone saves its own from these fields. Additive, so 1.0.12 is unaffected.
+  await saveInvitationLanding(user.id, result);
+  return NextResponse.json({ success: true, teamId: result.teamId, managedProfileId: result.managedProfileId });
 }

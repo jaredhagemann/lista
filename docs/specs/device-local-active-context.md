@@ -1,11 +1,13 @@
 # Spec — The active profile and team are per device
 
-**Status:** Decided 2026-10-16 (§4, D1–D7). Ready to build after BUG-036 and BUG-037.
+**Status:** Decided 2026-10-16 (§4, D1–D7). **Web built** (§9, PR 1), in review. Mobile next.
 **Requested:** 2026-10-16, by the user. It ships in mobile **1.1.0**, which waits for it (D7).
 **Scope:** web and the mobile app. No database migration.
 **Reference:** [Implementation audit](../reviews/device-local-active-context-audit.md) (Codex, 2026-10-16,
 at `d26982c67`). It has the file-by-file inventory, the compatibility analysis and the acceptance list. This
 spec settles the product rules; the audit is the build checklist.
+**Review log:** [Device-local active context](../reviews/2026-10-16-device-local-active-context-review.md),
+with stable finding IDs, status, evidence and follow-up verification for each implementation part.
 
 ## 1. What's wanted
 

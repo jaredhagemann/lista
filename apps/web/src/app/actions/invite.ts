@@ -1,12 +1,11 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
 import { acceptInvitation } from "@/lib/invitations/accept";
-import { ACTIVE_PROFILE_COOKIE } from "./constants";
+import { saveInvitationLanding } from "@/lib/invitations/landing";
 
 // These actions are callable directly from the browser, so every check lives in
 // acceptInvitation (the accept_invitation database function), not in the invite
@@ -38,6 +37,7 @@ export async function acceptInvitationAsSelf(invitationId: string) {
     mode: "self",
   });
   if (!result.ok) return { error: result.message };
+  await saveInvitationLanding(user.id, result);
 
   revalidatePath("/dashboard", "layout");
   return { success: true, memberId: result.teamMemberId };
@@ -81,6 +81,7 @@ export async function acceptInvitationAsGuardian(
     managedProfileId,
   });
   if (!result.ok) return { error: result.message };
+  await saveInvitationLanding(user.id, result);
 
   revalidatePath("/dashboard", "layout");
   return { success: true, memberId: result.teamMemberId };
@@ -89,8 +90,8 @@ export async function acceptInvitationAsGuardian(
 /**
  * Accept a "manage existing player" invitation.
  * Creates a profile_managers link between the current user and the
- * invitation's managed_profile_id. Sets the active profile cookie so the
- * user immediately views the dashboard as the managed player.
+ * invitation's managed_profile_id, and lands this device on the player's team,
+ * as the player, so the dashboard works.
  */
 export async function acceptManagerInvitation(invitationId: string) {
   const supabase = await createServerClient();
@@ -106,19 +107,7 @@ export async function acceptManagerInvitation(invitationId: string) {
   });
   if (!result.ok) return { error: result.message };
 
-  // Switch the session to view as the managed player so the dashboard works.
-  // Use a long-lived cookie (1 year) so it survives browser restarts — a parent
-  // with no direct team membership has no meaningful "self" view anyway.
-  if (result.managedProfileId) {
-    const cookieStore = await cookies();
-    cookieStore.set(ACTIVE_PROFILE_COOKIE, result.managedProfileId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365,
-    });
-  }
+  await saveInvitationLanding(user.id, result);
 
   revalidatePath("/dashboard", "layout");
   return { success: true };

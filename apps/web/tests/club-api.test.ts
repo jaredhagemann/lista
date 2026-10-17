@@ -64,7 +64,10 @@ const mocks = vi.hoisted(() => {
     };
   });
 
+  const savedContexts: unknown[] = [];
+
   return {
+    savedContexts,
     mockResolveRequestUser,
     mockAssertTeamAdmin,
     mockFrom,
@@ -79,6 +82,10 @@ vi.mock("@/lib/api-auth", () => ({
   resolveRequestUser: mocks.mockResolveRequestUser,
   adminClient: () => ({ from: mocks.mockFrom }),
   assertTeamAdmin: mocks.mockAssertTeamAdmin,
+}));
+
+vi.mock("@/lib/active-context-save", () => ({
+  saveContextCookie: async (context: unknown) => void mocks.savedContexts.push(context),
 }));
 
 // Silence Redis / tenant cache calls inside club/settings
@@ -197,6 +204,25 @@ describe("POST /api/club/teams — success", () => {
     mocks.mockResolveRequestUser.mockResolvedValue(AUTHED_USER);
     mocks.tableData.profiles = PROFILE;
     mocks.tableData.organization_members = ORG_MEMBERS;
+    mocks.savedContexts.length = 0;
+  });
+
+  // device-local-active-context, D5: this browser lands on the new team.
+  it("lands this browser on the new team, as the creator, and says which team", async () => {
+    const res = await POST(makeTeamsRequest({ orgId: "org-1", teamName: "U12 Boys Blue" }));
+    const body = await res.json();
+
+    expect(body.teamId).toEqual(expect.any(String));
+    expect(mocks.savedContexts).toEqual([
+      { accountId: AUTHED_USER.id, profileId: PROFILE.id, teamId: body.teamId },
+    ]);
+  });
+
+  it("saves nothing when the creator's enrollment failed: it isn't a team they're on", async () => {
+    mocks.insertErrors.team_members = { message: "duplicate key" };
+
+    await POST(makeTeamsRequest({ orgId: "org-1", teamName: "U12 Boys Blue" }));
+    expect(mocks.savedContexts).toEqual([]);
   });
 
   it("returns 201 { ok: true } when team is created successfully", async () => {

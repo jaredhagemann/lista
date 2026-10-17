@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { loadActiveContext } from "@/lib/active-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, Users, Calendar } from "lucide-react";
 
@@ -13,20 +13,13 @@ export default async function ClubOverviewPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const cookieStore = await cookies();
-  const activeProfileId =
-    cookieStore.get("active_profile_id")?.value ?? user.id;
-
-  const { data: activeProfile } = await supabase
-    .from("profiles")
-    .select("active_team_id")
-    .eq("id", activeProfileId)
-    .single();
+  // This device's team (docs/specs/device-local-active-context.md), checked.
+  const activeTeamId = (await loadActiveContext(supabase, user.id)).activeMembership?.team_id ?? null;
 
   const { data: team } = await supabase
     .from("teams")
     .select("organization_id")
-    .eq("id", activeProfile?.active_team_id ?? "")
+    .eq("id", activeTeamId ?? "")
     .single();
 
   const orgId = team?.organization_id;
