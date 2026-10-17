@@ -4,7 +4,7 @@
 **Spec:** [Device-local active context](../specs/device-local-active-context.md).
 **Implementation inventory:** [Original audit](device-local-active-context-audit.md).
 **Last reviewed:** 2026-10-16, [PR #139](https://github.com/jaredhagemann/lista/pull/139) at `ab4e1a1f5ef5a3877483a3b89adbd3c8b5b83406`.
-**Current outcome:** request changes to PR #139. DC-003 through DC-005 are open, all P2. The merged web fixes DC-001 and DC-002 are independently verified and resolved. Native-device/TestFlight verification remains outstanding.
+**Current outcome:** DC-003 through DC-005, all P2, are implemented in `0955807f3` on PR #139, awaiting review. The merged web fixes DC-001 and DC-002 are independently verified and resolved. Native-device/TestFlight verification remains outstanding.
 
 ## Using this document as the feature changes
 
@@ -21,9 +21,9 @@
 | --- | --- | --- | --- | --- |
 | [DC-001](#dc-001--persist-initialization-before-another-device-can-change-it) | P2 | A shared-default change between render and save leaves the browser uninitialized | Resolved | Fix `603ea0dae`, merged in #138; independently verified at `ab4e1a1f5` |
 | [DC-002](#dc-002--stop-consulting-the-legacy-cookie-after-migration) | P2 | A stale legacy profile cookie overrides the expected repair fallback | Resolved | Fix `603ea0dae`, merged in #138; independently verified at `ab4e1a1f5` |
-| [DC-003](#dc-003--keep-obsolete-repairs-from-overwriting-newer-local-selections) | P2 | An older automatic repair can overwrite a newer invitation/context save | Open | Two controlled provider probes reproduced the lost selection at `ab4e1a1f5` |
-| [DC-004](#dc-004--surface-local-storage-failures-in-switching-and-landing) | P2 | Failed local writes silently report a successful switch or landing | Open | Reproduced a failed switch write with the real provider at `ab4e1a1f5` |
-| [DC-005](#dc-005--bind-team-creation-landing-to-the-requesting-account) | P2 | A delayed creation response can overwrite another account's saved context | Open | Reproduced with the real creation screen/helper and storage at `ab4e1a1f5` |
+| [DC-003](#dc-003--keep-obsolete-repairs-from-overwriting-newer-local-selections) | P2 | An older automatic repair can overwrite a newer invitation/context save | Implemented — awaiting review | Reproduced at `ab4e1a1f5`; fix `0955807f3` |
+| [DC-004](#dc-004--surface-local-storage-failures-in-switching-and-landing) | P2 | Failed local writes silently report a successful switch or landing | Implemented — awaiting review | Reproduced at `ab4e1a1f5`; fix `0955807f3` |
+| [DC-005](#dc-005--bind-team-creation-landing-to-the-requesting-account) | P2 | A delayed creation response can overwrite another account's saved context | Implemented — awaiting review | Reproduced at `ab4e1a1f5`; fix `0955807f3` |
 
 ## Web findings
 
@@ -116,6 +116,20 @@ The load counter prevents some stale database results from reaching React state,
 
 **Resolution and verification:** Open. No fix reviewed.
 
+Implemented in `0955807f3` (2026-10-16), awaiting review:
+- **Ordered saves:** every `saveContext` goes through one queue in `lib/active-context.ts`, so a write in flight
+  completes before the next starts.
+- **A revision on the store:** a person's own save (a switch, a landing) bumps it when made. An automatic save
+  carries the revision `readStoredContext` returned (`{ ifRevision }`), and is dropped at its turn if anything was
+  saved since. Reads wait for queued writes.
+- **Unmount:** `AppProvider`'s load effect invalidates its pending load on cleanup, so a provider that unmounted
+  publishes and saves nothing.
+- **Tests:**
+  - in `AppProviderContext`: the unmount-then-landing sequence, and a held repair write followed by a newer save,
+    each checking stored and shown context
+  - in `active-context`: the dropped automatic save, a current one going ahead, ordering, and a failed write
+    leaving the queue running
+
 ### DC-004 — Surface local storage failures in switching and landing
 
 **Priority / status:** P2 / Open.
@@ -132,6 +146,18 @@ The load counter prevents some stale database results from reaching React state,
 **Regression coverage:** reject context writes for a switch, team creation and invitation acceptance. Verify the user receives failure/retry feedback, no successful local landing is claimed, and an accepted invitation or created team is not submitted again merely to retry the local save.
 
 **Resolution and verification:** Open. No fix reviewed.
+
+Implemented in `0955807f3` (2026-10-16), awaiting review:
+- **Switches:** `switchTo` saves on the phone first. If that fails, it throws `SWITCH_FAILED` without writing the
+  shared default; `switching` is reset in `finally`. `SwitcherSheet` shows "Couldn't switch" with the message and
+  stays open; a switch that worked closes it.
+- **Creation and invitations:** both keep their server success.
+  - `executeCreateTeamMobile` and `landAfterAccept` report a failed landing through `offerRetry`
+    (`lib/landing-retry.ts`): an Alert with Not now and Try again.
+  - Try again repeats only the local save, and asks again if that fails too. The POST and the acceptance are not
+    repeated.
+- **Tests:** a rejected write for a switch (provider and sheet), team creation, and invitation landing, plus
+  `offerRetry` itself.
 
 ### DC-005 — Bind team creation landing to the requesting account
 
@@ -154,6 +180,16 @@ The request obtains its access token before the POST, but the landing callback o
 **Regression coverage:** hold creation across A-to-B sign-in and sign-out-only transitions. Assert B's saved context is unchanged, no obsolete refresh/navigation occurs, and the normal same-account landing still succeeds.
 
 **Resolution and verification:** Open. No fix reviewed.
+
+Implemented in `0955807f3` (2026-10-16), awaiting review:
+- **One account throughout:** `executeCreateTeamMobile` reads the account and its token together
+  (`getAccount`) before the POST.
+- **Checked at the response:** it checks `isCurrentAccount` when the response arrives. If the account changed,
+  including a sign-out, it lands, refreshes and navigates nothing.
+- **Bound landing:** `landOnTeam(accountId, teamId)` saves under the asking account only. The screen no longer
+  reads the session a second time.
+- **Tests:** `create-team-logic`, "another account signed in meanwhile", and the landing assertion on the asking
+  account. The screen wiring itself isn't rendered in a test.
 
 ## Review history
 
@@ -209,5 +245,25 @@ The request obtains its access token before the POST, but the landing callback o
 - **CI:** GitHub reported Unit tests, Web app tests, Mobile tests, RLS integration tests, staging migration and Vercel successful; production migration was skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/39000068428). These reported checks do not cover the four failing probes.
 - **Limits:** no simulator/native-device/TestFlight run, real-stack browser run, local database reset/integration run, production data inspection, or deployment. Release smoke checks remain outstanding.
 - **Review changes:** this log is the only retained edit. No application edits, commits, pushes or published GitHub comments. The existing untracked screenshot was preserved.
+
+### 2026-10-16 — DC-003 to DC-005 fixes, PR #139
+
+- **Revision:** `0955807f3`, on `b1e5c9fda`. The review round above was committed as written in `b1e5c9fda`.
+- **Scope:**
+  - `lib/active-context.ts`, `contexts/AppContext.tsx`, `components/SwitcherSheet.tsx`
+  - `lib/create-team.ts`, `app/(app)/create-team.tsx`, `lib/invite-accept.ts`, `app/invite/[id].tsx`
+  - the new `lib/landing-retry.ts`
+- **Status changes:** DC-003, DC-004 and DC-005, Open → Implemented — awaiting review.
+- **Local verification:**
+  - Against `ab4e1a1f5`'s source, 18 new or changed tests fail. As behavioral evidence:
+    - DC-003: both provider reproductions, and the two storage-ordering tests
+    - DC-004: the failed provider switch, and the switcher's failure message
+    - DC-005: "another account signed in meanwhile"
+  - The remaining creation and landing tests also fail against the old helper, but partly because its interface
+    changed (`getAccount`, `isCurrentAccount`, `landOnTeam(accountId, teamId)`, `reportLandingFailed`), so they
+    aren't fail-first evidence of behavior. `landing-retry.test.ts` covers new code only.
+  - Mobile passes 272 of 272 in 28 suites, and `tsc --noEmit` is clean.
+- **Not covered:** the creation and invitation screens aren't rendered in tests. Their wiring is covered through
+  the injected helpers. No simulator or device run.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
