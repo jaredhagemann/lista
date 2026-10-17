@@ -87,6 +87,9 @@ type AppContextValue = {
   refresh: () => Promise<void>;
 };
 
+/** A switch that couldn't be saved on this phone (review DC-004). */
+export const SWITCH_FAILED = "Couldn't switch on this phone. Please try again.";
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -171,7 +174,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       legacyProfileId: stored.legacyProfileId,
     });
     const failed = stored.failed || !!(ownError || managedError || membershipsError);
-    if (choice.save && !failed) await saveContext(choice.save);
+    // Dropped if anything was saved since this read: an older repair never
+    // replaces a newer save (review DC-003).
+    if (choice.save && !failed) await saveContext(choice.save, { ifRevision: stored.revision });
     if (load !== latestLoad.current) return;
 
     setOwnProfile(own);
@@ -186,6 +191,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadData();
+    // A load still running when the provider unmounts, or the account
+    // changes, publishes and saves nothing (DC-003).
+    return () => {
+      latestLoad.current++;
+    };
   }, [loadData]);
 
   // A context saved elsewhere (the invitation screen, outside this provider)
@@ -208,14 +218,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * Switches this phone to a person on a team (spec D1). The team is also
    * recorded as that person's "last picked", the default for devices with no
    * context of their own (D2).
+   *
+   * Saved on the phone first: if that fails, the switch throws SWITCH_FAILED,
+   * and nothing else changes, the shared default included (review DC-004).
    */
   async function switchTo(profileId: string, teamId: string) {
     if (!userId) return;
     setSwitching(true);
-    await supabase.from("profiles").update({ active_team_id: teamId }).eq("id", profileId);
-    await saveContext({ accountId: userId, profileId, teamId });
-    await loadData();
-    setSwitching(false);
+    try {
+      if (!(await saveContext({ accountId: userId, profileId, teamId }))) throw new Error(SWITCH_FAILED);
+      await supabase.from("profiles").update({ active_team_id: teamId }).eq("id", profileId);
+      await loadData();
+    } finally {
+      setSwitching(false);
+    }
   }
 
   async function switchTeam(teamId: string) {

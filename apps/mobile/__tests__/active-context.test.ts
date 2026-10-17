@@ -148,7 +148,7 @@ describe("storage", () => {
   it("a storage failure reads as failed, so nothing is saved over it", async () => {
     mockStoreFails = true;
 
-    expect(await readStoredContext(ME)).toEqual({ saved: null, legacyProfileId: null, failed: true });
+    expect(await readStoredContext(ME)).toMatchObject({ saved: null, legacyProfileId: null, failed: true });
   });
 
   it("tells listeners when a context is saved, for the invitation screen outside the provider", async () => {
@@ -160,5 +160,50 @@ describe("storage", () => {
     await saveContext(tuple(DAUGHTER, REC));
 
     expect(heard).toEqual([tuple(DAUGHTER, CLUB)]);
+  });
+});
+
+// ── DC-003: an automatic save never replaces a newer one ─────────────────────
+
+describe("DC-003: ordered saves", () => {
+  const SecureStore = jest.requireMock("expo-secure-store") as { setItemAsync: jest.Mock };
+
+  it("an automatic save from an older read is dropped once anything was saved since", async () => {
+    const { revision } = await readStoredContext(ME);
+    await saveContext(tuple(SON, REC)); // the invitation screen, say
+
+    expect(await saveContext(tuple(DAUGHTER, CLUB), { ifRevision: revision })).toBe(false);
+    expect((await readStoredContext(ME)).saved).toEqual(tuple(SON, REC));
+  });
+
+  it("an automatic save from a current read goes ahead", async () => {
+    const { revision } = await readStoredContext(ME);
+
+    expect(await saveContext(tuple(DAUGHTER, CLUB), { ifRevision: revision })).toBe(true);
+    expect((await readStoredContext(ME)).saved).toEqual(tuple(DAUGHTER, CLUB));
+  });
+
+  it("a save made while an older write is still in flight lands last", async () => {
+    let release: (() => void) | undefined;
+    SecureStore.setItemAsync.mockImplementationOnce(
+      (key: string, value: string) => new Promise<void>((r) => (release = () => (mockStore.set(key, value), r())))
+    );
+    const { revision } = await readStoredContext(ME);
+    const older = saveContext(tuple(DAUGHTER, CLUB), { ifRevision: revision });
+    // The older write has started, and is held.
+    while (!release) await Promise.resolve();
+    const newer = saveContext(tuple(SON, REC));
+
+    release!();
+    await Promise.all([older, newer]);
+
+    expect((await readStoredContext(ME)).saved).toEqual(tuple(SON, REC));
+  });
+
+  it("a failed write reports false, and the next save still runs", async () => {
+    SecureStore.setItemAsync.mockRejectedValueOnce(new Error("keychain locked"));
+
+    expect(await saveContext(tuple(DAUGHTER, CLUB))).toBe(false);
+    expect(await saveContext(tuple(SON, REC))).toBe(true);
   });
 });

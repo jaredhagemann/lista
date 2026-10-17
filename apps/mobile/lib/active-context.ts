@@ -140,21 +140,35 @@ export function chooseContext<M extends ContextMembership>(input: ContextInput<M
 // ── Storage ──────────────────────────────────────────────────────────────────
 
 /**
+ * Every save goes through one queue, in order, so a write still in flight can't
+ * land after a newer one. The revision counts saves: an automatic seed or
+ * repair carries the revision it read, and is dropped if anything was saved
+ * since (review DC-003).
+ */
+let revision = 0;
+let queue: Promise<unknown> = Promise.resolve();
+
+/**
  * What the phone has saved for this account, and the old key, for seeding. A
- * storage failure reads as failed, so nothing is saved over it (D3).
+ * storage failure reads as failed, so nothing is saved over it (D3). The
+ * revision is the one an automatic save from this read must still match.
  */
 export async function readStoredContext(
   accountId: string
-): Promise<{ saved: SavedContext | null; legacyProfileId: string | null; failed: boolean }> {
+): Promise<{ saved: SavedContext | null; legacyProfileId: string | null; failed: boolean; revision: number }> {
+  const at = revision;
+  // Reads wait for queued writes, so they see the latest save.
+  await queue.catch(() => {});
+  if (revision !== at) return readStoredContext(accountId);
   try {
     const [value, legacy] = await Promise.all([
       SecureStore.getItemAsync(contextKey(accountId)),
       SecureStore.getItemAsync(LEGACY_PROFILE_KEY),
     ]);
     const saved = decodeContext(value);
-    return { saved: saved?.accountId === accountId ? saved : null, legacyProfileId: legacy || null, failed: false };
+    return { saved: saved?.accountId === accountId ? saved : null, legacyProfileId: legacy || null, failed: false, revision: at };
   } catch {
-    return { saved: null, legacyProfileId: null, failed: true };
+    return { saved: null, legacyProfileId: null, failed: true, revision: at };
   }
 }
 
@@ -170,14 +184,30 @@ export function onContextSaved(listener: Listener): () => void {
   return () => void listeners.delete(listener);
 }
 
-/** Saves the phone's context and retires the old key. False if storage failed. */
-export async function saveContext(context: SavedContext): Promise<boolean> {
-  try {
-    await SecureStore.setItemAsync(contextKey(context.accountId), encodeContext(context));
-    await SecureStore.deleteItemAsync(LEGACY_PROFILE_KEY);
-  } catch {
-    return false;
-  }
-  for (const listener of [...listeners]) listener(context);
-  return true;
+/**
+ * Saves the phone's context and retires the old key. False if storage failed,
+ * or if `ifRevision` is given and something was saved since that read: an
+ * automatic seed or repair never replaces a newer save (DC-003). A save without
+ * it is the person's own choice, and always goes ahead, after any write in
+ * flight.
+ */
+export function saveContext(context: SavedContext, options: { ifRevision?: number } = {}): Promise<boolean> {
+  const automatic = options.ifRevision !== undefined;
+  if (!automatic) revision++;
+  const write = queue.then(async () => {
+    if (automatic) {
+      if (options.ifRevision !== revision) return false;
+      revision++;
+    }
+    try {
+      await SecureStore.setItemAsync(contextKey(context.accountId), encodeContext(context));
+      await SecureStore.deleteItemAsync(LEGACY_PROFILE_KEY);
+    } catch {
+      return false;
+    }
+    for (const listener of [...listeners]) listener(context);
+    return true;
+  });
+  queue = write.catch(() => {});
+  return write;
 }

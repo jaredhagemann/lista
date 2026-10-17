@@ -129,3 +129,21 @@ export function invitationLanding(
   if (!response.teamId) return null;
   return { accountId, profileId: response.managedProfileId ?? accountId, teamId: response.teamId };
 }
+
+/**
+ * Lands this phone where an accepted invitation leads. The invitation is
+ * already accepted on the server, so a save the phone couldn't make is
+ * reported, and retrying repeats only the save (review DC-004).
+ */
+export async function landAfterAccept(
+  accountId: string,
+  response: { success?: boolean; teamId?: string | null; managedProfileId?: string | null },
+  deps: {
+    save: (landing: { accountId: string; profileId: string; teamId: string }) => Promise<boolean>;
+    reportFailed: (retry: () => Promise<boolean>) => Promise<void>;
+  }
+): Promise<void> {
+  const landing = invitationLanding(accountId, response);
+  if (!landing) return;
+  if (!(await deps.save(landing))) await deps.reportFailed(() => deps.save(landing));
+}

@@ -12,8 +12,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSession } from "../_layout";
 import { storePendingInvite } from "../_layout";
 import { supabase } from "../../lib/supabase";
-import { buildAcceptBody, invitationLanding, inviteCopy, type Identity } from "../../lib/invite-accept";
+import { buildAcceptBody, inviteCopy, landAfterAccept, type Identity } from "../../lib/invite-accept";
 import { saveContext } from "../../lib/active-context";
+import { offerRetry } from "../../lib/landing-retry";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -116,9 +117,11 @@ export default function InviteScreen() {
     }
 
     // Land on the invitation's team, as the person it's for (device-local-active-context, D5).
-    const landing = invitationLanding(session.user.id, data);
-    if (landing) await saveContext(landing);
     setAccepted(true);
+    await landAfterAccept(session.user.id, data, {
+      save: (landing) => saveContext(landing),
+      reportFailed: (retry) => offerRetry("You've joined, but this phone couldn't switch to the team.", retry),
+    });
   }
 
   // ── Error / invalid invite ──────────────────────────────────────────────

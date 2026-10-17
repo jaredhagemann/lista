@@ -140,3 +140,45 @@ describe("invitationLanding", () => {
     expect(invitationLanding(ME, { success: true })).toBeNull();
   });
 });
+
+// ── DC-004: an accepted invitation the phone couldn't land on ────────────────
+
+import { landAfterAccept } from "../lib/invite-accept";
+
+describe("landAfterAccept", () => {
+  const ME = "00000000-0000-4000-8000-000000000001";
+  const TEAM = "10000000-0000-4000-8000-000000000001";
+  const response = { success: true, teamId: TEAM, managedProfileId: null };
+
+  it("saves the landing", async () => {
+    const save = jest.fn().mockResolvedValue(true);
+    const reportFailed = jest.fn();
+
+    await landAfterAccept(ME, response, { save, reportFailed });
+
+    expect(save).toHaveBeenCalledWith({ accountId: ME, profileId: ME, teamId: TEAM });
+    expect(reportFailed).not.toHaveBeenCalled();
+  });
+
+  it("a save that failed says so; retrying repeats only the save", async () => {
+    const save = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const reportFailed = jest.fn(async (retry: () => Promise<boolean>) => {
+      expect(await retry()).toBe(true);
+    });
+
+    await landAfterAccept(ME, response, { save, reportFailed });
+
+    expect(reportFailed).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("no landing (a director invitation with no team): nothing to save or report", async () => {
+    const save = jest.fn();
+    const reportFailed = jest.fn();
+
+    await landAfterAccept(ME, { success: true, teamId: null, managedProfileId: null }, { save, reportFailed });
+
+    expect(save).not.toHaveBeenCalled();
+    expect(reportFailed).not.toHaveBeenCalled();
+  });
+});

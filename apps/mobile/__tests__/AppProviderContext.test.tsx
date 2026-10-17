@@ -267,3 +267,87 @@ describe("a context saved outside the provider", () => {
     expect(shown()).toBe(`${DAUGHTER}/${CLUB}`);
   });
 });
+
+// ── DC-003: an older automatic repair never replaces a newer save ────────────
+
+describe("DC-003: obsolete repairs", () => {
+  const SecureStore = jest.requireMock("expo-secure-store") as { setItemAsync: jest.Mock };
+
+  it("a provider that unmounted mid-load doesn't overwrite a landing saved after it", async () => {
+    mockStore.set(contextKey(ME), tuple(DAUGHTER, REC));
+    const view = await mount();
+    expect(shown()).toBe(`${DAUGHTER}/${REC}`);
+
+    // The daughter leaves Rec; a refresh starts, and its memberships read is held.
+    mockDb.team_members = mockDb.team_members.filter((m) => m.id !== "m-2");
+    let release!: () => void;
+    mockGates[`team_members:profile_id~${ME},${DAUGHTER},${SON}`] = new Promise<void>((r) => (release = r));
+    let refreshing!: Promise<void>;
+    act(() => {
+      refreshing = actions.refresh();
+    });
+    await act(async () => {});
+
+    view.unmount(); // off to the invitation screen
+    expect(await saveContext({ accountId: ME, profileId: SON, teamId: REC })).toBe(true);
+
+    await act(async () => {
+      release();
+      await refreshing;
+    });
+    expect(savedOnPhone()).toBe(tuple(SON, REC));
+  });
+
+  it("a repair write still in flight doesn't win over a save made after it", async () => {
+    mockStore.set(contextKey(ME), tuple(DAUGHTER, CLUB));
+    mockDb.team_members = mockDb.team_members.filter((m) => m.id !== "m-1"); // off Club: a repair to Rec
+    let releaseWrite: (() => void) | undefined;
+    SecureStore.setItemAsync.mockImplementationOnce(
+      (key: string, value: string) => new Promise<void>((r) => (releaseWrite = () => (mockStore.set(key, value), r())))
+    );
+    render(
+      <AppProvider>
+        <Probe />
+      </AppProvider>
+    );
+    await act(async () => {
+      while (!releaseWrite) await Promise.resolve();
+    });
+
+    let explicit!: Promise<boolean>;
+    await act(async () => {
+      explicit = saveContext({ accountId: ME, profileId: SON, teamId: REC });
+    });
+    await act(async () => {
+      releaseWrite!();
+      await explicit;
+    });
+    await act(async () => {});
+
+    expect(savedOnPhone()).toBe(tuple(SON, REC));
+    expect(shown()).toBe(`${SON}/${REC}`);
+  });
+});
+
+// ── DC-004: a switch that couldn't be saved says so ──────────────────────────
+
+describe("DC-004: a failed switch", () => {
+  const SecureStore = jest.requireMock("expo-secure-store") as { setItemAsync: jest.Mock };
+
+  it("rejects, keeps what was shown, and leaves the shared default alone", async () => {
+    mockStore.set(contextKey(ME), tuple(DAUGHTER, REC));
+    await mount();
+    SecureStore.setItemAsync.mockRejectedValueOnce(new Error("keychain locked"));
+
+    let error: unknown;
+    await act(async () => {
+      await actions.switchTeam(CLUB).catch((e) => (error = e));
+    });
+
+    expect(error).toBeInstanceOf(Error);
+    expect(shown()).toBe(`${DAUGHTER}/${REC}`);
+    expect(savedOnPhone()).toBe(tuple(DAUGHTER, REC));
+    expect(mockDb.profiles.find((r) => r.id === DAUGHTER)!.active_team_id).toBe(REC);
+    expect(actions.switching).toBe(false);
+  });
+});

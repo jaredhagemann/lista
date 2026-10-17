@@ -1,4 +1,5 @@
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -54,14 +55,24 @@ export function SwitcherSheet({
 
   const showProfileSection = profilesOnActiveTeam.length > 1;
 
-  async function handleTeamPress(teamId: string) {
-    await switchTeam(teamId);
+  // A switch the phone couldn't save says so, and the sheet stays open to try
+  // again (review DC-004).
+  async function handleSwitch(run: () => Promise<void>) {
+    try {
+      await run();
+    } catch (err) {
+      Alert.alert("Couldn't switch", err instanceof Error ? err.message : "Please try again.");
+      return;
+    }
     onClose();
   }
 
-  async function handleProfilePress(profileId: string, teamId: string) {
-    await switchProfile(profileId, teamId);
-    onClose();
+  function handleTeamPress(teamId: string) {
+    return handleSwitch(() => switchTeam(teamId));
+  }
+
+  function handleProfilePress(profileId: string, teamId: string) {
+    return handleSwitch(() => switchProfile(profileId, teamId));
   }
 
   function relationshipLabel(profileId: string) {
