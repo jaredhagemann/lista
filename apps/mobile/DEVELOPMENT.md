@@ -30,7 +30,7 @@ Last updated: 2026-03-11
 - **Event detail** (`app/(app)/schedule/[eventId].tsx`) — time/location/notes, RSVP buttons with optimistic updates, responses list.
 
 #### Team & Profile Switcher (between Phase 2–3)
-- **AppContext** (`contexts/AppContext.tsx`) — single load of own profile, managed profiles, all team memberships. `switchTeam()` / `switchProfile()` update Supabase + SecureStore, instantly re-render all consumers.
+- **AppContext** (`contexts/AppContext.tsx`) — single load of own profile, managed profiles, all team memberships. It chooses this phone's context with `lib/active-context.ts`. `switchTeam()` / `switchProfile()` save the context on this phone and record the last-picked team in Supabase, then re-render all consumers.
 - **TeamProfileStrip** (`components/TeamProfileStrip.tsx`) — persistent strip above all tab screens. Amber "Viewing as" label when on managed profile.
 - **SwitcherSheet** (`components/SwitcherSheet.tsx`) — slide-up modal with deduplicated team list and "View as" section.
 
@@ -159,8 +159,12 @@ pnpm --filter @lista/mobile run ios -- --clear
 ## Architecture Notes
 
 - **No server components** — all data fetching is client-side (`useEffect` / Supabase JS).
-- **Active profile** — stored in SecureStore key `active_profile_id` (mirrors web's `active_profile_id` cookie). Absent = viewing as own profile.
-- **Active team** — stored in `profiles.active_team_id` in the database.
+- **Active profile and team** — per phone ([spec](../../docs/specs/device-local-active-context.md)). Kept together in SecureStore,
+  under the key `lista_context.<account id>`, as `v1.<account>.<profile>.<team>`. It mirrors the web's `lista_context` cookie.
+  - **No valid saved context:** it opens at the person's last-picked team, `profiles.active_team_id`, and saves that.
+  - **Switches** update that default for other devices, but never move a phone that has its own context.
+  - **The old `active_profile_id` key** only seeds a first context, then is deleted.
+  - **The rules** are `chooseContext`, copied from the web's `lib/active-context.ts`.
 - **Chat sender** — always `session.user.id` (the authenticated user), never the managed profile. Enforced by RLS (`sender_id = auth.uid()`).
 - **Managed profile creation** — requires service role; proxied through web `/api/managed-profiles` with Bearer token auth.
 - **UUID generation** — use `expo-crypto` (`Crypto.randomUUID()`), not `crypto.randomUUID()` — the global `crypto` object is not available in Hermes.

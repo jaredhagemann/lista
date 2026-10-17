@@ -12,10 +12,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import { supabase } from "../../lib/supabase";
 import { useAppContext } from "../../contexts/AppContext";
 import { executeCreateTeamMobile } from "../../lib/create-team";
+import { saveContext } from "../../lib/active-context";
+import { offerRetry } from "../../lib/landing-retry";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://lista.team";
 
@@ -39,11 +40,17 @@ export default function CreateTeamScreen() {
     const err = await executeCreateTeamMobile(
       { teamName, season, orgName },
       {
-        getAccessToken: async () => {
+        // The token and the account, together (DC-005).
+        getAccount: async () => {
           const { data } = await supabase.auth.getSession();
-          return data.session?.access_token ?? null;
+          return data.session ? { accessToken: data.session.access_token, accountId: data.session.user.id } : null;
         },
-        deleteSecureStoreKey: SecureStore.deleteItemAsync,
+        isCurrentAccount: async (accountId) => {
+          const { data } = await supabase.auth.getSession();
+          return data.session?.user.id === accountId;
+        },
+        landOnTeam: (accountId, teamId) => saveContext({ accountId, profileId: accountId, teamId }),
+        reportLandingFailed: (retry) => offerRetry("Your team was created, but this phone couldn't switch to it.", retry),
         refresh,
         routerReplace: (path) => router.replace(path as Parameters<typeof router.replace>[0]),
       },

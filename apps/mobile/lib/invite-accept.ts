@@ -115,3 +115,35 @@ export function inviteCopy(invite: InviteSummary): InviteCopy {
     asksWhoYouAre: true,
   };
 }
+
+/**
+ * Where an accepted invitation lands this phone (device-local-active-context,
+ * D5): its team, as the child for a guardian or manager invitation, else the
+ * account's own profile. None for a director invitation with no team, or a
+ * server that doesn't say.
+ */
+export function invitationLanding(
+  accountId: string,
+  response: { success?: boolean; teamId?: string | null; managedProfileId?: string | null }
+): { accountId: string; profileId: string; teamId: string } | null {
+  if (!response.teamId) return null;
+  return { accountId, profileId: response.managedProfileId ?? accountId, teamId: response.teamId };
+}
+
+/**
+ * Lands this phone where an accepted invitation leads. The invitation is
+ * already accepted on the server, so a save the phone couldn't make is
+ * reported, and retrying repeats only the save (review DC-004).
+ */
+export async function landAfterAccept(
+  accountId: string,
+  response: { success?: boolean; teamId?: string | null; managedProfileId?: string | null },
+  deps: {
+    save: (landing: { accountId: string; profileId: string; teamId: string }) => Promise<boolean>;
+    reportFailed: (retry: () => Promise<boolean>) => Promise<void>;
+  }
+): Promise<void> {
+  const landing = invitationLanding(accountId, response);
+  if (!landing) return;
+  if (!(await deps.save(landing))) await deps.reportFailed(() => deps.save(landing));
+}

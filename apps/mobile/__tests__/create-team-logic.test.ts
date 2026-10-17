@@ -2,146 +2,132 @@
  * Unit tests for the iOS CreateTeamScreen submit logic.
  *
  * Covers test-plan sections:
- *   §5.5  — Successful creation: SecureStore cleared, refresh called, navigate
+ *   §5.5  — Successful creation: this phone saved on the new team, refresh, navigate
  *   §5.8  — Failure: inline error shown, no navigation
- *   §5.9.2 — Managed profile active → SecureStore key deleted before refresh
- *   §5.9.4 — Failure leaves SecureStore untouched
+ *   §5.9.2 — Whatever was active, the new team is saved before refresh
+ *            (device-local-active-context, D5)
+ *   §5.9.4 — Failure leaves the saved context untouched
+ * And review findings:
+ *   DC-004 — a landing the phone couldn't save says so; retrying repeats only
+ *            the local save, never the creation
+ *   DC-005 — the response lands on the account that asked, and nowhere if the
+ *            signed-in account changed meanwhile
  *
  * All dependencies are injected so no React Native environment is needed.
  */
 
-import { executeCreateTeamMobile } from "../lib/create-team";
+import { executeCreateTeamMobile, type CreateTeamMobileDeps } from "../lib/create-team";
 
 const API_BASE = "https://lista.team";
+const A = "00000000-0000-4000-8000-00000000000a";
 
 function okResponse(body: unknown = { teamId: "team-abc" }): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
 function errResponse(body: unknown = { error: "internal error" }, status = 500): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-describe("executeCreateTeamMobile — active context reset (§5.9)", () => {
-  let getAccessToken: jest.Mock;
-  let deleteSecureStoreKey: jest.Mock;
-  let refresh: jest.Mock;
-  let routerReplace: jest.Mock;
+let deps: { [K in keyof Required<CreateTeamMobileDeps>]: jest.Mock };
+const calls: string[] = [];
 
-  beforeEach(() => {
-    getAccessToken = jest.fn().mockResolvedValue("valid-access-token");
-    deleteSecureStoreKey = jest.fn().mockResolvedValue(undefined);
-    refresh = jest.fn().mockResolvedValue(undefined);
-    routerReplace = jest.fn();
+beforeEach(() => {
+  calls.length = 0;
+  deps = {
+    fetchFn: jest.fn().mockResolvedValue(okResponse()),
+    getAccount: jest.fn().mockResolvedValue({ accessToken: "token-a", accountId: A }),
+    isCurrentAccount: jest.fn().mockResolvedValue(true),
+    landOnTeam: jest.fn().mockImplementation(async () => (calls.push("landOnTeam"), true)),
+    reportLandingFailed: jest.fn().mockResolvedValue(undefined),
+    refresh: jest.fn().mockImplementation(async () => void calls.push("refresh")),
+    routerReplace: jest.fn().mockImplementation(() => void calls.push("routerReplace")),
+  };
+});
+
+const create = (teamName = "U12 Boys") => executeCreateTeamMobile({ teamName }, deps as unknown as CreateTeamMobileDeps, API_BASE);
+
+describe("executeCreateTeamMobile — success (§5.5, §5.9.2)", () => {
+  it("lands this phone on the new team, as the account that asked, then refreshes and navigates", async () => {
+    expect(await create()).toBeNull();
+
+    expect(deps.landOnTeam).toHaveBeenCalledWith(A, "team-abc");
+    expect(calls).toEqual(["landOnTeam", "refresh", "routerReplace"]);
+    expect(deps.routerReplace).toHaveBeenCalledWith("/(app)");
   });
 
-  // §5.5 / §5.9.2 — Success path
-  it("§5.5/§5.9.2 deletes SecureStore active_profile_id key on success", async () => {
-    const fetchFn = jest.fn().mockResolvedValue(okResponse());
-    const err = await executeCreateTeamMobile(
-      { teamName: "U12 Boys" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    expect(err).toBeNull();
-    expect(deleteSecureStoreKey).toHaveBeenCalledWith("active_profile_id");
+  it("sends that account's Bearer token", async () => {
+    await create();
+
+    const [url, init] = deps.fetchFn.mock.calls[0];
+    expect(url).toBe(`${API_BASE}/api/teams`);
+    expect(init.headers.Authorization).toBe("Bearer token-a");
   });
 
-  it("§5.5 calls refresh() on success", async () => {
-    const fetchFn = jest.fn().mockResolvedValue(okResponse());
-    await executeCreateTeamMobile(
-      { teamName: "U12 Boys" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    expect(refresh).toHaveBeenCalledTimes(1);
+  it("a response without a teamId lands nowhere, but still refreshes", async () => {
+    deps.fetchFn.mockResolvedValue(okResponse({}));
+
+    expect(await create()).toBeNull();
+    expect(deps.landOnTeam).not.toHaveBeenCalled();
+    expect(deps.refresh).toHaveBeenCalled();
+  });
+});
+
+describe("executeCreateTeamMobile — failure (§5.8, §5.9.4)", () => {
+  it("a 500 shows its error, and lands nowhere", async () => {
+    deps.fetchFn.mockResolvedValue(errResponse({ error: "internal error" }, 500));
+
+    expect(await create()).toBe("internal error");
+    expect(deps.landOnTeam).not.toHaveBeenCalled();
+    expect(deps.refresh).not.toHaveBeenCalled();
+    expect(deps.routerReplace).not.toHaveBeenCalled();
   });
 
-  it("§5.5 navigates to /(app) on success", async () => {
-    const fetchFn = jest.fn().mockResolvedValue(okResponse());
-    await executeCreateTeamMobile(
-      { teamName: "U12 Boys" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    expect(routerReplace).toHaveBeenCalledWith("/(app)");
+  it("a 400 too", async () => {
+    deps.fetchFn.mockResolvedValue(errResponse({ error: "teamName is required" }, 400));
+
+    expect(await create("")).toBe("teamName is required");
+    expect(deps.landOnTeam).not.toHaveBeenCalled();
   });
 
-  it("§5.9.2 deletes SecureStore key before calling refresh() (ordering)", async () => {
-    const callOrder: string[] = [];
-    deleteSecureStoreKey = jest.fn().mockImplementation(async () => {
-      callOrder.push("deleteSecureStoreKey");
+  it("not signed in: an error, and no request", async () => {
+    deps.getAccount.mockResolvedValue(null);
+
+    expect(await create()).toBe("Not signed in. Please restart the app.");
+    expect(deps.fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("DC-005: the response belongs to the account that asked", () => {
+  it("another account signed in meanwhile: nothing lands, refreshes or navigates", async () => {
+    deps.isCurrentAccount.mockResolvedValue(false);
+
+    expect(await create()).toBeNull();
+    expect(deps.isCurrentAccount).toHaveBeenCalledWith(A);
+    expect(deps.landOnTeam).not.toHaveBeenCalled();
+    expect(deps.refresh).not.toHaveBeenCalled();
+    expect(deps.routerReplace).not.toHaveBeenCalled();
+  });
+});
+
+describe("DC-004: a landing the phone couldn't save", () => {
+  it("says so; retrying repeats only the save, and the team is created once", async () => {
+    deps.landOnTeam.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    deps.reportLandingFailed.mockImplementation(async (retry: () => Promise<boolean>) => {
+      expect(await retry()).toBe(true);
     });
-    refresh = jest.fn().mockImplementation(async () => {
-      callOrder.push("refresh");
-    });
 
-    const fetchFn = jest.fn().mockResolvedValue(okResponse());
-    await executeCreateTeamMobile(
-      { teamName: "U12 Boys" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    expect(callOrder).toEqual(["deleteSecureStoreKey", "refresh"]);
+    expect(await create()).toBeNull();
+
+    expect(deps.reportLandingFailed).toHaveBeenCalledTimes(1);
+    expect(deps.landOnTeam).toHaveBeenCalledTimes(2);
+    expect(deps.landOnTeam).toHaveBeenLastCalledWith(A, "team-abc");
+    expect(deps.fetchFn).toHaveBeenCalledTimes(1);
+    expect(deps.refresh).toHaveBeenCalled();
   });
 
-  // §5.8 / §5.9.4 — Failure path
-  it("§5.8/§5.9.4 does NOT delete SecureStore key when POST returns 500", async () => {
-    const fetchFn = jest.fn().mockResolvedValue(errResponse({ error: "internal error" }, 500));
-    const err = await executeCreateTeamMobile(
-      { teamName: "U12 Boys" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    expect(err).toBe("internal error");
-    expect(deleteSecureStoreKey).not.toHaveBeenCalled();
-    expect(refresh).not.toHaveBeenCalled();
-    expect(routerReplace).not.toHaveBeenCalled();
-  });
-
-  it("§5.9.4 does NOT delete SecureStore key when POST returns 400", async () => {
-    const fetchFn = jest.fn().mockResolvedValue(
-      errResponse({ error: "teamName is required" }, 400)
-    );
-    const err = await executeCreateTeamMobile(
-      { teamName: "" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    expect(err).toBe("teamName is required");
-    expect(deleteSecureStoreKey).not.toHaveBeenCalled();
-  });
-
-  // No-token guard
-  it("returns error and does not fetch when no access token", async () => {
-    getAccessToken = jest.fn().mockResolvedValue(null);
-    const fetchFn = jest.fn();
-    const err = await executeCreateTeamMobile(
-      { teamName: "U12 Boys" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    expect(err).toBe("Not signed in. Please restart the app.");
-    expect(fetchFn).not.toHaveBeenCalled();
-    expect(deleteSecureStoreKey).not.toHaveBeenCalled();
-  });
-
-  it("sends Bearer token in Authorization header", async () => {
-    const fetchFn = jest.fn().mockResolvedValue(okResponse());
-    await executeCreateTeamMobile(
-      { teamName: "U12 Boys" },
-      { fetchFn, getAccessToken, deleteSecureStoreKey, refresh, routerReplace },
-      API_BASE
-    );
-    const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>)["Authorization"]).toBe(
-      "Bearer valid-access-token"
-    );
+  it("a landing that saved reports nothing", async () => {
+    await create();
+    expect(deps.reportLandingFailed).not.toHaveBeenCalled();
   });
 });

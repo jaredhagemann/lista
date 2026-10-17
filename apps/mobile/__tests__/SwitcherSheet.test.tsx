@@ -7,7 +7,7 @@
  */
 
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import { act, render, screen, fireEvent } from "@testing-library/react-native";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -120,5 +120,37 @@ describe("SwitcherSheet — Create a new team row (§7.2 / §7.3)", () => {
       />
     );
     expect(screen.queryByText("Create a new team")).toBeNull();
+  });
+});
+
+// ── DC-004: a switch that couldn't be saved on the phone ─────────────────────
+
+describe("SwitcherSheet — a failed switch (DC-004)", () => {
+  const { Alert } = jest.requireActual("react-native") as typeof import("react-native");
+
+  it("says so, and stays open to try again", async () => {
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    mockSwitchTeam.mockRejectedValueOnce(new Error("Couldn't switch on this phone. Please try again."));
+    const onClose = jest.fn();
+    render(<SwitcherSheet visible onClose={onClose} onCreateTeam={jest.fn()} />);
+
+    await act(async () => {
+      fireEvent.press(screen.getAllByText("U12 Boys")[0]);
+    });
+
+    expect(alert).toHaveBeenCalledWith("Couldn't switch", "Couldn't switch on this phone. Please try again.");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a switch that worked closes the sheet", async () => {
+    mockSwitchTeam.mockResolvedValueOnce(undefined);
+    const onClose = jest.fn();
+    render(<SwitcherSheet visible onClose={onClose} onCreateTeam={jest.fn()} />);
+
+    await act(async () => {
+      fireEvent.press(screen.getAllByText("U12 Boys")[0]);
+    });
+
+    expect(onClose).toHaveBeenCalled();
   });
 });
