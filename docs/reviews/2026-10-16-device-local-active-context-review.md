@@ -4,7 +4,7 @@
 **Spec:** [Device-local active context](../specs/device-local-active-context.md).
 **Implementation inventory:** [Original audit](device-local-active-context-audit.md).
 **Last reviewed:** 2026-10-16, [PR #138](https://github.com/jaredhagemann/lista/pull/138) at `2a27672f6628c6e23c7b6704c9bb810f5d50edce`.
-**Current outcome:** request changes. DC-001 and DC-002 are open, both P2. Mobile remains the next implementation part; its absence is not a finding against this web PR.
+**Current outcome:** DC-001 and DC-002, both P2, are implemented in `603ea0dae`, awaiting review. Mobile remains the next implementation part; its absence is not a finding against this web PR.
 
 ## Using this document as the feature changes
 
@@ -19,8 +19,8 @@
 
 | ID | Priority | Finding | Status | Fix / verification |
 | --- | --- | --- | --- | --- |
-| [DC-001](#dc-001--persist-initialization-before-another-device-can-change-it) | P2 | A shared-default change between render and save leaves the browser uninitialized | Open | Reproduced with the real resolver and save action at `2a27672f6` |
-| [DC-002](#dc-002--stop-consulting-the-legacy-cookie-after-migration) | P2 | A stale legacy profile cookie overrides the expected repair fallback | Open | Reproduced with the real chooser at `2a27672f6` |
+| [DC-001](#dc-001--persist-initialization-before-another-device-can-change-it) | P2 | A shared-default change between render and save leaves the browser uninitialized | Implemented — awaiting review | Reproduced at `2a27672f6`; fix `603ea0dae` |
+| [DC-002](#dc-002--stop-consulting-the-legacy-cookie-after-migration) | P2 | A stale legacy profile cookie overrides the expected repair fallback | Implemented — awaiting review | Reproduced at `2a27672f6`; fix `603ea0dae` |
 
 ## Web findings
 
@@ -47,6 +47,17 @@ The dashboard chooses a team while rendering, but saves that choice later throug
 
 **Resolution and verification:** Open. No fix reviewed.
 
+Implemented in `603ea0dae` (2026-10-16), awaiting review. Following the second option in the requested change:
+- **Saves what was rendered:** `saveActiveContext` saves the rendered tuple, not a fresh choice. Another
+  device's default change in between no longer refuses it.
+- **Still checked first.** It saves only when:
+  - every read succeeded (`failed`)
+  - this device has no valid saved context, so a switch here since is kept (`keptSaved`)
+  - the person is the account's own or managed, and on that team, not archived while another exists
+    (`allows`, from the new `usableMembership`)
+- **The test path is real:** `active-context-load.test.tsx` now renders with the real `loadActiveContext`, and
+  saves through the real `saveActiveContext` and `saveContextCookie` into a per-device cookie jar.
+
 ### DC-002 — Stop consulting the legacy cookie after migration
 
 **Priority / status:** P2 / Open.
@@ -68,6 +79,13 @@ The chooser puts `legacyProfileId` ahead of the account's own profile whenever t
 
 **Resolution and verification:** Open. No fix reviewed.
 
+Implemented in `603ea0dae` (2026-10-16), awaiting review:
+- **Initial migration only:** `chooseContext` consults `legacyProfileId` only while this account has no saved
+  tuple. Another account's tuple counts as none.
+- **Retired on save:** every `saveContextCookie` also clears `active_profile_id`, in the context cookie's scope:
+  `.lista.team` in production with routing, else host-only. One response can clear only one scope of a cookie
+  name, so a copy left in the other scope may survive. The chooser ignores it once a tuple exists.
+
 ## Review history
 
 ### 2026-10-16 — Web implementation, PR #138
@@ -83,5 +101,31 @@ The chooser puts `legacyProfileId` ahead of the account's own profile whenever t
 - **CI:** GitHub reported Unit tests, Web app tests, Mobile tests, RLS integration tests, staging migration, and Vercel successful; production migration was skipped. [Tests run](https://github.com/jaredhagemann/lista/actions/runs/38980217212). These reported checks do not cover the reproduced cases.
 - **Limits:** no full local suite rerun, real-stack browser run, local database/RLS integration, native-device check, or production/staging data inspection was performed. No database reset or remote mutation was performed.
 - **Review record:** findings were initially delivered as inline comments in the Codex chat. This document records that review afterward at the user's request. This log and its spec backlink are the only retained edits; no application edits, commits, pushes, or published GitHub comments. The existing untracked screenshot was preserved.
+
+### 2026-10-16 — DC-001 and DC-002 fixes, PR #138
+
+- **Revision:** `603ea0dae`, on `ddde812b4`. The review round above was committed as written in `ddde812b4`.
+- **Scope:** `lib/active-context.ts`, `lib/active-context-save.ts` and `app/actions/context.ts`, with tests in
+  `active-context`, `active-context-load` and `active-context-actions`.
+- **Status changes:** DC-001 and DC-002, Open → Implemented — awaiting review.
+- **Regression coverage:**
+  - DC-001, 6 tests in `active-context-load`, through the real save path:
+    - the default changes between render and save, for a seed and for a repair: the rendered team is kept
+    - a switch on this browser in between is kept
+    - a read fails at save time
+    - the team is gone by save time
+    - a teammate's profile is passed in
+  - DC-002, 3 chooser tests:
+    - a repair falls back to the account's own team, past a stale legacy child
+    - the same when the saved child is no longer managed
+    - another account's tuple still lets the legacy cookie seed
+  - DC-002, 1 load test: a save retires the legacy cookie, with `maxAge: 0`.
+  - The 4 save-action unit tests are rewritten for the new rules.
+- **Local verification:**
+  - Against `2a27672f6`'s source, 5 of the new tests fail: both DC-001 interleavings, the cookie retirement,
+    and both repair fallbacks. The others pass on both, as controls.
+  - Web passes 1,595 of 1,595 in 118 files. `tsc --noEmit` and eslint are clean on the changed files.
+- **Not covered:** the host-only legacy copy can't be cleared in the same response as the domain one. It's
+  ignored instead, and there's no test of a browser holding both copies.
 
 Append subsequent review rounds here, including the exact revision and verification for every status change.
