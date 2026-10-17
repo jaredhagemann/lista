@@ -38,22 +38,6 @@ export type ContextChoice<M extends ContextMembership> = {
   save: SavedContext | null;
 };
 
-/**
- * Chooses the device's context. Pure: the reads happen in loadActiveContext.
- *
- *   1. A saved tuple for this account, a profile it may act as and one of that
- *      profile's teams: kept as it is.
- *   2. Otherwise a person, in order: the saved one, the account's own. Each
- *      must be the account's own or managed. The first with a team wins, at
- *      their last-picked team (D2), else their first. Before any tuple was
- *      saved for this account, the old profile cookie's person comes before
- *      the account's own; after, it's ignored (review DC-002).
- *   3. Otherwise the account's other people, in the order they joined their
- *      teams, by the same rule: a parent with no team of their own views as a
- *      child, at that child's last-picked team. The person follows the team.
- *
- * Archived teams are passed over while another exists (D4).
- */
 export type ContextInput<M extends ContextMembership> = {
   userId: string;
   ownProfile: { id: string; active_team_id: string | null } | null;
@@ -85,6 +69,22 @@ export function usableMembership<M extends ContextMembership>(
   return contextPool(input).pool.find((m) => m.profile_id === profileId && m.team_id === teamId) ?? null;
 }
 
+/**
+ * Chooses the device's context. Pure: the reads happen in loadActiveContext.
+ *
+ *   1. A saved tuple for this account, a profile it may act as and one of that
+ *      profile's teams: kept as it is.
+ *   2. Otherwise a person, in order: the saved one, the account's own. Each
+ *      must be the account's own or managed. The first with a team wins, at
+ *      their last-picked team (D2), else their first. Before any tuple was
+ *      saved for this account, the old profile cookie's person comes before
+ *      the account's own; after, it's ignored (review DC-002).
+ *   3. Otherwise the account's other people, in the order they joined their
+ *      teams, by the same rule: a parent with no team of their own views as a
+ *      child, at that child's last-picked team. The person follows the team.
+ *
+ * Archived teams are passed over while another exists (D4).
+ */
 export function chooseContext<M extends ContextMembership>(input: ContextInput<M>): ContextChoice<M> {
   const { userId, ownProfile, managed, saved, legacyProfileId } = input;
   const { allowed, pool } = contextPool(input);

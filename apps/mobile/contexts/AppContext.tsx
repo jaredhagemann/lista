@@ -2,12 +2,13 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   ReactNode,
 } from "react";
-import * as SecureStore from "expo-secure-store";
 import { supabase } from "../lib/supabase";
+import { chooseContext, onContextSaved, readStoredContext, saveContext } from "../lib/active-context";
 import { useSession } from "../app/_layout";
 import { rowToMembership } from "../lib/membership";
 import type { OrgBranding } from "../lib/team-branding";
@@ -28,6 +29,8 @@ export type Profile = {
 export type Team = {
   id: string;
   name: string;
+  /** An archived team is passed over while another exists (device-local-active-context, D4). */
+  archived_at?: string | null;
   season: string | null;
   logo_url: string | null;
   home_uniform: string | null;
@@ -102,81 +105,80 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [ownProfile, setOwnProfile] = useState<Profile | null>(null);
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
+  const [activeRow, setActiveRow] = useState<TeamMemberRow | null>(null);
   const [allMemberships, setAllMemberships] = useState<TeamMemberRow[]>([]);
   const [managedProfiles, setManagedProfiles] = useState<ManagedProfileRow[]>(
     []
   );
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
+  // Each load is numbered; only the latest one's results are shown, so a load
+  // that finishes after the account changed publishes nothing (spec §6).
+  const latestLoad = useRef(0);
 
+  /**
+   * Reads the account's people and teams, and chooses this phone's context
+   * (docs/specs/device-local-active-context.md): its saved tuple if still
+   * valid, else the last-picked default (D2, D3). A new or repaired choice is
+   * saved on this phone, unless a read failed.
+   */
   const loadData = useCallback(async () => {
-    if (!userId) return;
+    const load = ++latestLoad.current;
+    if (!userId) {
+      setOwnProfile(null);
+      setActiveProfile(null);
+      setActiveRow(null);
+      setAllMemberships([]);
+      setManagedProfiles([]);
+      return;
+    }
 
-    // 1. Read active_profile_id from SecureStore
-    const storedProfileId = await SecureStore.getItemAsync("active_profile_id");
+    const stored = await readStoredContext(userId);
 
-    // 2. Fetch own profile
-    const { data: ownData } = await supabase
-      .from("profiles")
-      .select("id, first_name, last_name, email, avatar_url, active_team_id, birthday, gender")
-      .eq("id", userId)
-      .single();
+    const [{ data: ownData, error: ownError }, { data: managedData, error: managedError }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, first_name, last_name, email, avatar_url, active_team_id, birthday, gender")
+        .eq("id", userId)
+        .single(),
+      supabase
+        .from("profile_managers")
+        .select(
+          "managed_id, relationship, profiles!managed_id(id, first_name, last_name, email, avatar_url, active_team_id)"
+        )
+        .eq("manager_id", userId)
+        .neq("managed_id", userId),
+    ]);
+    const managed = ((managedData ?? []) as unknown as ManagedProfileRow[]).filter((m) => m.profiles);
 
-    // 3. Fetch managed profiles
-    const { data: managedData } = await supabase
-      .from("profile_managers")
-      .select(
-        "managed_id, relationship, profiles!managed_id(id, first_name, last_name, email, avatar_url, active_team_id)"
-      )
-      .eq("manager_id", userId)
-      .neq("managed_id", userId);
-
-    const managed = (managedData ?? []) as unknown as ManagedProfileRow[];
-    const managedIds = managed.map((m) => m.managed_id);
-    const allProfileIds = [userId, ...managedIds];
-
-    // 4. Fetch all team memberships across own + managed profiles
-    const { data: membershipsData } = await supabase
+    const { data: membershipsData, error: membershipsError } = await supabase
       .from("team_members")
       .select(
-        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform, organizations(name, org_name_public, logo_url, plan, brand_color_secondary)), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
+        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform, archived_at, organizations(name, org_name_public, logo_url, plan, brand_color_secondary)), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
       )
-      .in("profile_id", allProfileIds)
+      .in("profile_id", [userId, ...managed.map((m) => m.managed_id)])
       .order("created_at");
+    if (load !== latestLoad.current) return;
 
     const memberships = (membershipsData ?? []) as unknown as TeamMemberRow[];
+    const own = ownData as Profile | null;
+    const choice = chooseContext({
+      userId,
+      ownProfile: own,
+      managed: managed.map((m) => m.profiles),
+      memberships,
+      saved: stored.saved,
+      legacyProfileId: stored.legacyProfileId,
+    });
+    const failed = stored.failed || !!(ownError || managedError || membershipsError);
+    if (choice.save && !failed) await saveContext(choice.save);
+    if (load !== latestLoad.current) return;
 
-    // 5. Validate stored profile ID
-    let activeProfileId =
-      storedProfileId && allProfileIds.includes(storedProfileId)
-        ? storedProfileId
-        : userId;
-
-    // If the user's own profile has no direct team membership and they manage
-    // at least one player who does, automatically view as that player.
-    // This handles parents who are profile-only managers (no team_members row).
-    if (activeProfileId === userId) {
-      const hasOwnMembership = memberships.some((m) => m.profile_id === userId);
-      if (!hasOwnMembership && managedIds.length > 0) {
-        const firstManagedMembership = memberships.find((m) =>
-          managedIds.includes(m.profile_id)
-        );
-        if (firstManagedMembership) {
-          activeProfileId = firstManagedMembership.profile_id;
-          await SecureStore.setItemAsync("active_profile_id", activeProfileId);
-        }
-      }
-    }
-
-    // 6. Resolve active profile data
-    let activeProf: Profile | null = (ownData as Profile | null);
-    if (activeProfileId !== userId) {
-      const match = managed.find((m) => m.managed_id === activeProfileId);
-      if (match) activeProf = match.profiles;
-    }
-
-    setOwnProfile(ownData as Profile | null);
-    setActiveProfile(activeProf);
+    setOwnProfile(own);
+    setActiveProfile(
+      choice.profileId === userId ? own : (managed.find((m) => m.managed_id === choice.profileId)?.profiles ?? own)
+    );
+    setActiveRow(choice.membership);
     setManagedProfiles(managed);
     setAllMemberships(memberships);
     setLoading(false);
@@ -186,19 +188,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadData();
   }, [loadData]);
 
+  // A context saved elsewhere (the invitation screen, outside this provider)
+  // takes effect here.
+  useEffect(() => onContextSaved((saved) => {
+    if (saved.accountId === userId) loadData();
+  }), [loadData, userId]);
+
   // ── Derived values ───────────────────────────────────────────────────────
 
-  const membership: ActiveMembership | null = (() => {
-    if (!activeProfile) return allMemberships[0] ? rowToMembership(allMemberships[0]) : null;
-    const preferredTeamId = activeProfile.active_team_id;
-    const m =
-      allMemberships.find(
-        (r) => r.profile_id === activeProfile.id && r.team_id === preferredTeamId
-      ) ??
-      allMemberships.find((r) => r.profile_id === activeProfile.id) ??
-      allMemberships[0];
-    return m ? rowToMembership(m) : null;
-  })();
+  const membership: ActiveMembership | null = activeRow ? rowToMembership(activeRow) : null;
 
   const profilesOnActiveTeam = allMemberships.filter(
     (m) => m.team_id === membership?.teamId
@@ -206,51 +204,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  async function switchTeam(teamId: string) {
+  /**
+   * Switches this phone to a person on a team (spec D1). The team is also
+   * recorded as that person's "last picked", the default for devices with no
+   * context of their own (D2).
+   */
+  async function switchTo(profileId: string, teamId: string) {
     if (!userId) return;
     setSwitching(true);
-
-    // Prefer own profile on the target team, fall back to first managed profile
-    const forTeam = allMemberships.filter((m) => m.team_id === teamId);
-    const chosen =
-      forTeam.find((m) => m.profile_id === userId) ?? forTeam[0];
-    if (!chosen) {
-      setSwitching(false);
-      return;
-    }
-
-    await supabase
-      .from("profiles")
-      .update({ active_team_id: teamId })
-      .eq("id", chosen.profile_id);
-
-    if (chosen.profile_id === userId) {
-      await SecureStore.deleteItemAsync("active_profile_id");
-    } else {
-      await SecureStore.setItemAsync("active_profile_id", chosen.profile_id);
-    }
-
+    await supabase.from("profiles").update({ active_team_id: teamId }).eq("id", profileId);
+    await saveContext({ accountId: userId, profileId, teamId });
     await loadData();
     setSwitching(false);
   }
 
+  async function switchTeam(teamId: string) {
+    // Prefer own profile on the target team, fall back to first managed profile
+    const forTeam = allMemberships.filter((m) => m.team_id === teamId);
+    const chosen = forTeam.find((m) => m.profile_id === userId) ?? forTeam[0];
+    if (!chosen) return;
+    await switchTo(chosen.profile_id, teamId);
+  }
+
   async function switchProfile(profileId: string, teamId: string) {
-    if (!userId) return;
-    setSwitching(true);
-
-    await supabase
-      .from("profiles")
-      .update({ active_team_id: teamId })
-      .eq("id", profileId);
-
-    if (profileId === userId) {
-      await SecureStore.deleteItemAsync("active_profile_id");
-    } else {
-      await SecureStore.setItemAsync("active_profile_id", profileId);
-    }
-
-    await loadData();
-    setSwitching(false);
+    if (!allMemberships.some((m) => m.profile_id === profileId && m.team_id === teamId)) return;
+    await switchTo(profileId, teamId);
   }
 
   async function refresh() {
