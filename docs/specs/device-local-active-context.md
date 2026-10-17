@@ -6,6 +6,8 @@
 **Reference:** [Implementation audit](../reviews/device-local-active-context-audit.md) (Codex, 2026-10-16,
 at `d26982c67`). It has the file-by-file inventory, the compatibility analysis and the acceptance list. This
 spec settles the product rules; the audit is the build checklist.
+**Review log:** [Device-local active context](../reviews/2026-10-16-device-local-active-context-review.md),
+with stable finding IDs, status, evidence and follow-up verification for each implementation part.
 
 ## 1. What's wanted
 
