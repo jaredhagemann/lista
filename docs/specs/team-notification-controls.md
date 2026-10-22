@@ -68,7 +68,7 @@ Two features that share one place in the code, where recipients are resolved:
 - **Coaches and managers can mute their own team** like anyone else. The settings show a note that they
   won't see reminders their members get.
 - **What a mute covers (D2):** every event notice from that team (new, updated, cancelled, series changes,
-  reminders) on email and push, and the team's chat push. Cancellations are muted like other schedule
+  reminders) on email and push, and the team's chat push, direct messages within the team included. Cancellations are muted like other schedule
   notices.
 - **What a mute never covers (D3):** team deletion, ownership transfer and billing notices. Those go out
   whatever the mute says.
@@ -102,7 +102,7 @@ create table team_notification_mutes (
 - `resolveRecipients` gains the team mute when it's called with `teamId`. It already loads preferences for
   every adult in one query, so it loads mutes for `(adultIds, teamId)` the same way.
   `emailEnabled` and `pushEnabled` become `account setting && !team mute`.
-- `ResolvedRecipient` gets a `mutedTeam: boolean` field so `planDeliveries` can record the skip as
+- `ResolvedRecipient` gets `mutedByTeam: { email, push }`, the channels the mute turned off where the account would have sent them, so `planDeliveries` can record the skip as
   **`team_muted`** rather than `opted_out`. That way the delivery log says why someone wasn't reached.
 - **Mutes aren't private from the team's coaches (D4).** Team admins can already read
   `notification_deliveries`, profile and reason included. So a coach can tell who has muted the team, from
@@ -277,7 +277,7 @@ All tests are written before the code, per `CLAUDE.md`.
 - `events.reminder` can be set by whoever can edit the event, and no one else.
 
 **Resolver (`tests/notification-recipients` unit and RLS):**
-- A muted team gives `emailEnabled: false`, `pushEnabled: false`, `mutedTeam: true`. A different team for
+- A muted team gives `emailEnabled: false`, `pushEnabled: false`, `mutedByTeam: { email: true, push: true }`. A different team for
   the same adult is unaffected.
 - A mute can't turn email on when the account has it off.
 - A guardian muting a team doesn't affect the other guardian.

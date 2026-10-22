@@ -7,10 +7,12 @@ import {
   EmailLayout,
   EmailText,
   StatusBadge,
+  TeamNoticeFooter,
   renderEmail,
   type BadgeTone,
 } from "@/emails/layout";
 import type { EmailBrand } from "@/emails/brand";
+import type { NotificationSettingsLinks } from "@/lib/notifications/settings-links";
 import { displayLabel } from "@/lib/labels";
 import { AVAILABILITY, type AvailabilityStatus } from "@/lib/availability/status";
 import { gameTitle, homeAwayLabel, type Uniform } from "@/lib/events/game-display";
@@ -84,6 +86,7 @@ export function EventEmail({
   answers,
   partOf,
   linkLabel = "View event",
+  settings,
 }: {
   eventTitle: string;
   eventType: string;
@@ -108,6 +111,8 @@ export function EventEmail({
   partOf?: string | null;
   /** The button's words: "View schedule" when it links there (BUG-032). */
   linkLabel?: string;
+  /** Footer links to mute this team or manage notifications (team-notification-controls §3.4). */
+  settings?: NotificationSettingsLinks;
 }) {
   const zone = resolveTimeZone(timeZone);
   const { label, tone } = ACTIONS[action];
@@ -173,13 +178,7 @@ export function EventEmail({
     <EmailLayout
       brand={brand}
       preview={`${label}: ${heading}`}
-      footer={
-        <>
-          {`You received this email because you're a member of ${teamName} on ${brand.name}.`}
-          <br />
-          You can manage your notification preferences in your account settings.
-        </>
-      }
+      footer={<TeamNoticeFooter teamName={teamName} brandName={brand.name} settings={settings} />}
     >
       <StatusBadge label={label} tone={tone} />
       <EmailHeading spaced={players.length === 0 && !partOf}>{heading}</EmailHeading>

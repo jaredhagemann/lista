@@ -40,6 +40,8 @@ export type ResolvedRecipient = {
   pushTargets: PushTarget[];
   emailEnabled: boolean;
   pushEnabled: boolean;
+  /** The channels this team's mute turned off, where the account would have sent them. */
+  mutedByTeam: { email: boolean; push: boolean };
 };
 
 export async function resolveRecipients(
@@ -52,6 +54,11 @@ export async function resolveRecipients(
     profileIds?: string[];
     /** Adults to leave out, typically whoever caused the notification. */
     excludeProfileIds?: string[];
+    /**
+     * The team whose mutes apply when recipients are named rather than the
+     * team: chat, whose job carries its team (team-notification-controls §3.3).
+     */
+    muteScopeTeamId?: string;
   }
 ): Promise<ResolvedRecipient[]> {
   const memberIds = opts.teamId
@@ -94,14 +101,27 @@ export async function resolveRecipients(
   const adultIds = [...covers.keys()];
   if (adultIds.length === 0) return [];
 
-  const [{ data: adults }, { data: prefs }, { data: subs }] = await Promise.all([
+  // A mute is the receiving adult's own, for one team: a guardian's never
+  // silences the child's other guardian (team-notification-controls §3).
+  const muteTeamId = opts.teamId ?? opts.muteScopeTeamId;
+  const [{ data: adults }, { data: prefs }, { data: subs }, { data: mutes, error: mutesError }] = await Promise.all([
     db.from("profiles").select("id, email").in("id", adultIds),
     db.from("notification_preferences").select("*").in("profile_id", adultIds),
     db.from("push_subscriptions").select("*").in("profile_id", adultIds),
+    muteTeamId
+      ? db
+          .from("team_notification_mutes")
+          .select("profile_id, email_muted, push_muted")
+          .eq("team_id", muteTeamId)
+          .in("profile_id", adultIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
+  // Sending to someone who muted the team is worse than sending late: the job is retried.
+  if (mutesError) throw new Error(`Could not read team mutes: ${mutesError.message}`);
 
   const emailById = new Map((adults ?? []).map((a) => [a.id, a.email]));
   const prefsById = new Map((prefs ?? []).map((p) => [p.profile_id, p]));
+  const mutesById = new Map((mutes ?? []).map((m) => [m.profile_id, m]));
   const devicesById = new Map<string, PushTarget[]>();
   for (const sub of subs ?? []) {
     if (!sub.profile_id) continue;
@@ -117,17 +137,27 @@ export async function resolveRecipients(
   return adultIds.map((adultId) => {
     const pref = prefsById.get(adultId);
     const email = emailById.get(adultId);
+    const mute = mutesById.get(adultId);
     const isChat = opts.category === "chat";
+
+    // A missing row, or a null column, means the default: on.
+    // Chat never emails per message (D2); its digest is a separate feature.
+    const accountEmail = isChat ? false : pref?.email_enabled ?? true;
+    const accountPush = isChat ? pref?.chat_push_enabled ?? true : pref?.push_enabled ?? true;
+    // A team mute only turns channels off; it never turns one on.
+    const mutedByTeam = {
+      email: accountEmail && !!mute?.email_muted,
+      push: accountPush && !!mute?.push_muted,
+    };
 
     return {
       profileId: adultId,
       coversProfileIds: [...(covers.get(adultId) ?? [])],
       emails: email ? [email] : [],
       pushTargets: devicesById.get(adultId) ?? [],
-      // A missing row, or a null column, means the default: on.
-      // Chat never emails per message (D2); its digest is a separate feature.
-      emailEnabled: isChat ? false : pref?.email_enabled ?? true,
-      pushEnabled: isChat ? pref?.chat_push_enabled ?? true : pref?.push_enabled ?? true,
+      emailEnabled: accountEmail && !mutedByTeam.email,
+      pushEnabled: accountPush && !mutedByTeam.push,
+      mutedByTeam,
     };
   });
 }

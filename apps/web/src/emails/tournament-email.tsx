@@ -7,10 +7,12 @@ import {
   EmailLayout,
   EmailText,
   StatusBadge,
+  TeamNoticeFooter,
   renderEmail,
   type BadgeTone,
 } from "@/emails/layout";
 import type { EmailBrand } from "@/emails/brand";
+import type { NotificationSettingsLinks } from "@/lib/notifications/settings-links";
 import { Answers, joinNames, truncate, type AnswerRow } from "@/emails/event-email";
 import { gameTitle } from "@/lib/events/game-display";
 import { tournamentDates } from "@/lib/events/tournament";
@@ -88,6 +90,7 @@ export function TournamentEmail({
   previous,
   url,
   answers,
+  settings,
 }: {
   brand: EmailBrand;
   teamName: string;
@@ -106,6 +109,8 @@ export function TournamentEmail({
   /** The tournament's page, or the schedule once it's gone. */
   url: string;
   answers?: AnswerRow[];
+  /** Footer links to mute this team or manage notifications (team-notification-controls §3.4). */
+  settings?: NotificationSettingsLinks;
 }) {
   const zone = resolveTimeZone(timeZone);
   const { label, tone } = ACTIONS[action];
@@ -155,13 +160,7 @@ export function TournamentEmail({
     <EmailLayout
       brand={brand}
       preview={`${label}: ${title}`}
-      footer={
-        <>
-          {`You received this email because you're a member of ${teamName} on ${brand.name}.`}
-          <br />
-          You can manage your notification preferences in your account settings.
-        </>
-      }
+      footer={<TeamNoticeFooter teamName={teamName} brandName={brand.name} settings={settings} />}
     >
       <StatusBadge label={label} tone={tone} />
       <EmailHeading spaced={!showAnswers || players.length === 0}>{title}</EmailHeading>
