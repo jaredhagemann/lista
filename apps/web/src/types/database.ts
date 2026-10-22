@@ -1130,6 +1130,45 @@ export type Database = {
           },
         ]
       }
+      team_notification_mutes: {
+        Row: {
+          created_at: string
+          email_muted: boolean
+          profile_id: string
+          push_muted: boolean
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_muted?: boolean
+          profile_id: string
+          push_muted?: boolean
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          email_muted?: boolean
+          profile_id?: string
+          push_muted?: boolean
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_notification_mutes_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_notification_mutes_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teams: {
         Row: {
           age_group: string | null

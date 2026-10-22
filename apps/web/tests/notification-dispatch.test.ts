@@ -94,6 +94,28 @@ describe("planning deliveries", () => {
 
     expect(planned.map((p) => p.skipReason)).toEqual(["no_address", "no_subscription"]);
   });
+
+  it("records a team mute as its own reason (team-notification-controls §3.3)", () => {
+    const planned = planDeliveries([
+      recipient({ emailEnabled: false, pushEnabled: false, mutedByTeam: { email: true, push: true } }),
+    ]);
+
+    expect(planned.map((p) => [p.channel, p.skipReason])).toEqual([
+      ["email", "team_muted"],
+      ["push", "team_muted"],
+    ]);
+  });
+
+  it("gives the account setting as the reason when that, not the mute, turned a channel off", () => {
+    const planned = planDeliveries([
+      recipient({ emailEnabled: false, pushEnabled: false, mutedByTeam: { email: false, push: true } }),
+    ]);
+
+    expect(planned.map((p) => [p.channel, p.skipReason])).toEqual([
+      ["email", "opted_out"],
+      ["push", "team_muted"],
+    ]);
+  });
 });
 
 describe("job status", () => {

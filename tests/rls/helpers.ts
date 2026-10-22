@@ -100,7 +100,7 @@ export async function createTestTeam(
 export async function addTeamMember(
   teamId: string,
   profileId: string,
-  role: "coach" | "manager" | "player" = "player"
+  role: "coach" | "manager" | "parent" | "player" = "player"
 ) {
   const { error } = await adminClient
     .from("team_members")

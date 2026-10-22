@@ -20,6 +20,7 @@ import {
   addTeamMember,
   addOrgMember,
   createManagedProfile,
+  archiveTeam,
   cleanupTestData,
 } from "./helpers";
 
@@ -166,5 +167,127 @@ describe("resolving notification recipients (BUG-007, D2)", () => {
     expect(recipients.map((r) => r.profileId).sort()).toEqual(
       [player.user.id, guardian.user.id].sort()
     );
+  });
+});
+
+async function mute(profileId: string, teamId: string, channels = { email_muted: true, push_muted: true }) {
+  const { error } = await adminClient
+    .from("team_notification_mutes")
+    .insert({ profile_id: profileId, team_id: teamId, ...channels });
+  if (error) throw new Error(error.message);
+}
+
+describe("team mutes (team-notification-controls §3.3)", () => {
+  it("turns off email and push from the muted team, and says the mute did it", async () => {
+    const { teamId } = await setup();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    await mute(player.user.id, teamId);
+
+    const resolved = (await forTeam(teamId)).find((r) => r.profileId === player.user.id);
+
+    expect(resolved!.emailEnabled).toBe(false);
+    expect(resolved!.pushEnabled).toBe(false);
+    expect(resolved!.mutedByTeam).toEqual({ email: true, push: true });
+  });
+
+  it("leaves the same person's other teams alone", async () => {
+    const { teamId } = await setup();
+    const { teamId: otherTeamId } = await setup();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    await addTeamMember(otherTeamId, player.user.id, "player");
+    await mute(player.user.id, teamId);
+
+    const resolved = (await forTeam(otherTeamId)).find((r) => r.profileId === player.user.id);
+
+    expect(resolved!.emailEnabled).toBe(true);
+    expect(resolved!.pushEnabled).toBe(true);
+    expect(resolved!.mutedByTeam).toEqual({ email: false, push: false });
+  });
+
+  it("can't turn email on when the account has it off", async () => {
+    const { teamId } = await setup();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    await setPrefs(player.user.id, { email_enabled: false, push_enabled: true });
+    await mute(player.user.id, teamId, { email_muted: false, push_muted: true });
+
+    const resolved = (await forTeam(teamId)).find((r) => r.profileId === player.user.id);
+
+    expect(resolved!.emailEnabled).toBe(false);
+    expect(resolved!.pushEnabled).toBe(false);
+    // Email was already off for the account: that, not the mute, is the reason.
+    expect(resolved!.mutedByTeam).toEqual({ email: false, push: true });
+  });
+
+  it("is the guardian's own: the child's other guardian still hears from the team", async () => {
+    const { teamId } = await setup();
+    const mum = await createTestUser();
+    const dad = await createTestUser();
+    const childId = await createManagedProfile(mum.user.id);
+    const { error } = await adminClient
+      .from("profile_managers")
+      .insert({ managed_id: childId, manager_id: dad.user.id });
+    if (error) throw new Error(error.message);
+    await addTeamMember(teamId, childId, "player");
+    await mute(mum.user.id, teamId);
+
+    const recipients = await forTeam(teamId);
+
+    expect(recipients.find((r) => r.profileId === mum.user.id)!.emailEnabled).toBe(false);
+    expect(recipients.find((r) => r.profileId === dad.user.id)!.emailEnabled).toBe(true);
+  });
+
+  it("applies to chat addressed to named members when the team is given", async () => {
+    const { teamId } = await setup();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    await mute(player.user.id, teamId);
+
+    const scoped = await resolveRecipients(adminClient, {
+      category: "chat",
+      profileIds: [player.user.id],
+      muteScopeTeamId: teamId,
+    });
+    expect(scoped[0].pushEnabled).toBe(false);
+    expect(scoped[0].mutedByTeam).toEqual({ email: false, push: true });
+  });
+});
+
+// An archived team is hidden from its roster, coaches included, so nobody can
+// see it or mute it: it notifies nobody (team-mute review TM-002).
+describe("archived teams (team-notification-controls §3.1)", () => {
+  it("reach nobody, members or guardians, for events or chat", async () => {
+    const { coach, teamId } = await setup();
+    const player = await createTestUser();
+    const guardian = await createTestUser();
+    const childId = await createManagedProfile(guardian.user.id);
+    await addTeamMember(teamId, player.user.id, "player");
+    await addTeamMember(teamId, childId, "player");
+    await archiveTeam(teamId);
+
+    expect(await forTeam(teamId)).toEqual([]);
+    expect(await forTeam(teamId, "chat")).toEqual([]);
+    const named = await resolveRecipients(adminClient, {
+      category: "chat",
+      profileIds: [coach.user.id, player.user.id],
+      muteScopeTeamId: teamId,
+    });
+    expect(named).toEqual([]);
+  });
+
+  it("keep their mutes once restored", async () => {
+    const { teamId } = await setup();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    await mute(player.user.id, teamId);
+    await archiveTeam(teamId);
+    const { error } = await adminClient.from("teams").update({ archived_at: null }).eq("id", teamId);
+    if (error) throw new Error(error.message);
+
+    const resolved = (await forTeam(teamId)).find((r) => r.profileId === player.user.id);
+    expect(resolved!.emailEnabled).toBe(false);
+    expect(resolved!.mutedByTeam).toEqual({ email: true, push: true });
   });
 });

@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { hasClubAccess } from "@/lib/plan";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
+import { TeamMutesSection, type MutableTeam } from "@/components/settings/team-mutes-section";
 import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
@@ -38,7 +39,7 @@ type NotifPrefs = Database["public"]["Tables"]["notification_preferences"]["Row"
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; team?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -47,7 +48,7 @@ export default async function SettingsPage({
 
   if (!user) redirect("/login");
 
-  const { tab } = await searchParams;
+  const { tab, team: highlightTeamId } = await searchParams;
   const defaultTab =
     tab === "account" || tab === "team" || tab === "plan" ? tab : "notifications";
 
@@ -123,6 +124,21 @@ export default async function SettingsPage({
   // parent viewing a managed child gets the CHILD's team/org, not the viewer's.
   // The same context as `membership` above (one read per request).
   const context = await loadActiveContext(supabase, user.id);
+
+  // Every team the account hears from, its own or a managed player's, once
+  // each, for muting one team (team-notification-controls §3.1).
+  const mutableTeams = new Map<string, MutableTeam>();
+  for (const m of context.allMemberships) {
+    if (!m.teams || m.teams.archived_at) continue;
+    const ownAdmin = m.profile_id === user.id && (m.role === "coach" || m.role === "manager");
+    const known = mutableTeams.get(m.teams.id);
+    mutableTeams.set(m.teams.id, { id: m.teams.id, name: m.teams.name, isAdmin: ownAdmin || !!known?.isAdmin });
+  }
+  const { data: mutes } = await supabase
+    .from("team_notification_mutes")
+    .select("team_id")
+    .eq("profile_id", user.id);
+
   let trainingProfile:
     | { id: string; firstName: string | null; optedOut: boolean }
     | null = null;
@@ -218,6 +234,12 @@ export default async function SettingsPage({
         </TabsList>
         <TabsContent value="notifications" className="space-y-8">
           <NotificationPrefsForm profileId={user.id} prefs={notifPrefs} />
+          <TeamMutesSection
+            profileId={user.id}
+            teams={[...mutableTeams.values()]}
+            mutedTeamIds={(mutes ?? []).map((m) => m.team_id)}
+            highlightTeamId={highlightTeamId}
+          />
           <PushSubscriptionButton />
         </TabsContent>
         {membership && team && (
