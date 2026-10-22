@@ -63,6 +63,10 @@ Two features that share one place in the code, where recipients are resolved:
 - **Who sees a team:** every team the adult gets notices for. That includes a team they're only on through a
   managed player (a guardian with no roster row). The list is the same set the resolver would reach them
   through.
+- **An archived team sends nothing.** Archiving hides a team from its whole roster, coaches included, so
+  it's left out of the list and the resolver reaches no one through it: no reminders, notices or chat
+  push. Existing mutes stay, and apply again if the team is restored. Team deletion notices still go out
+  (D3).
 - **A guardian mutes for themselves, not for the child.** A mute belongs to the adult who receives the
   notices. A second guardian of the same player keeps getting them.
 - **Coaches and managers can mute their own team** like anyone else. The settings show a note that they

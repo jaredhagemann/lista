@@ -61,6 +61,16 @@ export async function resolveRecipients(
     muteScopeTeamId?: string;
   }
 ): Promise<ResolvedRecipient[]> {
+  // An archived team is hidden from its whole roster, coaches included, so no
+  // one could see what it sent or mute it: it reaches nobody (team-mute review
+  // TM-002). A failed read is retried like a failed mutes read.
+  const muteTeamId = opts.teamId ?? opts.muteScopeTeamId;
+  if (muteTeamId) {
+    const { data: team, error } = await db.from("teams").select("archived_at").eq("id", muteTeamId).maybeSingle();
+    if (error) throw new Error(`Could not read the team: ${error.message}`);
+    if (team?.archived_at) return [];
+  }
+
   const memberIds = opts.teamId
     ? await teamMemberIds(db, opts.teamId)
     : [...new Set(opts.profileIds ?? [])];
@@ -103,7 +113,6 @@ export async function resolveRecipients(
 
   // A mute is the receiving adult's own, for one team: a guardian's never
   // silences the child's other guardian (team-notification-controls §3).
-  const muteTeamId = opts.teamId ?? opts.muteScopeTeamId;
   const [{ data: adults }, { data: prefs }, { data: subs }, { data: mutes, error: mutesError }] = await Promise.all([
     db.from("profiles").select("id, email").in("id", adultIds),
     db.from("notification_preferences").select("*").in("profile_id", adultIds),

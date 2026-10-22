@@ -34,7 +34,8 @@ export function TeamMutesSection({
   highlightTeamId?: string;
 }) {
   const [muted, setMuted] = useState(() => new Set(mutedTeamIds));
-  const [saving, setSaving] = useState<string | null>(null);
+  // Per team: one team finishing must not free another team still saving (review TM-001).
+  const [saving, setSaving] = useState<ReadonlySet<string>>(() => new Set());
   const highlighted = useRef<HTMLDivElement>(null);
   const supabase = createClient();
 
@@ -43,16 +44,17 @@ export function TeamMutesSection({
   }, []);
 
   async function setTeamOn(teamId: string, on: boolean) {
-    const next = (mute: boolean) =>
-      setMuted((current) => {
-        const copy = new Set(current);
-        if (mute) copy.add(teamId);
-        else copy.delete(teamId);
-        return copy;
-      });
+    const toggle = (set: ReadonlySet<string>, include: boolean) => {
+      const copy = new Set(set);
+      if (include) copy.add(teamId);
+      else copy.delete(teamId);
+      return copy;
+    };
+    const next = (mute: boolean) => setMuted((current) => toggle(current, mute));
+    const markSaving = (pending: boolean) => setSaving((current) => toggle(current, pending));
 
     next(!on);
-    setSaving(teamId);
+    markSaving(true);
     const { error } = on
       ? await supabase
           .from("team_notification_mutes")
@@ -62,7 +64,7 @@ export function TeamMutesSection({
       : await supabase
           .from("team_notification_mutes")
           .upsert({ profile_id: profileId, team_id: teamId, email_muted: true, push_muted: true });
-    setSaving(null);
+    markSaving(false);
 
     if (error) {
       next(on);
@@ -106,7 +108,7 @@ export function TeamMutesSection({
                 id={`team-mute-${team.id}`}
                 aria-label={`Notifications from ${team.name}`}
                 checked={!muted.has(team.id)}
-                disabled={saving === team.id}
+                disabled={saving.has(team.id)}
                 onCheckedChange={(on) => setTeamOn(team.id, on)}
               />
             </div>

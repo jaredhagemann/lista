@@ -14,6 +14,7 @@ import {
   createTestTeam,
   addTeamMember,
   createManagedProfile,
+  archiveTeam,
   cleanupTestData,
 } from "./helpers";
 import { collectTeamDeletionRecipients } from "@/lib/notifications/team-deletion";
@@ -215,6 +216,23 @@ describe("team_notification_mutes RLS", () => {
         .eq("team_id", teamId);
       expect(data).toHaveLength(0);
     }
+  });
+
+  it("an archived team's mute stays, and its member can still remove it", async () => {
+    const { teamId, player } = await setup();
+    await seedMute(player.user.id, teamId);
+    await archiveTeam(teamId);
+
+    // The team is hidden from its roster now, and notifies nobody (TM-002),
+    // but the row is the member's own: they can still clear it.
+    expect(await mutesFor(player.user.id, teamId)).toHaveLength(1);
+    const { error } = await player.client
+      .from("team_notification_mutes")
+      .delete()
+      .eq("profile_id", player.user.id)
+      .eq("team_id", teamId);
+    expect(error).toBeNull();
+    expect(await mutesFor(player.user.id, teamId)).toHaveLength(0);
   });
 
   it("a team can be muted once per person", async () => {

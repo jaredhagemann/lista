@@ -9,28 +9,37 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
 
 const mocks = vi.hoisted(() => {
   const calls: Array<{ op: string; values?: unknown; filters?: Record<string, unknown> }> = [];
-  const state = { error: null as { message: string } | null };
+  const state = { error: null as { message: string } | null, hold: false };
+  // With hold on, each save waits until the test settles it, oldest first or not.
+  const pending: Array<{ teamId: unknown; settle: (error?: { message: string }) => void }> = [];
+  const result = (teamId: unknown) =>
+    state.hold
+      ? new Promise<{ error: { message: string } | null }>((resolve) =>
+          pending.push({ teamId, settle: (error) => resolve({ error: error ?? null }) })
+        )
+      : Promise.resolve({ error: state.error });
   const deleteChain = (filters: Record<string, unknown>) => ({
     eq: (column: string, value: unknown) => {
       filters[column] = value;
       if (Object.keys(filters).length < 2) return deleteChain(filters);
       calls.push({ op: "delete", filters });
-      return Promise.resolve({ error: state.error });
+      return result(filters.team_id);
     },
   });
   return {
     calls,
     state,
+    pending,
     toast: { success: vi.fn(), error: vi.fn() },
     client: {
       from: (table: string) => ({
         upsert: (values: unknown) => {
           calls.push({ op: `upsert:${table}`, values });
-          return Promise.resolve({ error: state.error });
+          return result((values as { team_id: string }).team_id);
         },
         delete: () => {
           calls.push({ op: `delete-start:${table}` });
@@ -55,6 +64,8 @@ const TEAMS = [
 beforeEach(() => {
   mocks.calls.length = 0;
   mocks.state.error = null;
+  mocks.state.hold = false;
+  mocks.pending.length = 0;
   vi.clearAllMocks();
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -108,6 +119,36 @@ describe("team mutes in Settings", () => {
     fireEvent.click(teamSwitch("U10 Girls"));
 
     await waitFor(() => expect(mocks.toast.error).toHaveBeenCalled());
+    expect(teamSwitch("U10 Girls").getAttribute("aria-checked")).toBe("true");
+  });
+
+  // Team-mute review TM-001: one team's save finishing never frees another's switch.
+  it("keeps each team's switch disabled until its own save finishes, in either order", async () => {
+    mocks.state.hold = true;
+    render(<TeamMutesSection profileId={ME} teams={TEAMS} mutedTeamIds={[]} />);
+    const settle = async (teamId: string, error?: { message: string }) => {
+      const i = mocks.pending.findIndex((p) => p.teamId === teamId);
+      await act(async () => mocks.pending.splice(i, 1)[0].settle(error));
+    };
+    const disabled = (name: string) => teamSwitch(name).hasAttribute("disabled");
+
+    fireEvent.click(teamSwitch("U10 Girls"));
+    fireEvent.click(teamSwitch("U12 Boys"));
+    expect(disabled("U10 Girls")).toBe(true);
+    expect(disabled("U12 Boys")).toBe(true);
+
+    // A second click on a team still saving starts nothing.
+    fireEvent.click(teamSwitch("U10 Girls"));
+    expect(mocks.calls.filter((c) => c.op.startsWith("upsert"))).toHaveLength(2);
+    expect(mocks.calls.some((c) => c.op.startsWith("delete"))).toBe(false);
+
+    await settle("team-b");
+    expect(disabled("U10 Girls")).toBe(true);
+    expect(disabled("U12 Boys")).toBe(false);
+    expect(teamSwitch("U12 Boys").getAttribute("aria-checked")).toBe("false");
+
+    await settle("team-a", { message: "permission denied" });
+    expect(disabled("U10 Girls")).toBe(false);
     expect(teamSwitch("U10 Girls").getAttribute("aria-checked")).toBe("true");
   });
 
