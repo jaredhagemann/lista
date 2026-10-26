@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { hasClubAccess } from "@/lib/plan";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { TeamMutesSection, type MutableTeam } from "@/components/settings/team-mutes-section";
-import { PushSubscriptionButton } from "@/components/notifications/push-subscription";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
@@ -130,9 +129,7 @@ export default async function SettingsPage({
   const mutableTeams = new Map<string, MutableTeam>();
   for (const m of context.allMemberships) {
     if (!m.teams || m.teams.archived_at) continue;
-    const ownAdmin = m.profile_id === user.id && (m.role === "coach" || m.role === "manager");
-    const known = mutableTeams.get(m.teams.id);
-    mutableTeams.set(m.teams.id, { id: m.teams.id, name: m.teams.name, isAdmin: ownAdmin || !!known?.isAdmin });
+    mutableTeams.set(m.teams.id, { id: m.teams.id, name: m.teams.name });
   }
   const { data: mutes } = await supabase
     .from("team_notification_mutes")
@@ -233,14 +230,14 @@ export default async function SettingsPage({
           <TabsTrigger value="plan">Plan</TabsTrigger>
         </TabsList>
         <TabsContent value="notifications" className="space-y-8">
-          <NotificationPrefsForm profileId={user.id} prefs={notifPrefs} />
-          <TeamMutesSection
-            profileId={user.id}
-            teams={[...mutableTeams.values()]}
-            mutedTeamIds={(mutes ?? []).map((m) => m.team_id)}
-            highlightTeamId={highlightTeamId}
-          />
-          <PushSubscriptionButton />
+          <NotificationPrefsForm profileId={user.id} prefs={notifPrefs}>
+            <TeamMutesSection
+              profileId={user.id}
+              teams={[...mutableTeams.values()]}
+              mutedTeamIds={(mutes ?? []).map((m) => m.team_id)}
+              highlightTeamId={highlightTeamId}
+            />
+          </NotificationPrefsForm>
         </TabsContent>
         {membership && team && (
           <TabsContent value="team" className="space-y-6">

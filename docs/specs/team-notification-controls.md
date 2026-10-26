@@ -69,8 +69,8 @@ Two features that share one place in the code, where recipients are resolved:
   (D3).
 - **A guardian mutes for themselves, not for the child.** A mute belongs to the adult who receives the
   notices. A second guardian of the same player keeps getting them.
-- **Coaches and managers can mute their own team** like anyone else. The settings show a note that they
-  won't see reminders their members get.
+- **Coaches and managers can mute their own team** like anyone else, with the same switch and no extra
+  note.
 - **What a mute covers (D2):** every event notice from that team (new, updated, cancelled, series changes,
   reminders) on email and push, and the team's chat push, direct messages within the team included. Cancellations are muted like other schedule
   notices.
@@ -117,8 +117,10 @@ create table team_notification_mutes (
 
 ### 3.4 UI
 
-- **Web:** Settings → Notifications gets a "Teams" section under the account switches, with one switch per
-  team (D1).
+- **Web:** Settings → Notifications is one card: the account's email and push switches, then a "Teams"
+  section with one switch per team (D1). Every switch saves as it's flipped; there's no Save button.
+  Turning push on also registers this browser for web push (asking for permission), which replaces the
+  old "Enable push notifications" button.
 - **Email footer:** "You're getting this because you're on [Team]. **Mute [Team]** or manage your
   notification settings." Both links go to Settings, signed in, with the team highlighted (D11).
 - **Mobile:** the same section in `settings/notifications.tsx`, in the mobile PR (§7).

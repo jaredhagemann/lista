@@ -57,8 +57,8 @@ import { TeamMutesSection } from "@/components/settings/team-mutes-section";
 
 const ME = "me-1";
 const TEAMS = [
-  { id: "team-a", name: "U10 Girls", isAdmin: false },
-  { id: "team-b", name: "U12 Boys", isAdmin: true },
+  { id: "team-a", name: "U10 Girls" },
+  { id: "team-b", name: "U12 Boys" },
 ];
 
 beforeEach(() => {
@@ -152,12 +152,14 @@ describe("team mutes in Settings", () => {
     expect(teamSwitch("U10 Girls").getAttribute("aria-checked")).toBe("true");
   });
 
-  it("warns a coach or manager that muting hides what their team is sent", () => {
-    render(<TeamMutesSection profileId={ME} teams={TEAMS} mutedTeamIds={[]} />);
+  it("is a section of the Notifications card, not a card of its own, with just a name and switch per team", () => {
+    const { container } = render(<TeamMutesSection profileId={ME} teams={TEAMS} mutedTeamIds={[]} />);
 
-    const notes = screen.getAllByText(/you won't see the reminders and notices your team gets/);
-    expect(notes).toHaveLength(1);
-    expect(notes[0].closest("[data-team-id]")?.getAttribute("data-team-id")).toBe("team-b");
+    expect(container.querySelector("[data-slot=card]")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy();
+    for (const row of container.querySelectorAll("[data-team-id]")) {
+      expect(row.querySelectorAll("p")).toHaveLength(0);
+    }
   });
 
   it("highlights the team an email's mute link named, and scrolls to it", () => {
