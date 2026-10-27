@@ -63,12 +63,16 @@ Two features that share one place in the code, where recipients are resolved:
 - **Who sees a team:** every team the adult gets notices for. That includes a team they're only on through a
   managed player (a guardian with no roster row). The list is the same set the resolver would reach them
   through.
+- **An archived team sends nothing.** Archiving hides a team from its whole roster, coaches included, so
+  it's left out of the list and the resolver reaches no one through it: no reminders, notices or chat
+  push. Existing mutes stay, and apply again if the team is restored. Team deletion notices still go out
+  (D3).
 - **A guardian mutes for themselves, not for the child.** A mute belongs to the adult who receives the
   notices. A second guardian of the same player keeps getting them.
-- **Coaches and managers can mute their own team** like anyone else. The settings show a note that they
-  won't see reminders their members get.
+- **Coaches and managers can mute their own team** like anyone else, with the same switch and no extra
+  note.
 - **What a mute covers (D2):** every event notice from that team (new, updated, cancelled, series changes,
-  reminders) on email and push, and the team's chat push. Cancellations are muted like other schedule
+  reminders) on email and push, and the team's chat push, direct messages within the team included. Cancellations are muted like other schedule
   notices.
 - **What a mute never covers (D3):** team deletion, ownership transfer and billing notices. Those go out
   whatever the mute says.
@@ -102,7 +106,7 @@ create table team_notification_mutes (
 - `resolveRecipients` gains the team mute when it's called with `teamId`. It already loads preferences for
   every adult in one query, so it loads mutes for `(adultIds, teamId)` the same way.
   `emailEnabled` and `pushEnabled` become `account setting && !team mute`.
-- `ResolvedRecipient` gets a `mutedTeam: boolean` field so `planDeliveries` can record the skip as
+- `ResolvedRecipient` gets `mutedByTeam: { email, push }`, the channels the mute turned off where the account would have sent them, so `planDeliveries` can record the skip as
   **`team_muted`** rather than `opted_out`. That way the delivery log says why someone wasn't reached.
 - **Mutes aren't private from the team's coaches (D4).** Team admins can already read
   `notification_deliveries`, profile and reason included. So a coach can tell who has muted the team, from
@@ -113,8 +117,10 @@ create table team_notification_mutes (
 
 ### 3.4 UI
 
-- **Web:** Settings → Notifications gets a "Teams" section under the account switches, with one switch per
-  team (D1).
+- **Web:** Settings → Notifications is one card: the account's email and push switches, then a "Teams"
+  section with one switch per team (D1). Every switch saves as it's flipped; there's no Save button.
+  Turning push on also registers this browser for web push (asking for permission), which replaces the
+  old "Enable push notifications" button.
 - **Email footer:** "You're getting this because you're on [Team]. **Mute [Team]** or manage your
   notification settings." Both links go to Settings, signed in, with the team highlighted (D11).
 - **Mobile:** the same section in `settings/notifications.tsx`, in the mobile PR (§7).
@@ -277,7 +283,7 @@ All tests are written before the code, per `CLAUDE.md`.
 - `events.reminder` can be set by whoever can edit the event, and no one else.
 
 **Resolver (`tests/notification-recipients` unit and RLS):**
-- A muted team gives `emailEnabled: false`, `pushEnabled: false`, `mutedTeam: true`. A different team for
+- A muted team gives `emailEnabled: false`, `pushEnabled: false`, `mutedByTeam: { email: true, push: true }`. A different team for
   the same adult is unaffected.
 - A mute can't turn email on when the account has it off.
 - A guardian muting a team doesn't affect the other guardian.

@@ -154,6 +154,41 @@ export function EmailText({ children, muted = false }: { children: ReactNode; mu
   );
 }
 
+/**
+ * A team notice's footer: why you got it, and how to mute the team
+ * (team-notification-controls §3.4). Without links, for samples and notices
+ * built without a team, it keeps the older wording.
+ */
+export function TeamNoticeFooter({
+  teamName,
+  brandName,
+  settings,
+}: {
+  teamName: string;
+  brandName: string;
+  settings?: { manageUrl: string; muteUrl: string };
+}) {
+  const linkStyle = { color: "#6b7280", textDecoration: "underline" };
+  return (
+    <>
+      {`You received this email because you're a member of ${teamName} on ${brandName}.`}
+      <br />
+      {settings ? (
+        <>
+          <Link href={settings.muteUrl} style={linkStyle}>{`Mute ${teamName}`}</Link>
+          {" or "}
+          <Link href={settings.manageUrl} style={linkStyle}>
+            manage your notification settings
+          </Link>
+          .
+        </>
+      ) : (
+        "You can manage your notification preferences in your account settings."
+      )}
+    </>
+  );
+}
+
 export function SmallPrint({ children }: { children: ReactNode }) {
   return <Text style={{ margin: "16px 0 0", fontSize: "13px", lineHeight: 1.5, color: "#9ca3af" }}>{children}</Text>;
 }

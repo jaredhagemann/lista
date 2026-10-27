@@ -103,6 +103,11 @@ export type Recipient = {
   pushTargets: PushTarget[];
   emailEnabled: boolean;
   pushEnabled: boolean;
+  /**
+   * The channels a team mute turned off, where the account setting would have
+   * sent them (team-notification-controls §3.3). Absent means none.
+   */
+  mutedByTeam?: { email: boolean; push: boolean };
 };
 
 export type PushTarget =
@@ -129,7 +134,8 @@ export type DeliveryOutcome = {
 /**
  * What the worker will attempt, and what it will not.
  *
- * A recipient who turned a channel off is **skipped**, and so is one the channel
+ * A recipient who turned a channel off, for their account or for this team
+ * (`opted_out`, `team_muted`), is **skipped**, and so is one the channel
  * cannot reach — a member with no guardian email, say. Neither is a failure: D3
  * asks for those to be reported separately, because a coach reading "2 failed"
  * should mean two deliveries the system could not make.
@@ -147,7 +153,8 @@ export function planDeliveries(
     if (!channels.includes("email")) {
       // Chat has no per-message email (D2), so there is nothing to record.
     } else if (!r.emailEnabled) {
-      planned.push({ profile_id: r.profileId, channel: "email", target: "", skipReason: "opted_out" });
+      const reason = r.mutedByTeam?.email ? "team_muted" : "opted_out";
+      planned.push({ profile_id: r.profileId, channel: "email", target: "", skipReason: reason });
     } else if (r.emails.length === 0) {
       planned.push({ profile_id: r.profileId, channel: "email", target: "", skipReason: "no_address" });
     } else {
@@ -161,7 +168,8 @@ export function planDeliveries(
     if (!channels.includes("push")) {
       // Nothing to do.
     } else if (!r.pushEnabled) {
-      planned.push({ profile_id: r.profileId, channel: "push", target: "", skipReason: "opted_out" });
+      const reason = r.mutedByTeam?.push ? "team_muted" : "opted_out";
+      planned.push({ profile_id: r.profileId, channel: "push", target: "", skipReason: reason });
     } else if (r.pushTargets.length === 0) {
       // Not every family installs the app; that is not a delivery failure.
       planned.push({ profile_id: r.profileId, channel: "push", target: "", skipReason: "no_subscription" });

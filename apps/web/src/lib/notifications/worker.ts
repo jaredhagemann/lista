@@ -19,6 +19,7 @@ import { answerRowsFor, loadAnswerContext, type AnswerContext } from "@/lib/noti
 import { uniformOf, type TeamUniforms } from "@/lib/events/game-display";
 import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
 import { renderTournamentEmail } from "@/emails/tournament-email";
+import { notificationSettingsLinks } from "@/lib/notifications/settings-links";
 import {
   isTournamentSnapshot,
   partOfLine,
@@ -81,6 +82,8 @@ async function runJob(db: Db, job: NotificationJob) {
       // be pushed the message they just sent. Excluding the author here is the
       // only place that knows about the expansion.
       excludeProfileIds: isChat && job.created_by ? [job.created_by] : undefined,
+      // A team's chat is muted with the team (team-notification-controls D2).
+      muteScopeTeamId: isChat ? job.team_id : undefined,
     });
     const planned = planDeliveries(recipients, isChat ? ["push"] : ["email", "push"]);
 
@@ -270,6 +273,7 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
       // An event with no zone of its own goes by its team's, before and after (PR #96 re-review).
       changes: job.snapshot.series_changes ?? seriesChanges(job.snapshot.previous, job.snapshot, resolveTimeZone(team.timezone)),
       scheduleUrl: `${appUrl()}/dashboard/schedule`,
+      settings: notificationSettingsLinks(appUrl(), job.team_id),
       brand,
     });
   }
@@ -306,6 +310,7 @@ function buildJobEmail(job: NotificationJob, team: Team, timeZone: string, answe
       : null,
     answers,
     partOf: partOfLine(job.snapshot),
+    settings: notificationSettingsLinks(appUrl(), job.team_id),
   });
 }
 
@@ -337,6 +342,7 @@ function buildTournamentEmail(job: NotificationJob, team: Team, timeZone: string
         }
       : null,
     url: tournamentNoticeUrl(job, appUrl()),
+    settings: notificationSettingsLinks(appUrl(), job.team_id),
     answers,
   });
 }

@@ -7,6 +7,7 @@ import { createServerClient } from "@supabase/ssr";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderEventEmail } from "@/emails/event-email";
 import { renderTournamentEmail } from "@/emails/tournament-email";
+import { notificationSettingsLinks } from "@/lib/notifications/settings-links";
 import {
   REMINDER_EVENT_COLUMNS,
   REMINDER_TOURNAMENT_GAME_COLUMNS,
@@ -121,10 +122,20 @@ export async function GET(request: Request) {
     // Everyone the reminder is for: teammates, and the guardians of managed
     // players, who may have no roster row of their own. Each receiving adult's
     // own preferences apply (BUG-007, D2).
-    const recipients = await resolveRecipients(supabase, {
-      category: "event",
-      teamId: event.team_id!,
-    });
+    // A failed read (team mutes, say) skips this event and reports it, rather
+    // than reminding people who muted the team or stopping the whole run.
+    let recipients: Awaited<ReturnType<typeof resolveRecipients>>;
+    try {
+      recipients = await resolveRecipients(supabase, {
+        category: "event",
+        teamId: event.team_id!,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      console.error(`Reminder for event ${event.id} not sent: its recipients could not be read: ${message}`);
+      failedEvents.push({ eventId: event.id, error: message });
+      continue;
+    }
 
     const appUrl =
       process.env.NEXT_PUBLIC_APP_URL ??
@@ -137,6 +148,7 @@ export async function GET(request: Request) {
     // "12U Girls @ Rivals FC" for a game, as the app names it (email-upgrade §4.3).
     const title = gameTitle(event, teamName, { includeScore: false });
     const eventUrl = `${appUrl}/dashboard/schedule/${event.id}`;
+    const settings = notificationSettingsLinks(appUrl, event.team_id!);
 
     // Each person's current answer, read once for the event; every recipient's
     // email then carries rows for just their own people (§4.7, D9–D10).
@@ -181,6 +193,7 @@ export async function GET(request: Request) {
             games: { total: playing, action: "created", list: games },
             url: eventUrl,
             answers: answerRowsFor(recipient, answerContext, eventUrl),
+            settings,
           })
         : renderEventEmail({
             eventTitle: event.title,
@@ -199,6 +212,7 @@ export async function GET(request: Request) {
             uniform: uniformOf(event.uniform, event.teams ?? {}),
             notes: event.notes,
             answers: answerRowsFor(recipient, answerContext, eventUrl),
+            settings,
             partOf: partOfLine({ tournament_title: event.tournament?.title, round: event.round }),
           });
 

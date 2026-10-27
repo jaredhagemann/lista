@@ -1,5 +1,15 @@
-import { ChangeTable, EmailButton, EmailHeading, EmailLayout, EmailText, StatusBadge, renderEmail } from "@/emails/layout";
+import {
+  ChangeTable,
+  EmailButton,
+  EmailHeading,
+  EmailLayout,
+  EmailText,
+  StatusBadge,
+  TeamNoticeFooter,
+  renderEmail,
+} from "@/emails/layout";
 import type { EmailBrand } from "@/emails/brand";
+import type { NotificationSettingsLinks } from "@/lib/notifications/settings-links";
 
 export interface FieldChange {
   field: string;
@@ -18,6 +28,7 @@ export function SeriesUpdateEmail({
   changes,
   scheduleUrl,
   brand,
+  settings,
 }: {
   eventTitle: string;
   teamName: string;
@@ -26,18 +37,14 @@ export function SeriesUpdateEmail({
   changes: FieldChange[];
   scheduleUrl?: string;
   brand: EmailBrand;
+  /** Footer links to mute this team or manage notifications (team-notification-controls §3.4). */
+  settings?: NotificationSettingsLinks;
 }) {
   return (
     <EmailLayout
       brand={brand}
       preview={`Schedule Updated: ${eventTitle}`}
-      footer={
-        <>
-          {`You received this email because you're a member of ${teamName} on ${brand.name}.`}
-          <br />
-          You can manage your notification preferences in your account settings.
-        </>
-      }
+      footer={<TeamNoticeFooter teamName={teamName} brandName={brand.name} settings={settings} />}
     >
       <StatusBadge label="Schedule Updated" tone="amber" />
       <EmailHeading spaced={false}>{eventTitle}</EmailHeading>
