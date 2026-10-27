@@ -21,6 +21,8 @@ import {
 } from "@/lib/events/tournament-form";
 import type { Database } from "@/types/database";
 import { LocationField, noLocation, resolveLocation } from "./location-field";
+import { ReminderSelect } from "@/components/events/reminder-select";
+import type { EventReminder } from "@/lib/notifications/reminder-rules";
 
 type Event = Database["public"]["Tables"]["events"]["Row"];
 type Game = Pick<Event, "id" | "title" | "event_type" | "start_time" | "opponent" | "home_away" | "round" | "is_cancelled">;
@@ -66,6 +68,9 @@ export function TournamentEditForm({
   // As for any event (D3): days and location notify by themselves; a name or
   // notes edit only when asked. A placement never does.
   const [notifyTeam, setNotifyTeam] = useState(false);
+  // Its own reminder; its games follow the game rule (team-notification-controls D12).
+  // Changing it tells nobody (D13): it isn't a described change below.
+  const [reminder, setReminder] = useState<EventReminder>((tournament.reminder as EventReminder) ?? null);
   const [daysError, setDaysError] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -103,6 +108,7 @@ export function TournamentEditForm({
       notes: notes.trim() || null,
       placement_rank: rank != null && Number.isFinite(rank) ? rank : null,
       placement_label: placementLabel.trim() || null,
+      reminder,
     };
 
     const { error } = await supabase.from("events").update(row).eq("id", tournament.id);
@@ -224,6 +230,8 @@ export function TournamentEditForm({
               </div>
             </div>
           </div>
+
+          <ReminderSelect value={reminder} onChange={setReminder} teamId={tournament.team_id!} eventType="tournament" />
 
           {upcoming && !tournament.is_cancelled && (
             <div className="flex items-center justify-between">

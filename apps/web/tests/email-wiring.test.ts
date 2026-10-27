@@ -58,7 +58,13 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn(() => ({ from: mocks.from })) }));
+// The reminders job claims each reminder before sending it (review RR-001).
+vi.mock("@supabase/ssr", () => ({
+  createServerClient: vi.fn(() => ({
+    from: mocks.from,
+    rpc: async () => ({ data: { id: "reminder-job", sent: [] }, error: null }),
+  })),
+}));
 vi.mock("@/lib/api-auth", () => ({ adminClient: () => ({ from: mocks.from, rpc: mocks.rpc }) }));
 vi.mock("@/lib/notifications/email", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/notifications/email")>()),

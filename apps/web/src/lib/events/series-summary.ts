@@ -20,7 +20,11 @@ export const SERIES_FIELD_LABELS: Record<string, string> = {
   opponent: "Opponent",
   home_away: "Home / away",
   uniform: "Uniform",
+  reminder: "Reminder",
 };
+
+/** Fields a series edit can change without the team hearing of it. */
+const SILENT_FIELDS = new Set(["reminder"]);
 
 export function seriesEditSummary({
   plan,
@@ -44,7 +48,9 @@ export function seriesEditSummary({
   oldRule: string;
   patternChanged: boolean;
 }): SeriesChange[] {
-  const changes: SeriesChange[] = Object.entries(fields).map(([key, value]) => ({
+  // The reminder is lista's behavior, not the schedule: the team is never told (D13).
+  const told = Object.entries(fields).filter(([key]) => !SILENT_FIELDS.has(key));
+  const changes: SeriesChange[] = told.map(([key, value]) => ({
     field: SERIES_FIELD_LABELS[key] ?? key,
     before: describe(key, anchor[key as keyof BulkFields]),
     after: describe(key, value),
