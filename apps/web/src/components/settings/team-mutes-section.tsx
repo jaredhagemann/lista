@@ -6,18 +6,46 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { MutableTeam } from "@/lib/notifications/mutable-team";
 
-export type MutableTeam = {
-  id: string;
-  name: string;
-};
+/** "Club · Team", unless the team's name already starts with the club's. */
+function teamLabel(team: MutableTeam): string {
+  const club = team.club?.name;
+  if (!club || team.name.toLowerCase().startsWith(club.toLowerCase())) return team.name;
+  return `${club} · ${team.name}`;
+}
+
+type TeamGroup = { key: string; heading: string | null; teams: MutableTeam[] };
+
+/** Clubs A–Z, then the teams in no club, each list A–Z. No headings when no team is in a club. */
+function groupByClub(teams: MutableTeam[]): TeamGroup[] {
+  const byName = (a: MutableTeam, b: MutableTeam) => a.name.localeCompare(b.name);
+  const clubs = new Map<string, TeamGroup>();
+  const others: MutableTeam[] = [];
+  for (const team of teams) {
+    if (!team.club) {
+      others.push(team);
+      continue;
+    }
+    const group = clubs.get(team.club.id) ?? { key: team.club.id, heading: team.club.name, teams: [] };
+    group.teams.push(team);
+    clubs.set(team.club.id, group);
+  }
+  const groups = [...clubs.values()].sort((a, b) => a.heading!.localeCompare(b.heading!));
+  for (const group of groups) group.teams.sort(byName);
+  if (others.length > 0) {
+    groups.push({ key: "other", heading: groups.length > 0 ? "Other teams" : null, teams: others.sort(byName) });
+  }
+  return groups;
+}
 
 /**
  * One switch per team the person hears from (team-notification-controls §3.1,
  * §3.4), as a section of the Notifications card. Off mutes the team's email
  * and push together (D1); each switch saves as it's flipped. The account
  * switches above still come first: a team that isn't muted gets nothing the
- * account has turned off.
+ * account has turned off. Teams are grouped by club, and a club team is named
+ * "Club · Team" so two clubs' "U10 Girls" can be told apart.
  */
 export function TeamMutesSection({
   profileId,
@@ -80,30 +108,40 @@ export function TeamMutesSection({
         </p>
       </div>
         {teams.length === 0 && <p className="text-sm text-muted-foreground">You&apos;re not on any teams yet.</p>}
-        {teams.map((team) => {
-          const isHighlighted = team.id === highlightTeamId;
-          return (
-            <div
-              key={team.id}
-              ref={isHighlighted ? highlighted : undefined}
-              data-team-id={team.id}
-              data-highlighted={isHighlighted ? "true" : undefined}
-              className={cn(
-                "-mx-3 flex items-center justify-between gap-4 rounded-md px-3 py-2",
-                isHighlighted && "bg-muted ring-2 ring-primary"
-              )}
-            >
-              <Label htmlFor={`team-mute-${team.id}`}>{team.name}</Label>
-              <Switch
-                id={`team-mute-${team.id}`}
-                aria-label={`Notifications from ${team.name}`}
-                checked={!muted.has(team.id)}
-                disabled={saving.has(team.id)}
-                onCheckedChange={(on) => setTeamOn(team.id, on)}
-              />
-            </div>
-          );
-        })}
+        {groupByClub(teams).map((group) => (
+          <div key={group.key} className="space-y-1">
+            {group.heading && (
+              <h4 className="pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {group.heading}
+              </h4>
+            )}
+            {group.teams.map((team) => {
+              const isHighlighted = team.id === highlightTeamId;
+              const label = teamLabel(team);
+              return (
+                <div
+                  key={team.id}
+                  ref={isHighlighted ? highlighted : undefined}
+                  data-team-id={team.id}
+                  data-highlighted={isHighlighted ? "true" : undefined}
+                  className={cn(
+                    "-mx-3 flex items-center justify-between gap-4 rounded-md px-3 py-2",
+                    isHighlighted && "bg-muted ring-2 ring-primary"
+                  )}
+                >
+                  <Label htmlFor={`team-mute-${team.id}`}>{label}</Label>
+                  <Switch
+                    id={`team-mute-${team.id}`}
+                    aria-label={`Notifications from ${label}`}
+                    checked={!muted.has(team.id)}
+                    disabled={saving.has(team.id)}
+                    onCheckedChange={(on) => setTeamOn(team.id, on)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ))}
     </section>
   );
 }

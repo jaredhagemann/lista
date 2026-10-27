@@ -3,7 +3,8 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { hasClubAccess } from "@/lib/plan";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
-import { TeamMutesSection, type MutableTeam } from "@/components/settings/team-mutes-section";
+import { TeamMutesSection } from "@/components/settings/team-mutes-section";
+import { mutableTeam, type MutableTeam } from "@/lib/notifications/mutable-team";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
 import { TeamReminderSettings } from "@/components/settings/team-reminder-settings";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
@@ -126,11 +127,11 @@ export default async function SettingsPage({
   const context = await loadActiveContext(supabase, user.id);
 
   // Every team the account hears from, its own or a managed player's, once
-  // each, for muting one team (team-notification-controls §3.1).
+  // each, for muting one team (team-notification-controls §3.1), with its club (§3.4).
   const mutableTeams = new Map<string, MutableTeam>();
   for (const m of context.allMemberships) {
     if (!m.teams || m.teams.archived_at) continue;
-    mutableTeams.set(m.teams.id, { id: m.teams.id, name: m.teams.name });
+    mutableTeams.set(m.teams.id, mutableTeam(m.teams));
   }
   const { data: mutes } = await supabase
     .from("team_notification_mutes")

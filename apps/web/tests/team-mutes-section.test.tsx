@@ -6,6 +6,8 @@
  * Turning it off mutes email and push together (D1); turning it back on
  * removes the mute. Each switch saves as it's flipped, and a failed save puts
  * it back. The email footer's "Mute [Team]" link highlights that team.
+ *
+ * Teams are grouped by club, club teams named "Club · Team" (§3.4).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -54,6 +56,7 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => mocks.client }));
 vi.mock("sonner", () => ({ toast: mocks.toast }));
 
 import { TeamMutesSection } from "@/components/settings/team-mutes-section";
+import { mutableTeam } from "@/lib/notifications/mutable-team";
 
 const ME = "me-1";
 const TEAMS = [
@@ -177,5 +180,107 @@ describe("team mutes in Settings", () => {
     render(<TeamMutesSection profileId={ME} teams={[]} mutedTeamIds={[]} />);
 
     expect(screen.getByText("You're not on any teams yet.")).toBeTruthy();
+  });
+});
+
+describe("teams grouped by club (§3.4)", () => {
+  const SLOFC = { id: "org-slo", name: "San Luis Obispo Futbol Club" };
+  const ARROYO = { id: "org-arroyo", name: "Arroyo Grande SC" };
+  const GROUPED = [
+    { id: "t-u12", name: "U12 Boys", club: SLOFC },
+    { id: "t-rec", name: "Rec Tuesdays" },
+    { id: "t-u10", name: "U10 Girls", club: SLOFC },
+    { id: "t-ag", name: "U9 Mixed", club: ARROYO },
+    { id: "t-alpha", name: "Alpha Pickup" },
+  ];
+
+  function layout(container: HTMLElement) {
+    return [...container.querySelectorAll("h4, [data-team-id]")].map((el) =>
+      el.tagName === "H4" ? `# ${el.textContent}` : el.querySelector("label")!.textContent
+    );
+  }
+
+  it("lists clubs A–Z with their teams, then the other teams, each A–Z", () => {
+    const { container } = render(<TeamMutesSection profileId={ME} teams={GROUPED} mutedTeamIds={[]} />);
+
+    expect(layout(container)).toEqual([
+      "# Arroyo Grande SC",
+      "Arroyo Grande SC · U9 Mixed",
+      "# San Luis Obispo Futbol Club",
+      "San Luis Obispo Futbol Club · U10 Girls",
+      "San Luis Obispo Futbol Club · U12 Boys",
+      "# Other teams",
+      "Alpha Pickup",
+      "Rec Tuesdays",
+    ]);
+  });
+
+  it("names a club team's switch with the club too", () => {
+    render(<TeamMutesSection profileId={ME} teams={GROUPED} mutedTeamIds={["t-u10"]} />);
+
+    expect(teamSwitch("San Luis Obispo Futbol Club · U10 Girls").getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("doesn't repeat the club when the team name already starts with it", () => {
+    const club = { id: "org-1", name: "SLOFC" };
+    const { container } = render(
+      <TeamMutesSection profileId={ME} teams={[{ id: "t-1", name: "slofc U10 Girls", club }]} mutedTeamIds={[]} />
+    );
+
+    expect(layout(container)).toEqual(["# SLOFC", "slofc U10 Girls"]);
+  });
+
+  it("keeps two clubs with the same name apart", () => {
+    const { container } = render(
+      <TeamMutesSection
+        profileId={ME}
+        teams={[
+          { id: "t-1", name: "U10", club: { id: "org-1", name: "United" } },
+          { id: "t-2", name: "U11", club: { id: "org-2", name: "United" } },
+        ]}
+        mutedTeamIds={[]}
+      />
+    );
+
+    expect(container.querySelectorAll("h4")).toHaveLength(2);
+  });
+
+  it("shows no group headings when none of the teams is in a club", () => {
+    const { container } = render(<TeamMutesSection profileId={ME} teams={TEAMS} mutedTeamIds={[]} />);
+
+    expect(layout(container)).toEqual(["U10 Girls", "U12 Boys"]);
+  });
+});
+
+describe("which teams count as club teams", () => {
+  const team = (organizations: { name: string; org_name_public: string | null; plan: string } | null) => ({
+    id: "t-1",
+    name: "U10 Girls",
+    organization_id: organizations ? "org-1" : null,
+    organizations,
+  });
+
+  it("a club-plan team takes the club's public name", () => {
+    expect(mutableTeam(team({ name: "SLO Futbol LLC", org_name_public: "SLOFC", plan: "club_small" }))).toEqual({
+      id: "t-1",
+      name: "U10 Girls",
+      club: { id: "org-1", name: "SLOFC" },
+    });
+    expect(mutableTeam(team({ name: "Big Club", org_name_public: null, plan: "club_large" })).club).toEqual({
+      id: "org-1",
+      name: "Big Club",
+    });
+  });
+
+  it("falls back to the org name when the public name is blank", () => {
+    expect(mutableTeam(team({ name: "SLO Futbol LLC", org_name_public: "  ", plan: "club_small" })).club).toEqual({
+      id: "org-1",
+      name: "SLO Futbol LLC",
+    });
+  });
+
+  it("a free team isn't a club team, even with an org behind it", () => {
+    expect(mutableTeam(team({ name: "U10 Girls", org_name_public: null, plan: "free" })).club).toBeNull();
+    expect(mutableTeam(team(null)).club).toBeNull();
   });
 });

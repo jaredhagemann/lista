@@ -121,6 +121,11 @@ create table team_notification_mutes (
   section with one switch per team (D1). Every switch saves as it's flipped; there's no Save button.
   Turning push on also registers this browser for web push (asking for permission), which replaces the
   old "Enable push notifications" button.
+- **Teams grouped by club.** Teams in a club-plan org are grouped under the club's name, clubs A–Z, then
+  the remaining teams under "Other teams". Each list is A–Z. With no club teams there are no headings. A
+  club team is named **"[Club] · [Team]"**, the club being its public display name, else its org name (the
+  same rule as `teamBranding`). The club isn't repeated when the team's name already starts with it. A
+  free team's org isn't a club, even though every team has one.
 - **Email footer:** "You're getting this because you're on [Team]. **Mute [Team]** or manage your
   notification settings." Both links go to Settings, signed in, with the team highlighted (D11).
 - **Mobile:** the same section in `settings/notifications.tsx`, in the mobile PR (§7).
@@ -345,7 +350,8 @@ All tests are written before the code, per `CLAUDE.md`.
   occurrence moved within its day.
 - Saving team reminder settings enqueues nothing.
 
-**UI:** the settings switches and the event form's reminder field save and load. A non-admin sees the
+**UI:** the settings switches and the event form's reminder field save and load. The Teams section groups
+club teams by club and names them "[Club] · [Team]", per §3.4 (`tests/team-mutes-section.test.tsx`). A non-admin sees the
 team's reminder settings read-only.
 
 ## 7. Delivery plan
