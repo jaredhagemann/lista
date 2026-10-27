@@ -17,7 +17,7 @@ vi.hoisted(() => {
 });
 
 import { buildRRule, untilEndOfDay } from "@/lib/utils/rrule";
-import { planSeriesEdit, type SeriesEditPlan } from "@/lib/events/series-edit";
+import { planSeriesEdit, seriesReminderTargets, type SeriesEditPlan } from "@/lib/events/series-edit";
 import {
   adminClient,
   createTestUser,
@@ -286,6 +286,83 @@ describe("series reminder edits (D13)", () => {
   });
 });
 
+/** Moves an occurrence by `hours`, on its own, as the single-event editor does. */
+async function moveBy(id: string, hours: number) {
+  const { data } = await adminClient.from("events").select("start_time, end_time").eq("id", id).single();
+  const shift = (iso: string) => new Date(Date.parse(iso) + hours * 60 * 60 * 1000).toISOString();
+  await adminClient.from("events").update({ start_time: shift(data!.start_time), end_time: shift(data!.end_time) }).eq("id", id);
+  // The move's own notice, so it can't be mistaken for one from the edit under test.
+  await adminClient.from("notification_jobs").delete().eq("event_id", id);
+}
+
+/** What a reminder-only series edit must leave as it was. */
+const shape = (rows: Awaited<ReturnType<typeof seriesRows>>) =>
+  rows.map((r) => ({
+    id: r.id,
+    start_time: r.start_time,
+    end_time: r.end_time,
+    parent_event_id: r.parent_event_id,
+    recurrence_rule: r.recurrence_rule,
+    is_cancelled: r.is_cancelled,
+  }));
+
+/** The series editor's reminder-only save (review RR-002). */
+function setSeriesReminder(coach: TestUser, targets: string[], reminder: "always" | "never" | null) {
+  return coach.client.from("events").update({ reminder }).in("id", targets);
+}
+
+describe("reminder-only series edits around rescheduled occurrences (review RR-002)", () => {
+  it("Entire series: reaches the moved ones, adds and moves nothing, and tells nobody", async () => {
+    const { coach, teamId } = await setup();
+    const ids = await createSeries(teamId, coach);
+    await moveBy(ids[1], 24); // to the next day
+    await moveBy(ids[2], 2); // later the same day
+    await adminClient.from("events").update({ reminder: "always" }).eq("id", ids[3]);
+    const before = await seriesRows(ids);
+
+    const targets = seriesReminderTargets({ occurrences: before, openedId: ids[0], scope: "series", now: new Date() });
+    expect((await setSeriesReminder(coach, targets, "never")).error).toBeNull();
+
+    const after = await seriesRows(ids);
+    expect(shape(after)).toEqual(shape(before));
+    expect(after.map((r) => r.reminder)).toEqual(["never", "never", "never", "never"]);
+    const { count } = await adminClient.from("events").select("id", { count: "exact", head: true }).eq("team_id", teamId);
+    expect(count).toBe(4);
+    expect(await jobsFor(teamId)).toHaveLength(0);
+  });
+
+  it("This and following: only from the opened occurrence, and the series isn't split", async () => {
+    const { coach, teamId } = await setup();
+    const ids = await createSeries(teamId, coach);
+    await moveBy(ids[2], 24);
+    const before = await seriesRows(ids);
+
+    const targets = seriesReminderTargets({ occurrences: before, openedId: ids[2], scope: "following", now: new Date() });
+    expect((await setSeriesReminder(coach, targets, "always")).error).toBeNull();
+
+    const after = await seriesRows(ids);
+    expect(shape(after)).toEqual(shape(before));
+    expect(after.map((r) => r.reminder)).toEqual([null, null, "always", "always"]);
+    expect(await jobsFor(teamId)).toHaveLength(0);
+  });
+
+  it("a reminder change alongside another field reaches an occurrence moved within its day", async () => {
+    const { coach, teamId } = await setup();
+    const ids = await createSeries(teamId, coach);
+    await moveBy(ids[2], 2);
+    const p = plan(await seriesRows(ids), { fields: { reminder: "never", notes: "Bring water" } });
+
+    expect((await apply(coach, { ...p, summary: [{ field: "Notes", before: "—", after: "Bring water" }] })).error).toBeNull();
+
+    const after = await seriesRows(ids);
+    expect(after.map((r) => r.reminder)).toEqual(["never", "never", "never", "never"]);
+    // The moved one keeps its own time and notes; only its reminder follows the series.
+    expect(after[2].notes).toBeNull();
+    expect(p.inserts).toHaveLength(0);
+    expect(await jobsFor(teamId)).toHaveLength(1);
+  });
+});
+
 describe("the reminders job's log rows", () => {
   it("are never claimed by the notice worker, even left mid-flight", async () => {
     const { coach, teamId } = await setup();
@@ -307,5 +384,116 @@ describe("the reminders job's log rows", () => {
     const { data } = await adminClient.rpc("claim_notification_jobs", { p_limit: 500 });
 
     expect((data ?? []).some((j: { id: string }) => j.id === jobId)).toBe(false);
+  });
+});
+
+// ── Claiming a reminder (review RR-001) ───────────────────────────────────────
+
+type Claim = { id: string; sent: Array<{ profile_id: string; channel: string; target: string | null }> } | null;
+
+function claim(teamId: string, eventId: string, key: string, retryOnly = false) {
+  return adminClient.rpc("claim_reminder_job", {
+    p_team_id: teamId,
+    p_event_id: eventId,
+    p_snapshot: { title: "Practice" },
+    p_batch_key: key,
+    p_retry_only: retryOnly,
+  }) as unknown as Promise<{ data: Claim; error: { message: string } | null }>;
+}
+
+async function job(id: string) {
+  const { data } = await adminClient.from("notification_jobs").select("*").eq("id", id).single();
+  return data!;
+}
+
+async function reminderFixture() {
+  const { coach, teamId } = await setup();
+  const eventId = await createEvent(teamId, coach);
+  return { coach, teamId, eventId, key: `reminder:${eventId}:${crypto.randomUUID()}` };
+}
+
+describe("claim_reminder_job (review RR-001)", () => {
+  it("the first claim logs the reminder as being sent, with nothing sent yet", async () => {
+    const { teamId, eventId, key } = await reminderFixture();
+
+    const { data, error } = await claim(teamId, eventId, key);
+
+    expect(error).toBeNull();
+    expect(data!.sent).toEqual([]);
+    expect(await job(data!.id)).toMatchObject({ kind: "reminder", status: "sending", attempts: 1, batch_key: key });
+  });
+
+  it("a run that overlaps one still sending gets nothing", async () => {
+    const { teamId, eventId, key } = await reminderFixture();
+    await claim(teamId, eventId, key);
+
+    expect((await claim(teamId, eventId, key)).data).toBeNull();
+  });
+
+  it("a reminder that went out is never claimed again", async () => {
+    const { teamId, eventId, key } = await reminderFixture();
+    const first = (await claim(teamId, eventId, key)).data!;
+    await adminClient.from("notification_jobs").update({ status: "sent" }).eq("id", first.id);
+
+    expect((await claim(teamId, eventId, key)).data).toBeNull();
+  });
+
+  it("a failed or partly sent one is claimed again: what went out stays, the rest is cleared to retry", async () => {
+    const { coach, teamId, eventId, key } = await reminderFixture();
+    const first = (await claim(teamId, eventId, key)).data!;
+    await adminClient.from("notification_deliveries").insert([
+      { job_id: first.id, profile_id: coach.user.id, channel: "email", target: "coach@example.com", status: "sent" },
+      { job_id: first.id, profile_id: coach.user.id, channel: "push", target: "ExponentPushToken[x]", status: "failed", reason: "boom" },
+    ]);
+    await adminClient.from("notification_jobs").update({ status: "partial", last_error: "1 deliveries failed" }).eq("id", first.id);
+
+    const again = (await claim(teamId, eventId, key)).data!;
+
+    expect(again.id).toBe(first.id);
+    expect(again.sent).toEqual([{ profile_id: coach.user.id, channel: "email", target: "coach@example.com" }]);
+    expect(await job(first.id)).toMatchObject({ status: "sending", attempts: 2, last_error: null });
+    const { data: rows } = await adminClient.from("notification_deliveries").select("status").eq("job_id", first.id);
+    expect(rows!.map((r) => r.status)).toEqual(["sent"]);
+  });
+
+  it("one left sending for more than ten minutes, by a run that died, is claimed again", async () => {
+    const { teamId, eventId, key } = await reminderFixture();
+    const first = (await claim(teamId, eventId, key)).data!;
+    await adminClient
+      .from("notification_jobs")
+      .update({ claimed_at: new Date(Date.now() - 11 * 60 * 1000).toISOString() })
+      .eq("id", first.id);
+
+    expect((await claim(teamId, eventId, key)).data!.id).toBe(first.id);
+  });
+
+  it("gives up after five attempts", async () => {
+    const { teamId, eventId, key } = await reminderFixture();
+    const first = (await claim(teamId, eventId, key)).data!;
+    await adminClient.from("notification_jobs").update({ status: "failed", attempts: 5 }).eq("id", first.id);
+
+    expect((await claim(teamId, eventId, key)).data).toBeNull();
+  });
+
+  it("a retry-only claim never starts a reminder that wasn't sent", async () => {
+    const { teamId, eventId, key } = await reminderFixture();
+
+    expect((await claim(teamId, eventId, key, true)).data).toBeNull();
+    expect(await jobsFor(teamId)).toHaveLength(0);
+  });
+
+  it("can't be called by a signed-in user", async () => {
+    const { coach, teamId, eventId, key } = await reminderFixture();
+
+    const { error } = await coach.client.rpc("claim_reminder_job", {
+      p_team_id: teamId,
+      p_event_id: eventId,
+      p_snapshot: {},
+      p_batch_key: key,
+      p_retry_only: false,
+    });
+
+    expect(error).not.toBeNull();
+    expect(await jobsFor(teamId)).toHaveLength(0);
   });
 });

@@ -18,7 +18,13 @@ vi.hoisted(() => {
 });
 
 import { RRule } from "rrule";
-import { planSeriesEdit, pinnedStartRule, seriesTimeZone, SeriesEditError } from "@/lib/events/series-edit";
+import {
+  planSeriesEdit,
+  pinnedStartRule,
+  seriesReminderTargets,
+  seriesTimeZone,
+  SeriesEditError,
+} from "@/lib/events/series-edit";
 import { instantFromWallClock, wallClockIn } from "@/lib/events/event-timezone";
 import type { Database } from "@/types/database";
 
@@ -551,5 +557,69 @@ describe("the reminder setting (team-notification-controls §4.1)", () => {
 
     expect(p.inserts).toHaveLength(2);
     expect(p.inserts.every((i) => i.fields.reminder === "never")).toBe(true);
+  });
+
+  it("reaches occurrences rescheduled on their own, with nothing else (review RR-002)", () => {
+    let rows = with_(practiceSeries(), "occ-2026-09-24", {
+      start_time: at("2026-09-25"),
+      end_time: at("2026-09-25", "17:30"),
+    });
+    rows = with_(rows, "occ-2026-10-01", { start_time: at("2026-10-01", "18:00"), end_time: at("2026-10-01", "19:30") });
+    const p = plan({ occurrences: rows, fields: { notes: "Bring water", reminder: "never" } });
+
+    for (const id of ["occ-2026-09-24", "occ-2026-10-01"]) {
+      expect(p.updates.find((u) => u.id === id)).toEqual({ id, fields: { reminder: "never" } });
+    }
+    // Still left alone, so the preview doesn't list them as updated.
+    expect(p.preview.updated).not.toContain(at("2026-09-25"));
+    expect(p.preview.unchanged).toContain(at("2026-09-25"));
+  });
+});
+
+describe("a reminder-only series change (review RR-002, D13)", () => {
+  /** Sep 24 moved to Friday, Oct 1 moved later the same day, Oct 8 set to "Always send", Oct 15 cancelled. */
+  function edited() {
+    let rows = with_(practiceSeries(), "occ-2026-09-24", {
+      start_time: at("2026-09-25"),
+      end_time: at("2026-09-25", "17:30"),
+    });
+    rows = with_(rows, "occ-2026-10-01", { start_time: at("2026-10-01", "18:00"), end_time: at("2026-10-01", "19:30") });
+    rows = with_(rows, "occ-2026-10-08", { reminder: "always" });
+    return with_(rows, "occ-2026-10-15", { is_cancelled: true });
+  }
+
+  it("Entire series: every upcoming occurrence, moved, overridden and cancelled ones included", () => {
+    const targets = seriesReminderTargets({ occurrences: edited(), openedId: "occ-2026-10-22", scope: "series", now: NOW });
+
+    expect(targets).toEqual(weeklyThursdays("2026-09-17", "2026-10-29").map((d) => `occ-${d}`));
+  });
+
+  it("This and following: from the opened occurrence on", () => {
+    const targets = seriesReminderTargets({
+      occurrences: edited(),
+      openedId: "occ-2026-10-08",
+      scope: "following",
+      now: NOW,
+    });
+
+    expect(targets).toEqual(["occ-2026-10-08", "occ-2026-10-15", "occ-2026-10-22", "occ-2026-10-29"]);
+  });
+
+  it("from a moved occurrence, This and following starts at it", () => {
+    const targets = seriesReminderTargets({
+      occurrences: edited(),
+      openedId: "occ-2026-09-24",
+      scope: "following",
+      now: NOW,
+    });
+
+    expect(targets[0]).toBe("occ-2026-09-24");
+    expect(targets).not.toContain("occ-2026-09-17");
+  });
+
+  it("refuses a series with nothing upcoming, like any series edit", () => {
+    expect(() =>
+      seriesReminderTargets({ occurrences: practiceSeries(), openedId: "occ-2026-09-17", scope: "series", now: new Date("2026-12-01T12:00") })
+    ).toThrow(SeriesEditError);
   });
 });

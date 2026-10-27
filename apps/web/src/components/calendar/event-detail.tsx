@@ -709,7 +709,10 @@ function NotificationStatus({ eventId }: { eventId: string }) {
       {/* The daily reminder is logged here too (team-notification-controls §4.3). */}
       <span className="font-medium text-foreground">{job.kind === "reminder" ? "Reminder" : "Notifications"}:</span> {label}
       {!waiting && ` · ${when}`}
-      {job.status === "failed" && " — we'll retry"}
+      {/* A reminder is retried only by the midnight sweep, before the event starts (RR-001). */}
+      {job.kind === "reminder"
+        ? (job.status === "failed" || job.status === "partial") && " — we'll try again if there's time before it starts"
+        : job.status === "failed" && " — we'll retry"}
     </div>
   );
 }

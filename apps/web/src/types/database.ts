@@ -631,6 +631,7 @@ export type Database = {
           action: string
           attempts: number
           batch_key: string
+          claimed_at: string | null
           created_at: string
           created_by: string | null
           event_id: string | null
@@ -648,6 +649,7 @@ export type Database = {
           action: string
           attempts?: number
           batch_key: string
+          claimed_at?: string | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
@@ -665,6 +667,7 @@ export type Database = {
           action?: string
           attempts?: number
           batch_key?: string
+          claimed_at?: string | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
@@ -1463,6 +1466,7 @@ export type Database = {
           action: string
           attempts: number
           batch_key: string
+          claimed_at: string | null
           created_at: string
           created_by: string | null
           event_id: string | null
@@ -1482,6 +1486,16 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      claim_reminder_job: {
+        Args: {
+          p_batch_key: string
+          p_event_id: string
+          p_retry_only?: boolean
+          p_snapshot: Json
+          p_team_id: string
+        }
+        Returns: Json
       }
       create_director_invitation: {
         Args: { p_actor_id: string; p_email: string; p_org_id: string }

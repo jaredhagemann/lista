@@ -25,6 +25,8 @@ import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => {
   const updates: Record<string, unknown>[] = [];
+  /** The ids each events update was limited to with .in("id", …). */
+  const updatedIds: unknown[][] = [];
   const inserts: unknown[] = [];
   const rpc = vi.fn(async () => ({ data: null, error: null }));
   const state = { teamSettings: null as Record<string, unknown> | null };
@@ -32,9 +34,17 @@ const mocks = vi.hoisted(() => {
     const result = () =>
       Promise.resolve({ data: table === "team_reminder_settings" ? state.teamSettings : [], error: null, count: 0 });
     const chain: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "or", "order", "in", "gte", "is", "limit"]) chain[m] = () => chain;
+    let updating = false;
+    for (const m of ["select", "eq", "or", "order", "gte", "is", "limit"]) chain[m] = () => chain;
+    chain.in = (_column: string, values: unknown[]) => {
+      if (updating) updatedIds.push(values);
+      return chain;
+    };
     chain.update = (values: Record<string, unknown>) => {
-      if (table === "events") updates.push(values);
+      if (table === "events") {
+        updates.push(values);
+        updating = true;
+      }
       return chain;
     };
     chain.insert = (rows: unknown) => {
@@ -51,6 +61,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     updates,
+    updatedIds,
     inserts,
     rpc,
     state,
@@ -73,6 +84,7 @@ vi.mock("@/lib/notifications/client", () => ({
 import { EventEditForm } from "@/components/calendar/event-detail";
 import { EventFormDialog } from "@/components/calendar/event-form-dialog";
 import { TournamentEditForm } from "@/components/tournaments/tournament-edit-form";
+import { SeriesEditForm } from "@/components/calendar/series-edit-form";
 
 const TEAM = { name: "U10 Girls", home_uniform: null, away_uniform: null, home_uniform_color: null, away_uniform_color: null };
 
@@ -133,6 +145,7 @@ const notifySwitch = () => screen.queryByRole("switch", { name: "Notify the team
 
 beforeEach(() => {
   mocks.updates.length = 0;
+  mocks.updatedIds.length = 0;
   mocks.inserts.length = 0;
   mocks.state.teamSettings = null;
   vi.clearAllMocks();
@@ -253,5 +266,59 @@ describe("editing a tournament", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(mocks.updates[0]).toMatchObject({ reminder: "never" });
     expect(mocks.rpc).not.toHaveBeenCalledWith("enqueue_event_notification", expect.anything());
+  });
+});
+
+describe("editing a series' reminder (review RR-002)", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const base = Date.parse("2026-12-03T16:00:00Z");
+  const occurrence = (id: string, start: number, extra: Record<string, unknown> = {}) => ({
+    ...PRACTICE,
+    id,
+    timezone: "UTC",
+    start_time: new Date(start).toISOString(),
+    end_time: new Date(start + 90 * 60 * 1000).toISOString(),
+    parent_event_id: "head",
+    ...extra,
+  });
+  // Weekly Thursdays, Dec 3, 10 and 17; Dec 10 moved to Friday on its own.
+  const series = [
+    occurrence("head", base, {
+      parent_event_id: null,
+      recurrence_rule: "DTSTART:20261203T160000Z\nRRULE:FREQ=WEEKLY;BYDAY=TH;UNTIL=20261217T235959Z",
+    }),
+    occurrence("moved", base + 8 * DAY),
+    occurrence("last", base + 14 * DAY),
+  ];
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-20T12:00:00Z"));
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("sets every occurrence's reminder, moved ones included, without rebuilding the schedule", async () => {
+    const onSave = vi.fn();
+    render(
+      <SeriesEditForm
+        series={series as never}
+        openedId="head"
+        scope="series"
+        teamId="team-1"
+        fallbackTimeZone="UTC"
+        team={TEAM}
+        onSave={onSave}
+        onCancel={() => {}}
+      />
+    );
+
+    await chooseReminder("Don't send");
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(mocks.updates).toEqual([{ reminder: "never" }]);
+    expect(mocks.updatedIds).toEqual([["head", "moved", "last"]]);
+    expect(mocks.rpc).not.toHaveBeenCalledWith("apply_series_edit", expect.anything());
   });
 });

@@ -13,11 +13,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   drainNotificationJobs: vi.fn(async () => ({ claimed: 0, results: [] })),
+  sendReminders: vi.fn(async () => ({ eventsProcessed: 0, notificationsSent: 0, failedEvents: [], partialEvents: [] })),
 }));
 
 vi.mock("@/lib/notifications/worker", () => ({
   drainNotificationJobs: mocks.drainNotificationJobs,
 }));
+// The sweep also retries failed reminders (review RR-001), covered in reminder-rules-cron.
+vi.mock("@/lib/notifications/reminders", () => ({ sendReminders: mocks.sendReminders }));
+vi.mock("@/lib/api-auth", () => ({ adminClient: () => ({}) }));
 
 import { GET } from "@/app/api/cron/notifications/route";
 

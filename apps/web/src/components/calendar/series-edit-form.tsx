@@ -31,6 +31,7 @@ import { homeAwayLabel, uniformOf, type TeamDisplay } from "@/lib/events/game-di
 import {
   planSeriesEdit,
   resolveSeriesEdit,
+  seriesReminderTargets,
   seriesTimeZone,
   SeriesEditError,
   toWallClock,
@@ -275,6 +276,13 @@ function SeriesEditFormBody({
       return;
     }
 
+    // A reminder on its own changes no dates, so it skips the planner, which
+    // rebuilds the schedule, and tells the team nothing (RR-002, D13).
+    if (Object.keys(fields).length === 1 && "reminder" in fields && !timeChanged && !zoneChanged && !changedPattern) {
+      await applyReminder(reminder);
+      return;
+    }
+
     let plan: SeriesEditPlan;
     try {
       plan = planSeriesEdit({
@@ -355,6 +363,26 @@ function SeriesEditFormBody({
       });
     }
     return changes;
+  }
+
+  async function applyReminder(value: EventReminder) {
+    let targets: string[];
+    try {
+      targets = seriesReminderTargets({ occurrences: series, openedId, scope, now: new Date() });
+    } catch (err) {
+      toast.error(err instanceof SeriesEditError ? err.message : "Could not plan this change.");
+      setSaving(false);
+      return;
+    }
+    // One statement, so every occurrence changes or none does.
+    const { error } = await supabase.from("events").update({ reminder: value }).in("id", targets);
+    setSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Series updated");
+    onSave();
   }
 
   async function apply(plan: SeriesEditPlan) {
