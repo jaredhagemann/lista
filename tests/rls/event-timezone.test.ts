@@ -214,12 +214,34 @@ describe("notifications name the zone (D3)", () => {
   });
 });
 
+/**
+ * The Denver dates of a weekly series' four occurrences, starting two days after `from`.
+ *
+ * Weeks step by calendar date, not by 7 × 24 hours: across a clock change those
+ * hours land an hour short of the same time, which is the day before when the
+ * first date was read just after midnight (BUG-039).
+ */
+function weeklyDenverDates(from: Date): string[] {
+  const firstDate = wallClockIn(new Date(from.getTime() + 2 * DAY_MS), DENVER).slice(0, 10);
+  const midnight = new Date(`${firstDate}T00:00:00Z`).getTime();
+  return [0, 1, 2, 3].map((week) => new Date(midnight + week * 7 * DAY_MS).toISOString().slice(0, 10));
+}
+
+describe("the series fixture's dates (BUG-039)", () => {
+  it("stay on one weekday when a clock change falls between them", () => {
+    // CI ran at this instant: 00:17 in Denver on Oct 29, four days before the
+    // Nov 1 change. Adding 7 × 24 hours put the later weeks on Wednesdays.
+    const dates = weeklyDenverDates(new Date("2026-10-27T06:17:00Z"));
+    expect(dates).toEqual(["2026-10-29", "2026-11-05", "2026-11-12", "2026-11-19"]);
+  });
+});
+
 describe("series edits keep and change the series' zone", () => {
   /** A weekly 4 PM series in `zone`, four upcoming occurrences, created as the form does. */
   async function denverSeries(teamId: string, coach: TestUser) {
-    const first = new Date(Date.now() + 2 * DAY_MS);
-    const firstWall = `${wallClockIn(first, DENVER).slice(0, 10)}T16:00`;
-    const lastDate = wallClockIn(new Date(first.getTime() + 21 * DAY_MS), DENVER).slice(0, 10);
+    const dates = weeklyDenverDates(new Date());
+    const firstWall = `${dates[0]}T16:00`;
+    const lastDate = dates[3];
     const rule = buildRRule({
       frequency: "weekly",
       daysOfWeek: [(new Date(`${firstWall.slice(0, 10)}T00:00:00Z`).getUTCDay() + 6) % 7],
@@ -228,7 +250,7 @@ describe("series edits keep and change the series' zone", () => {
     });
     const headId = crypto.randomUUID();
     const rows = [0, 1, 2, 3].map((week) => {
-      const wall = `${wallClockIn(new Date(first.getTime() + week * 7 * DAY_MS), DENVER).slice(0, 10)}T16:00`;
+      const wall = `${dates[week]}T16:00`;
       const start = instantFromWallClock(wall, DENVER);
       return {
         id: week === 0 ? headId : crypto.randomUUID(),
