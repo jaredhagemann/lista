@@ -5,6 +5,7 @@ import { hasClubAccess } from "@/lib/plan";
 import { NotificationPrefsForm } from "@/components/settings/notification-prefs-form";
 import { TeamMutesSection, type MutableTeam } from "@/components/settings/team-mutes-section";
 import { TeamSettingsForm } from "@/components/settings/team-settings-form";
+import { TeamReminderSettings } from "@/components/settings/team-reminder-settings";
 import { TransferOwnershipSection } from "@/components/settings/transfer-ownership-section";
 import { DeleteTeamSection } from "@/components/settings/delete-team-section";
 import { TrainingCategoriesSection } from "@/components/settings/training-categories-section";
@@ -174,6 +175,11 @@ export default async function SettingsPage({
   const team = membership?.teams as Database["public"]["Tables"]["teams"]["Row"] | undefined;
   const isOwner = !!team && team.owner_id === user.id;
 
+  // The team's reminder rules (team-notification-controls §4.1); no row is the defaults.
+  const { data: reminderSettings } = team
+    ? await supabase.from("team_reminder_settings").select("*").eq("team_id", team.id).maybeSingle()
+    : { data: null };
+
   // Fetch eligible admins for ownership transfer (auth-backed coaches/managers only)
   let eligibleAdmins: { profileId: string; name: string; role: string }[] = [];
   if (isOwner && team) {
@@ -242,6 +248,7 @@ export default async function SettingsPage({
         {membership && team && (
           <TabsContent value="team" className="space-y-6">
             <TeamSettingsForm team={team} isAdmin={isAdmin} />
+            <TeamReminderSettings teamId={team.id} settings={reminderSettings} canEdit={isAdmin} />
             {isAdmin && (
               <LeaguesSection
                 teamId={team.id}

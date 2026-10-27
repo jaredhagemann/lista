@@ -42,6 +42,8 @@ export const BULK_EDITABLE_FIELDS = [
   "uniform",
   "arrival_time",
   "timezone",
+  // Tells the team nothing on its own (team-notification-controls D13).
+  "reminder",
 ] as const;
 export type BulkEditableField = (typeof BULK_EDITABLE_FIELDS)[number];
 export type BulkFields = Partial<Pick<EventRow, BulkEditableField>>;
@@ -227,6 +229,18 @@ export function resolveSeriesEdit(
   return { head, opened, sorted, anchor };
 }
 
+/**
+ * The occurrences a reminder-only series change sets (review RR-002, D13): every
+ * upcoming one in scope, as they are. A reminder is lista's behavior, not the
+ * schedule, so the change neither rebuilds dates nor splits the series, and an
+ * occurrence moved or cancelled on its own, or given its own reminder, follows
+ * the series' new choice like the rest.
+ */
+export function seriesReminderTargets(input: Pick<SeriesEditInput, "occurrences" | "openedId" | "scope" | "now">): string[] {
+  const { sorted, anchor } = resolveSeriesEdit(input.occurrences, input.openedId, input.scope, input.now);
+  return sorted.filter((o) => ms(o.start_time) > input.now.getTime() && ms(o.start_time) >= ms(anchor.start_time)).map((o) => o.id);
+}
+
 export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
   const newId = input.newId ?? (() => crypto.randomUUID());
   const { head, sorted, anchor } = resolveSeriesEdit(input.occurrences, input.openedId, input.scope, input.now);
@@ -277,11 +291,14 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
   const unchanged: string[] = [];
   const filledDates = new Set<string>();
 
+  // An occurrence's own time or date doesn't keep it from the series' reminder (RR-002).
+  const exceptionUpdates: SeriesEditPlan["updates"] = [];
   for (const o of affected) {
     const date = datePart(toWallClock(o.start_time, oldZone));
     if (isException(o)) {
       filledDates.add(date);
       unchanged.push(o.start_time);
+      if ("reminder" in fields) exceptionUpdates.push({ id: o.id, fields: { reminder: fields.reminder } });
       continue;
     }
     const slot = newSlotsByDate.get(date);
@@ -347,7 +364,7 @@ export function planSeriesEdit(input: SeriesEditInput): SeriesEditPlan {
     newHeadId,
     newHeadRule: newHeadRuleString,
     truncateRule,
-    updates,
+    updates: [...updates, ...exceptionUpdates],
     cancels,
     inserts,
     reparent,

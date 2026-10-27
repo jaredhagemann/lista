@@ -129,8 +129,8 @@ create table team_notification_mutes (
 
 ### 4.1 Behavior
 
-Each team has **reminder settings**, editable by its coaches and managers (`is_team_admin`; club directors
-can't, D5):
+Each team has **reminder settings**, editable by whoever can edit its events: coaches, managers and club
+directors (`is_team_admin`, D5):
 
 | Setting | Values | Default for existing and new teams |
 | --- | --- | --- |
@@ -153,9 +153,10 @@ And on each event:
    itself follows the **tournament** rule. A coach who wants only the tournament reminder turns off games,
    or turns off the reminder on each game.
 
-**Recurring events:** setting the reminder on a series applies to every occurrence. Editing a single
-occurrence overrides it for that occurrence only. This uses the "this event / all events" choice the event
-form already has for other fields.
+**Recurring events:** setting the reminder on a series applies to every upcoming occurrence in the chosen
+scope, including ones moved, cancelled, or given their own reminder earlier: the latest choice wins.
+Editing a single occurrence afterwards overrides it for that occurrence only. This uses the "this event /
+all events" choice the event form already has for other fields. (Settled in review RR-002, 2026-10-26.)
 
 **Who is reminded doesn't change.** These settings decide whether a reminder goes out. The team's members,
 and their own account and team-mute settings, still decide who gets it.
@@ -201,10 +202,16 @@ alter table events add column reminder text
 - **No row means the defaults.** Existing teams need no backfill, and the cron treats a missing row as the
   default row.
 - **RLS:** team members can read their team's row (so the event form can say what the team default is).
-  Only `is_team_admin(team_id)` can insert or update it.
+  Only `is_team_admin(team_id)` can insert or update it, the same check as editing events (D5). A trigger
+  stamps `updated_at` and `updated_by`.
 - **`events.reminder`** is covered by the existing event policies: anyone who can edit the event can set it.
 - **Series edits:** `apply_series_edit` copies `reminder` onto inserted occurrences and applies it in the
-  plan's `updates`, like the other fields. Its notice condition changes as D13 describes.
+  plan's `updates`, like the other fields, including to occurrences moved on their own, which the planner
+  otherwise leaves alone. Its notice condition changes as D13 describes.
+- **A reminder-only series edit skips the planner** (review RR-002). The planner rebuilds dates from the
+  pattern, which can recreate a moved occurrence on its old date. The editor instead updates `reminder` on
+  the occurrences `seriesReminderTargets` returns, in one statement: no dates, ids, series split or notice
+  change.
 - **Columns, not an array, for the types.** There are four types and the check constraint lists them. A new
   type gets a new column and a migration, the same as the constraint does.
 
@@ -219,10 +226,30 @@ The daily job (`api/cron/reminders`, 12:00 UTC) stays as it is, with one new fil
 
 **Moved events (D8):** each event falls into one daily window, so an unmoved event is reminded once. An
 event moved to a later window after its reminder is reminded again, with the right time. That's what D8
-asks for, and the daily job already does it. No send record is needed.
+asks for, and the daily job already does it.
 
 **Reminders go through the delivery log.** The send moves onto `planDeliveries`, so skipped reminders get a
-reason (`opted_out`, `team_muted`) in `notification_deliveries` like schedule changes do.
+reason (`opted_out`, `team_muted`) in `notification_deliveries` like schedule changes do. Deliveries hang off
+a job, so each reminder writes a `notification_jobs` row of kind and action `reminder` as it sends, keyed
+`reminder:<event id>:<start time>`. That key also stops a rerun the same day from sending twice, while a
+moved event gets a new key (D8). The worker never claims these rows, and the event page labels the latest
+one "Reminder" rather than "Notifications".
+
+**Failed reminders are tried again (review RR-001).** The job takes each reminder through
+`claim_reminder_job`, which starts a new one, or takes back one that failed, partly failed, or was left
+sending for ten minutes by a run that died. One that went out, or that another run is sending, is left
+alone, and five attempts is the limit. A reminder taken back keeps its sent deliveries and sends only to
+the rest. Each delivery is logged as it's made, so a run that dies keeps a record of what went out.
+
+- The midnight sweep (`api/cron/notifications`) retries these for events that haven't started. It never
+  starts a reminder, so none first arrives at midnight.
+- A reminder nobody got fails the run (HTTP 500), so the cron's monitoring sees it. A partly sent one is
+  listed in the response but doesn't fail the run.
+- The event page says "we'll try again if there's time before it starts", not "we'll retry", because an
+  event that starts before midnight UTC isn't retried.
+
+**Unreadable rules send nothing.** If the job can't read `team_reminder_settings`, it sends no reminders
+that run and reports the failure: reminding a team that turned reminders off is worse than a missed day.
 
 ### 4.4 Deferred: reminder timing (D6, D7, D10)
 
@@ -242,15 +269,14 @@ When this is picked up, the design notes are:
   when the event has one. Existing teams default to "24 hours before" (D10).
 - **Due times are computed in the job,** not stored on events, so a coach changing the team's timing
   doesn't rewrite every future event.
-- **A send record is needed then:** `event_reminder_sends (event_id, start_time)`, claimed with
-  `insert … on conflict do nothing` before sending, so overlapping 15-minute runs can't double-send. Keying
-  on `start_time` keeps D8.
+- **The send record exists:** `claim_reminder_job` (§4.3) already stops overlapping runs from sending
+  twice, keyed on `start_time` for D8.
 - **Late events:** an event created or moved after its due time, and not yet started, is reminded on the
   next run.
 
 ## 5. Decisions
 
-Settled 2026-10-20; D4 revised and D13 added 2026-10-22.
+Settled 2026-10-20; D4 revised and D13 added 2026-10-22; D5 revised 2026-10-26.
 
 | # | Question | Decision |
 | --- | --- | --- |
@@ -258,7 +284,7 @@ Settled 2026-10-20; D4 revised and D13 added 2026-10-22.
 | D2 | Does a team mute, or a coach's reminder setting, cover push as well as email? | Both. |
 | D3 | Which notices ignore a team mute? | Team deletion, ownership and billing notices only. Cancellations are muted like other schedule notices. |
 | D4 | Can a coach see who has muted the team? | Yes (revised 2026-10-22). The delivery log already shows team admins each skip's profile and reason, so the mute table is readable by them too. No new screen lists mutes. |
-| D5 | Can club directors edit a club team's reminder settings? | No: coaches and managers only, same as editing events. |
+| D5 | Can club directors edit a club team's reminder settings? | Yes (revised 2026-10-26): whoever can edit the team's events, which includes club directors. They could already set each event's reminder. |
 | D6 | Timing presets | Doesn't apply while timing is deferred (§4.4). |
 | D7 | Scheduler | C: keep the daily job. No coach-chosen timing for now. |
 | D8 | Is a moved event reminded again? | Yes, if its start moved into a later window. |
@@ -278,8 +304,8 @@ All tests are written before the code, per `CLAUDE.md`.
 - No mute row can be created for a managed profile.
 - The team's coaches and managers can read its mutes but can't change them. A parent, player, or another
   team's coach can't read them (D4).
-- Members can read their team's reminder settings. Only coaches and managers can write them. A parent,
-  player or club director gets `permission denied` (D5). Another team's coach can't read or write them.
+- Members can read their team's reminder settings. Coaches, managers and the club's directors can write
+  them (D5); a parent or player can't. Another team's coach can't read or write them.
 - `events.reminder` can be set by whoever can edit the event, and no one else.
 
 **Resolver (`tests/notification-recipients` unit and RLS):**
@@ -297,9 +323,14 @@ All tests are written before the code, per `CLAUDE.md`.
 - A missing settings row behaves like the defaults.
 - A cancelled event is never reminded, even with "Always send".
 
-**Reminder job (`tests/reminders-cron.test.ts`):**
+**Reminder job (`tests/reminders-cron.test.ts`, `reminder-rules-cron.test.ts`):**
 - Events the rules reject are not sent. The rest are, as today.
 - Muted and opted-out recipients are logged as skipped, with the reason.
+- RR-001: a run whose every send failed returns 500, and the next run sends it. A partly sent one resends
+  only what failed. A stale run is taken back without resending what went out. An overlapping run, or a
+  reminder that went out, sends nothing. The midnight sweep retries failed ones and starts none.
+- `claim_reminder_job` (RLS suite): each of those cases against the real function, the five-attempt limit,
+  and no access for signed-in users.
 
 **Silent reminder edits (D13):**
 - Changing only `events.reminder` enqueues no `notification_jobs` row (trigger test, RLS suite).
@@ -308,6 +339,10 @@ All tests are written before the code, per `CLAUDE.md`.
   notice doesn't mention the reminder.
 - `apply_series_edit` with a reminder-only plan enqueues nothing. A plan that also changes another field,
   inserts or cancels enqueues one notice, and its summary has no reminder row.
+- RR-002: a reminder-only series edit, with one occurrence moved to another day and one moved within its
+  day, keeps every id, time and series link, adds nothing, notifies nobody, and sets the reminder on all of
+  them; "This and following" sets it from the opened occurrence on. A mixed edit also sets it on an
+  occurrence moved within its day.
 - Saving team reminder settings enqueues nothing.
 
 **UI:** the settings switches and the event form's reminder field save and load. A non-admin sees the

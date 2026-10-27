@@ -28,6 +28,8 @@ import { expandInZone, instantFromWallClock, isUsableTimeZone, wallClockIn } fro
 import { browserTimeZone } from "@/lib/events/team-timezone";
 import { TimeZoneSelect } from "./time-zone-select";
 import { TournamentCreateForm } from "@/components/tournaments/tournament-create-form";
+import { ReminderSelect } from "@/components/events/reminder-select";
+import type { EventReminder } from "@/lib/notifications/reminder-rules";
 import { LeaguePicker } from "@/components/leagues/league-picker";
 import { useTeamLeagues } from "@/components/leagues/use-team-leagues";
 import { GameTitleHint } from "@/components/events/game-title-hint";
@@ -125,6 +127,8 @@ export function EventFormDialog({
   const [isRecurring, setIsRecurring] = useState(false);
   // D3: a new event notifies unless the coach says otherwise.
   const [notifyTeam, setNotifyTeam] = useState(true);
+  // Every occurrence of a series gets it (team-notification-controls §4.1).
+  const [reminder, setReminder] = useState<EventReminder>(null);
   const [frequencyMode, setFrequencyMode] = useState<
     "weekly" | "biweekly" | "custom"
   >("weekly");
@@ -196,6 +200,7 @@ export function EventFormDialog({
       score_for: null,
       score_against: null,
       arrival_time: arrivalTime !== "" ? parseInt(arrivalTime, 10) : null,
+      reminder,
     };
 
     if (isRecurring && recurUntil) {
@@ -522,6 +527,8 @@ export function EventFormDialog({
                 />
               </div>
             )}
+
+            <ReminderSelect value={reminder} onChange={setReminder} teamId={teamId} eventType={eventType} />
 
             {/* Notify toggle — a new event tells the team unless switched off */}
             <div className="flex items-center justify-between">

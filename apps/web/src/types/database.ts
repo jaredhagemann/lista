@@ -225,6 +225,7 @@ export type Database = {
           placement_label: string | null
           placement_rank: number | null
           recurrence_rule: string | null
+          reminder: string | null
           round: string | null
           score_against: number | null
           score_for: number | null
@@ -253,6 +254,7 @@ export type Database = {
           placement_label?: string | null
           placement_rank?: number | null
           recurrence_rule?: string | null
+          reminder?: string | null
           round?: string | null
           score_against?: number | null
           score_for?: number | null
@@ -281,6 +283,7 @@ export type Database = {
           placement_label?: string | null
           placement_rank?: number | null
           recurrence_rule?: string | null
+          reminder?: string | null
           round?: string | null
           score_against?: number | null
           score_for?: number | null
@@ -628,6 +631,7 @@ export type Database = {
           action: string
           attempts: number
           batch_key: string
+          claimed_at: string | null
           created_at: string
           created_by: string | null
           event_id: string | null
@@ -645,6 +649,7 @@ export type Database = {
           action: string
           attempts?: number
           batch_key: string
+          claimed_at?: string | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
@@ -662,6 +667,7 @@ export type Database = {
           action?: string
           attempts?: number
           batch_key?: string
+          claimed_at?: string | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
@@ -1169,6 +1175,54 @@ export type Database = {
           },
         ]
       }
+      team_reminder_settings: {
+        Row: {
+          enabled: boolean
+          remind_game: boolean
+          remind_other: boolean
+          remind_practice: boolean
+          remind_tournament: boolean
+          team_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          remind_game?: boolean
+          remind_other?: boolean
+          remind_practice?: boolean
+          remind_tournament?: boolean
+          team_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          remind_game?: boolean
+          remind_other?: boolean
+          remind_practice?: boolean
+          remind_tournament?: boolean
+          team_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_reminder_settings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: true
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_reminder_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teams: {
         Row: {
           age_group: string | null
@@ -1412,6 +1466,7 @@ export type Database = {
           action: string
           attempts: number
           batch_key: string
+          claimed_at: string | null
           created_at: string
           created_by: string | null
           event_id: string | null
@@ -1431,6 +1486,16 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      claim_reminder_job: {
+        Args: {
+          p_batch_key: string
+          p_event_id: string
+          p_retry_only?: boolean
+          p_snapshot: Json
+          p_team_id: string
+        }
+        Returns: Json
       }
       create_director_invitation: {
         Args: { p_actor_id: string; p_email: string; p_org_id: string }

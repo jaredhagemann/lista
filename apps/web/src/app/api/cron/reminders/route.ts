@@ -1,41 +1,9 @@
 import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { drainNotificationJobs } from "@/lib/notifications/worker";
-import { resolveRecipients } from "@/lib/notifications/recipients";
-import { reminderSubject } from "@/lib/notifications/dispatch";
-import { createServerClient } from "@supabase/ssr";
-import { sendEmail } from "@/lib/notifications/email";
-import { renderEventEmail } from "@/emails/event-email";
-import { renderTournamentEmail } from "@/emails/tournament-email";
-import { notificationSettingsLinks } from "@/lib/notifications/settings-links";
-import {
-  REMINDER_EVENT_COLUMNS,
-  REMINDER_TOURNAMENT_GAME_COLUMNS,
-  partOfLine,
-  tournamentReminderSubject,
-} from "@/lib/notifications/tournament-notice";
-import type { TournamentGameSnapshot } from "@/lib/notifications/dispatch";
-import { teamEmailBrand, type BrandedTeam } from "@/emails/brand";
-import { answerRowsFor, loadAnswerContext, type AnswerContext } from "@/lib/notifications/answers";
-import { gameTitle, uniformOf, type TeamUniforms } from "@/lib/events/game-display";
-import { tournamentDates } from "@/lib/events/tournament";
-import { sendPushNotification } from "@/lib/notifications/push";
-import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
-import {
-  formatEventTime,
-  formatShortEventDate,
-  relativeEventDay,
-  resolveTimeZone,
-} from "@/lib/notifications/event-time";
+import { sendReminders } from "@/lib/notifications/reminders";
 import type { Database } from "@/types/database";
-
-type EventWithTeam = Database["public"]["Tables"]["events"]["Row"] & {
-  teams: ({ name: string; timezone: string | null } & BrandedTeam & TeamUniforms) | null;
-  locations: { name: string } | null;
-  /** A game's tournament, for "Part of Surf Cup". */
-  tournament: { title: string } | null;
-};
-
 
 // Vercel Cron: runs daily, sends reminders for events happening in the next 24h
 export async function GET(request: Request) {
@@ -44,230 +12,15 @@ export async function GET(request: Request) {
   }
 
   // Use service role for cron to bypass RLS
-  const supabase = createServerClient(
+  const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { cookies: { getAll: () => [], setAll: () => {} } }
   );
 
-  const now = new Date();
-  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-  // Find events in the next 24 hours that aren't cancelled
-  const { data: rawEvents, error } = await supabase
-    .from("events")
-    .select(REMINDER_EVENT_COLUMNS)
-    .eq("is_cancelled", false)
-    .gte("start_time", now.toISOString())
-    .lte("start_time", in24h.toISOString());
-
-  if (error || !rawEvents) {
-    return NextResponse.json(
-      { error: "Failed to fetch events" },
-      { status: 500 }
-    );
-  }
-
-  // Through unknown: the typed client can't resolve the self-embed on tournament_id.
-  const events = rawEvents as unknown as EventWithTeam[];
-  let sent = 0;
-  // Events whose reminder couldn't be built: reported, never sent incomplete (TL-015).
-  const failedEvents: { eventId: string; error: string }[] = [];
-
-  /**
-   * A tournament's games, tried twice: a statement timeout is usually brief. A
-   * read that fails is an error, never an empty schedule, which would send a
-   * reminder without its games. The next daily run is usually after the
-   * tournament has started, so it can't repair one.
-   */
-  async function readTournamentGames(
-    tournamentId: string
-  ): Promise<{ games: TournamentGameSnapshot[] } | { error: string }> {
-    let lastError = "unknown error";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { data, error } = await supabase
-        .from("events")
-        .select(REMINDER_TOURNAMENT_GAME_COLUMNS)
-        .eq("tournament_id", tournamentId)
-        .order("start_time", { ascending: true });
-      if (!error) return { games: (data ?? []) as TournamentGameSnapshot[] };
-      lastError = error.message;
-    }
-    return { error: lastError };
-  }
-
-  for (const event of events) {
-    // A tournament reads as one, with its games (D6): "Surf Cup starts tomorrow · 5 games".
-    // Read first, so a failed read skips it before anything is sent.
-    const isTournament = event.event_type === "tournament";
-    let games: TournamentGameSnapshot[] = [];
-    if (isTournament) {
-      const read = await readTournamentGames(event.id);
-      if ("error" in read) {
-        console.error(`Reminder for tournament ${event.id} not sent: its games could not be read: ${read.error}`);
-        failedEvents.push({ eventId: event.id, error: read.error });
-        continue;
-      }
-      games = read.games;
-    }
-
-    const teamName = event.teams?.name ?? "Unknown";
-    // The server runs in UTC: format in the event's own zone (else the team's,
-    // for events from before event zones), and name the event's actual day
-    // rather than assuming "tomorrow" (BUG-020, BUG-010).
-    const timeZone = resolveTimeZone(event.timezone ?? event.teams?.timezone);
-    const relativeDay = relativeEventDay(event.start_time, timeZone);
-    const dayLabel = relativeDay ?? formatShortEventDate(event.start_time, timeZone);
-
-    // Everyone the reminder is for: teammates, and the guardians of managed
-    // players, who may have no roster row of their own. Each receiving adult's
-    // own preferences apply (BUG-007, D2).
-    // A failed read (team mutes, say) skips this event and reports it, rather
-    // than reminding people who muted the team or stopping the whole run.
-    let recipients: Awaited<ReturnType<typeof resolveRecipients>>;
-    try {
-      recipients = await resolveRecipients(supabase, {
-        category: "event",
-        teamId: event.team_id!,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "unknown error";
-      console.error(`Reminder for event ${event.id} not sent: its recipients could not be read: ${message}`);
-      failedEvents.push({ eventId: event.id, error: message });
-      continue;
-    }
-
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ??
-      (process.env.NEXT_PUBLIC_VERCEL_URL
-        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-        : "http://localhost:3000");
-
-    // A club team's reminder comes from the club, in its brand (email-upgrade §4.2).
-    const brand = teamEmailBrand(event.teams);
-    // "12U Girls @ Rivals FC" for a game, as the app names it (email-upgrade §4.3).
-    const title = gameTitle(event, teamName, { includeScore: false });
-    const eventUrl = `${appUrl}/dashboard/schedule/${event.id}`;
-    const settings = notificationSettingsLinks(appUrl, event.team_id!);
-
-    // Each person's current answer, read once for the event; every recipient's
-    // email then carries rows for just their own people (§4.7, D9–D10).
-    // Answers that can't be read are never shown as "no answer" (review TL-017):
-    // tried twice, then this event's reminder isn't sent, and the run reports it.
-    let answers: AnswerContext | null = null;
-    let answersError = "unknown error";
-    for (let attempt = 0; attempt < 2 && !answers; attempt++) {
-      try {
-        answers = await loadAnswerContext(
-          supabase,
-          event.id,
-          recipients.flatMap((r) => r.coversProfileIds),
-          // A game in a tournament shows the tournament answer it follows (D19).
-          event.tournament_id && event.tournament ? { id: event.tournament_id, title: event.tournament.title } : null
-        );
-      } catch (err) {
-        answersError = err instanceof Error ? err.message : "unknown error";
-      }
-    }
-    if (!answers) {
-      console.error(`Reminder for event ${event.id} not sent: its answers could not be read: ${answersError}`);
-      failedEvents.push({ eventId: event.id, error: answersError });
-      continue;
-    }
-    const answerContext = answers;
-    const playing = games.filter((g) => !g.is_cancelled).length;
-    const gamesPhrase = playing > 0 ? `${playing} ${playing === 1 ? "game" : "games"}` : null;
-
-    const emailFor = (recipient: (typeof recipients)[number]) =>
-      isTournament
-        ? renderTournamentEmail({
-            brand,
-            teamName,
-            title: event.title,
-            start_time: event.start_time,
-            end_time: event.end_time,
-            timeZone,
-            location: event.locations?.name ?? null,
-            notes: event.notes,
-            action: "reminder",
-            games: { total: playing, action: "created", list: games },
-            url: eventUrl,
-            answers: answerRowsFor(recipient, answerContext, eventUrl),
-            settings,
-          })
-        : renderEventEmail({
-            eventTitle: event.title,
-            eventType: event.event_type,
-            startTime: event.start_time,
-            endTime: event.end_time,
-            location: event.locations?.name ?? null,
-            teamName,
-            action: "reminder",
-            brand,
-            arrivalTime: event.arrival_time,
-            eventUrl,
-            timeZone,
-            opponent: event.opponent,
-            homeAway: event.home_away,
-            uniform: uniformOf(event.uniform, event.teams ?? {}),
-            notes: event.notes,
-            answers: answerRowsFor(recipient, answerContext, eventUrl),
-            settings,
-            partOf: partOfLine({ tournament_title: event.tournament?.title, round: event.round }),
-          });
-
-    const subject = isTournament
-      ? tournamentReminderSubject(event.title, relativeDay, dayLabel)
-      : reminderSubject(title, relativeDay, dayLabel);
-    const where = event.locations?.name ? ` — ${event.locations.name}` : "";
-    const reminderPayload = isTournament
-      ? {
-          title: subject,
-          body: `${gamesPhrase ?? tournamentDates(event, timeZone)}${where}`,
-          url: `/dashboard/schedule/${event.id}`,
-        }
-      : {
-          title: `Reminder: ${title}`,
-          body: `${dayLabel.charAt(0).toUpperCase()}${dayLabel.slice(1)} at ${formatEventTime(event.start_time, timeZone)}${where}`,
-          url: `/dashboard/schedule/${event.id}`,
-        };
-
-    for (const recipient of recipients) {
-      if (recipient.emailEnabled && recipient.emails.length > 0) {
-        const message = await emailFor(recipient);
-        for (const email of recipient.emails) {
-          try {
-            await sendEmail({
-              to: email,
-              subject,
-              ...message,
-              brandName: brand.fromName,
-            });
-            sent++;
-          } catch (err) {
-            console.error(`Reminder email to ${email} failed:`, err);
-          }
-        }
-      }
-
-      if (!recipient.pushEnabled) continue;
-      // Every device the person has registered, not just the most recent one.
-      for (const target of recipient.pushTargets) {
-        try {
-          if (target.kind === "expo") {
-            await sendExpoPushNotification(target.token, reminderPayload);
-          } else {
-            await sendPushNotification(
-              { endpoint: target.endpoint, p256dh: target.p256dh, auth: target.auth },
-              reminderPayload
-            );
-          }
-          sent++;
-        } catch (err) {
-          console.error("Push reminder failed:", err);
-        }
-      }
-    }
+  const run = await sendReminders(supabase);
+  if ("error" in run) {
+    return NextResponse.json({ error: run.error }, { status: 500 });
   }
 
   // Sweep up schedule-change notices whose immediate send never happened — a
@@ -283,13 +36,15 @@ export async function GET(request: Request) {
   }
 
   // A failed event fails the run, so the cron's monitoring sees it; the rest were still sent.
+  const { failedEvents, partialEvents } = run;
   return NextResponse.json(
     {
       success: failedEvents.length === 0,
-      eventsProcessed: events.length - failedEvents.length,
-      notificationsSent: sent,
+      eventsProcessed: run.eventsProcessed,
+      notificationsSent: run.notificationsSent,
       notificationJobsDrained: drained.claimed,
       ...(failedEvents.length > 0 ? { failedEvents } : {}),
+      ...(partialEvents.length > 0 ? { partialEvents } : {}),
     },
     { status: failedEvents.length > 0 ? 500 : 200 }
   );
