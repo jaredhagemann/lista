@@ -28,21 +28,17 @@ import {
 } from "@/lib/notifications/tournament-notice";
 import { TEAM_BRAND_COLUMNS, teamEmailBrand } from "@/emails/brand";
 import type { RenderedEmail } from "@/emails/layout";
-import { sendPushNotification } from "@/lib/notifications/push";
-import { sendExpoPushNotification, isDeadTokenError } from "@/lib/notifications/expo-push";
+import { recordOutcomes, sendPlanned } from "@/lib/notifications/deliver";
 import { formatEventTime, formatShortEventDate, resolveTimeZone } from "@/lib/notifications/event-time";
 import { resolveRecipients } from "@/lib/notifications/recipients";
 import {
   planDeliveries,
-  summarizeDeliveries,
   eventNoticeSubject,
   jobSubject,
   templateAction,
   seriesChanges,
   type ChatSnapshot,
-  type DeliveryOutcome,
   type NotificationJob,
-  type PushTarget,
 } from "@/lib/notifications/dispatch";
 
 type Db = ReturnType<typeof adminClient>;
@@ -128,49 +124,14 @@ async function runJob(db: Db, job: NotificationJob) {
           url: tournament ? tournamentNoticeUrl(job, "") : eventPathOf(job),
         };
 
-    const outcomes: DeliveryOutcome[] = [];
-    for (const item of planned) {
-      if (item.skipReason) {
-        outcomes.push({ ...toRow(item), status: "skipped", reason: item.skipReason });
-        continue;
-      }
-      try {
-        if (item.channel === "email") {
-          // Chat plans no email, so an email item always has one.
-          await sendEmail({ to: item.target, subject, ...(await emailFor(item.profile_id)), brandName: team.brand.fromName });
-        } else {
-          await sendPush(item.push!, pushPayload);
-        }
-        outcomes.push({ ...toRow(item), status: "sent", reason: null });
-      } catch (err) {
-        // A token the service says is dead never works again: drop it rather
-        // than failing against it on every message (BUG-007).
-        if (isDeadTokenError(err)) {
-          await db.from("push_subscriptions").delete().eq("expo_push_token", item.target);
-        }
-        outcomes.push({
-          ...toRow(item),
-          status: "failed",
-          reason: err instanceof Error ? err.message.slice(0, 500) : "unknown error",
-        });
-      }
-    }
-
-    const summary = summarizeDeliveries(outcomes);
-
-    if (outcomes.length > 0) {
-      await db.from("notification_deliveries").insert(
-        outcomes.map((o) => ({ job_id: job.id, ...o }))
-      );
-    }
-    await db
-      .from("notification_jobs")
-      .update({
-        status: summary.status,
-        sent_at: new Date().toISOString(),
-        last_error: summary.failed > 0 ? `${summary.failed} deliveries failed` : null,
-      })
-      .eq("id", job.id);
+    const outcomes = await sendPlanned(db, planned, {
+      // Chat plans no email, so an email item always has one.
+      email: async (item) => {
+        await sendEmail({ to: item.target, subject, ...(await emailFor(item.profile_id)), brandName: team.brand.fromName });
+      },
+      push: pushPayload,
+    });
+    const summary = await recordOutcomes(db, job.id, outcomes);
 
     return { jobId: job.id, ...summary };
   } catch (err) {
@@ -202,22 +163,6 @@ async function currentTournamentOf(db: Db, job: NotificationJob): Promise<{ id: 
   // Through unknown: the typed client can't resolve the self-embed on tournament_id.
   const game = data as unknown as { tournament_id: string | null; tournament: { title: string } | null } | null;
   return game?.tournament_id && game.tournament ? { id: game.tournament_id, title: game.tournament.title } : null;
-}
-
-function toRow(item: { profile_id: string; channel: "email" | "push"; target: string }) {
-  return { profile_id: item.profile_id, channel: item.channel, target: item.target || null } as {
-    profile_id: string;
-    channel: "email" | "push";
-    target: string;
-  };
-}
-
-function sendPush(target: PushTarget, payload: { title: string; body: string; url: string }) {
-  if (target.kind === "expo") return sendExpoPushNotification(target.token, payload);
-  return sendPushNotification(
-    { endpoint: target.endpoint, p256dh: target.p256dh, auth: target.auth },
-    payload
-  );
 }
 
 async function loadTeam(db: Db, teamId: string) {

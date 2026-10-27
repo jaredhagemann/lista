@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { drainNotificationJobs } from "@/lib/notifications/worker";
 import { resolveRecipients } from "@/lib/notifications/recipients";
-import { reminderSubject } from "@/lib/notifications/dispatch";
+import { planDeliveries, reminderSubject } from "@/lib/notifications/dispatch";
+import { recordOutcomes, sendPlanned } from "@/lib/notifications/deliver";
+import { shouldRemind, type TeamReminderSettings } from "@/lib/notifications/reminder-rules";
 import { createServerClient } from "@supabase/ssr";
 import { sendEmail } from "@/lib/notifications/email";
 import { renderEventEmail } from "@/emails/event-email";
@@ -19,8 +21,6 @@ import { teamEmailBrand, type BrandedTeam } from "@/emails/brand";
 import { answerRowsFor, loadAnswerContext, type AnswerContext } from "@/lib/notifications/answers";
 import { gameTitle, uniformOf, type TeamUniforms } from "@/lib/events/game-display";
 import { tournamentDates } from "@/lib/events/tournament";
-import { sendPushNotification } from "@/lib/notifications/push";
-import { sendExpoPushNotification } from "@/lib/notifications/expo-push";
 import {
   formatEventTime,
   formatShortEventDate,
@@ -68,8 +68,25 @@ export async function GET(request: Request) {
     );
   }
 
+  // Each team's reminder rules (team-notification-controls §4.1). A team with
+  // no row has the defaults. Unreadable rules send nothing: reminding a team
+  // that turned reminders off is worse than a day without them.
+  const teamIds = [...new Set((rawEvents as unknown as EventWithTeam[]).map((e) => e.team_id!))];
+  const { data: settingsRows, error: settingsError } =
+    teamIds.length > 0
+      ? await supabase.from("team_reminder_settings").select("*").in("team_id", teamIds)
+      : { data: [], error: null };
+  if (settingsError) {
+    return NextResponse.json({ error: "Failed to fetch reminder settings" }, { status: 500 });
+  }
+  const settingsByTeam = new Map(
+    ((settingsRows ?? []) as Array<TeamReminderSettings & { team_id: string }>).map((row) => [row.team_id, row])
+  );
+
   // Through unknown: the typed client can't resolve the self-embed on tournament_id.
-  const events = rawEvents as unknown as EventWithTeam[];
+  const events = (rawEvents as unknown as EventWithTeam[]).filter((event) =>
+    shouldRemind(event, settingsByTeam.get(event.team_id!) ?? null)
+  );
   let sent = 0;
   // Events whose reminder couldn't be built: reported, never sent incomplete (TL-015).
   const failedEvents: { eventId: string; error: string }[] = [];
@@ -232,42 +249,37 @@ export async function GET(request: Request) {
           url: `/dashboard/schedule/${event.id}`,
         };
 
-    for (const recipient of recipients) {
-      if (recipient.emailEnabled && recipient.emails.length > 0) {
-        const message = await emailFor(recipient);
-        for (const email of recipient.emails) {
-          try {
-            await sendEmail({
-              to: email,
-              subject,
-              ...message,
-              brandName: brand.fromName,
-            });
-            sent++;
-          } catch (err) {
-            console.error(`Reminder email to ${email} failed:`, err);
-          }
-        }
-      }
-
-      if (!recipient.pushEnabled) continue;
-      // Every device the person has registered, not just the most recent one.
-      for (const target of recipient.pushTargets) {
-        try {
-          if (target.kind === "expo") {
-            await sendExpoPushNotification(target.token, reminderPayload);
-          } else {
-            await sendPushNotification(
-              { endpoint: target.endpoint, p256dh: target.p256dh, auth: target.auth },
-              reminderPayload
-            );
-          }
-          sent++;
-        } catch (err) {
-          console.error("Push reminder failed:", err);
-        }
-      }
+    // The reminder's log row, keyed on the event and its start time: a rerun
+    // finds it and sends nothing twice, while an event moved to a later window
+    // is reminded again (D8). Written once everything is read, so a failed read
+    // leaves the event to be tried again.
+    const jobId = crypto.randomUUID();
+    const { error: jobError } = await supabase.from("notification_jobs").insert({
+      id: jobId,
+      team_id: event.team_id!,
+      event_id: event.id,
+      kind: "reminder",
+      action: "reminder",
+      snapshot: { title: event.title, event_type: event.event_type, start_time: event.start_time, end_time: event.end_time },
+      status: "sending",
+      batch_key: `reminder:${event.id}:${event.start_time}`,
+    });
+    if (jobError?.code === "23505") continue;
+    if (jobError) {
+      console.error(`Reminder for event ${event.id} not sent: could not log it: ${jobError.message}`);
+      failedEvents.push({ eventId: event.id, error: jobError.message });
+      continue;
     }
+
+    // Skips are logged with their reason, like a notice's (§4.3).
+    const byProfile = new Map(recipients.map((r) => [r.profileId, r]));
+    const outcomes = await sendPlanned(supabase, planDeliveries(recipients), {
+      email: async (item) => {
+        await sendEmail({ to: item.target, subject, ...(await emailFor(byProfile.get(item.profile_id)!)), brandName: brand.fromName });
+      },
+      push: reminderPayload,
+    });
+    sent += (await recordOutcomes(supabase, jobId, outcomes)).sent;
   }
 
   // Sweep up schedule-change notices whose immediate send never happened — a

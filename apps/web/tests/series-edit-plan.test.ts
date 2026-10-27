@@ -100,6 +100,7 @@ function practiceSeries(
     score_for: null,
     score_against: null,
     arrival_time: 15,
+    reminder: null,
   }));
 }
 
@@ -530,5 +531,25 @@ describe("the pattern's zone is the series', not the opened occurrence's (PR #81
 
     expect(RRule.fromString(p.newHeadRule).origOptions.tzid).toBe(DENVER);
     expect(RRule.fromString(p.truncateRule!).origOptions.tzid).toBe(PACIFIC);
+  });
+});
+
+describe("the reminder setting (team-notification-controls §4.1)", () => {
+  it("applies to every affected occurrence, like any other field", () => {
+    const p = plan({ occurrences: practiceSeries(), fields: { reminder: "always" } });
+
+    expect(p.updates.length).toBeGreaterThan(0);
+    expect(p.updates.every((u) => u.fields.reminder === "always")).toBe(true);
+  });
+
+  it("new occurrences copy the series' reminder", () => {
+    const rows = practiceSeries().map((r) => ({ ...r, reminder: "never" as const }));
+    const p = plan({
+      occurrences: rows,
+      pattern: { frequency: "weekly", daysOfWeek: [THURSDAY], untilDate: "2026-11-12" },
+    });
+
+    expect(p.inserts).toHaveLength(2);
+    expect(p.inserts.every((i) => i.fields.reminder === "never")).toBe(true);
   });
 });

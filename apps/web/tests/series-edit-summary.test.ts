@@ -108,4 +108,11 @@ describe("seriesEditSummary", () => {
       { field: "Arrival time", before: "15", after: "30" },
     ]);
   });
+
+  it("never lists the reminder, which tells the team nothing (D13)", () => {
+    expect(summary({ fields: { reminder: "never" } })).toEqual([]);
+    expect(summary({ fields: { reminder: "always", location_id: "sinsheimer" } })).toEqual([
+      { field: "Location", before: "Islay Park", after: "Sinsheimer Park" },
+    ]);
+  });
 });

@@ -22,6 +22,8 @@ import { SERIES_FIELD_LABELS, seriesEditSummary } from "@/lib/events/series-summ
 import { drainNotifications, withNotice } from "@/lib/notifications/client";
 import { formatEventTime, formatShortEventDate, formatZoneName } from "@/lib/notifications/event-time";
 import { TimeZoneSelect } from "./time-zone-select";
+import { ReminderSelect } from "@/components/events/reminder-select";
+import type { EventReminder } from "@/lib/notifications/reminder-rules";
 import { GameTitleHint } from "@/components/events/game-title-hint";
 import { UniformOptions } from "@/components/events/uniform-options";
 import { UniformLabel } from "@/components/events/uniform-label";
@@ -63,6 +65,7 @@ export function describeSeriesValue(
     newLocationName = "",
   }: { team: TeamDisplay; locations: Array<{ id: string; name: string }>; newLocationName?: string }
 ): string {
+  if (key === "reminder") return value === "always" ? "Always send" : value === "never" ? "Don't send" : "Team default";
   if (value == null || value === "") return "—";
   if (key === "uniform") return uniformOf(String(value), team)?.name ?? String(value);
   if (key === "home_away") return homeAwayLabel(String(value));
@@ -170,6 +173,7 @@ function SeriesEditFormBody({
   const [opponent, setOpponent] = useState(anchor.opponent ?? "");
   const [homeAway, setHomeAway] = useState(anchor.home_away ?? "");
   const [uniform, setUniform] = useState(anchor.uniform ?? "");
+  const [reminder, setReminder] = useState<EventReminder>((anchor.reminder as EventReminder) ?? null);
   const [startClock, setStartClock] = useState(clock(anchor.start_time, seriesZone));
   const [endClock, setEndClock] = useState(clock(anchor.end_time, seriesZone));
   // A new zone keeps the times as shown: the same local time, somewhere else.
@@ -253,6 +257,8 @@ function SeriesEditFormBody({
       opponent: eventType === "game" ? opponent || null : null,
       home_away: eventType === "game" ? homeAway || null : null,
       uniform: eventType === "game" ? uniform || null : null,
+      // The team isn't told about this one (D13): seriesEditSummary leaves it out.
+      reminder,
     };
     const fields = Object.fromEntries(
       Object.entries(desired).filter(([key, value]) => anchor[key as keyof BulkFields] !== value)
@@ -628,6 +634,8 @@ function SeriesEditFormBody({
                 />
               </div>
             </div>
+
+            <ReminderSelect value={reminder} onChange={setReminder} teamId={teamId} eventType={eventType} />
 
             <div className="flex gap-2 pt-2 border-t">
               <Button type="submit" disabled={saving}>

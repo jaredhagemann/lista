@@ -42,6 +42,8 @@ export const BULK_EDITABLE_FIELDS = [
   "uniform",
   "arrival_time",
   "timezone",
+  // Tells the team nothing on its own (team-notification-controls D13).
+  "reminder",
 ] as const;
 export type BulkEditableField = (typeof BULK_EDITABLE_FIELDS)[number];
 export type BulkFields = Partial<Pick<EventRow, BulkEditableField>>;

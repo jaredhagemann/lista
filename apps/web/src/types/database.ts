@@ -225,6 +225,7 @@ export type Database = {
           placement_label: string | null
           placement_rank: number | null
           recurrence_rule: string | null
+          reminder: string | null
           round: string | null
           score_against: number | null
           score_for: number | null
@@ -253,6 +254,7 @@ export type Database = {
           placement_label?: string | null
           placement_rank?: number | null
           recurrence_rule?: string | null
+          reminder?: string | null
           round?: string | null
           score_against?: number | null
           score_for?: number | null
@@ -281,6 +283,7 @@ export type Database = {
           placement_label?: string | null
           placement_rank?: number | null
           recurrence_rule?: string | null
+          reminder?: string | null
           round?: string | null
           score_against?: number | null
           score_for?: number | null
@@ -1165,6 +1168,54 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_reminder_settings: {
+        Row: {
+          enabled: boolean
+          remind_game: boolean
+          remind_other: boolean
+          remind_practice: boolean
+          remind_tournament: boolean
+          team_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          remind_game?: boolean
+          remind_other?: boolean
+          remind_practice?: boolean
+          remind_tournament?: boolean
+          team_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          remind_game?: boolean
+          remind_other?: boolean
+          remind_practice?: boolean
+          remind_tournament?: boolean
+          team_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_reminder_settings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: true
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_reminder_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

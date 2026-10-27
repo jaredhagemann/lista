@@ -129,8 +129,8 @@ create table team_notification_mutes (
 
 ### 4.1 Behavior
 
-Each team has **reminder settings**, editable by its coaches and managers (`is_team_admin`; club directors
-can't, D5):
+Each team has **reminder settings**, editable by whoever can edit its events: coaches, managers and club
+directors (`is_team_admin`, D5):
 
 | Setting | Values | Default for existing and new teams |
 | --- | --- | --- |
@@ -201,7 +201,8 @@ alter table events add column reminder text
 - **No row means the defaults.** Existing teams need no backfill, and the cron treats a missing row as the
   default row.
 - **RLS:** team members can read their team's row (so the event form can say what the team default is).
-  Only `is_team_admin(team_id)` can insert or update it.
+  Only `is_team_admin(team_id)` can insert or update it, the same check as editing events (D5). A trigger
+  stamps `updated_at` and `updated_by`.
 - **`events.reminder`** is covered by the existing event policies: anyone who can edit the event can set it.
 - **Series edits:** `apply_series_edit` copies `reminder` onto inserted occurrences and applies it in the
   plan's `updates`, like the other fields. Its notice condition changes as D13 describes.
@@ -219,10 +220,17 @@ The daily job (`api/cron/reminders`, 12:00 UTC) stays as it is, with one new fil
 
 **Moved events (D8):** each event falls into one daily window, so an unmoved event is reminded once. An
 event moved to a later window after its reminder is reminded again, with the right time. That's what D8
-asks for, and the daily job already does it. No send record is needed.
+asks for, and the daily job already does it.
 
 **Reminders go through the delivery log.** The send moves onto `planDeliveries`, so skipped reminders get a
-reason (`opted_out`, `team_muted`) in `notification_deliveries` like schedule changes do.
+reason (`opted_out`, `team_muted`) in `notification_deliveries` like schedule changes do. Deliveries hang off
+a job, so each reminder writes a `notification_jobs` row of kind and action `reminder` as it sends, keyed
+`reminder:<event id>:<start time>`. That key also stops a rerun the same day from sending twice, while a
+moved event gets a new key (D8). The worker never claims these rows, and the event page labels the latest
+one "Reminder" rather than "Notifications".
+
+**Unreadable rules send nothing.** If the job can't read `team_reminder_settings`, it sends no reminders
+that run and reports the failure: reminding a team that turned reminders off is worse than a missed day.
 
 ### 4.4 Deferred: reminder timing (D6, D7, D10)
 
@@ -250,7 +258,7 @@ When this is picked up, the design notes are:
 
 ## 5. Decisions
 
-Settled 2026-10-20; D4 revised and D13 added 2026-10-22.
+Settled 2026-10-20; D4 revised and D13 added 2026-10-22; D5 revised 2026-10-26.
 
 | # | Question | Decision |
 | --- | --- | --- |
@@ -258,7 +266,7 @@ Settled 2026-10-20; D4 revised and D13 added 2026-10-22.
 | D2 | Does a team mute, or a coach's reminder setting, cover push as well as email? | Both. |
 | D3 | Which notices ignore a team mute? | Team deletion, ownership and billing notices only. Cancellations are muted like other schedule notices. |
 | D4 | Can a coach see who has muted the team? | Yes (revised 2026-10-22). The delivery log already shows team admins each skip's profile and reason, so the mute table is readable by them too. No new screen lists mutes. |
-| D5 | Can club directors edit a club team's reminder settings? | No: coaches and managers only, same as editing events. |
+| D5 | Can club directors edit a club team's reminder settings? | Yes (revised 2026-10-26): whoever can edit the team's events, which includes club directors. They could already set each event's reminder. |
 | D6 | Timing presets | Doesn't apply while timing is deferred (§4.4). |
 | D7 | Scheduler | C: keep the daily job. No coach-chosen timing for now. |
 | D8 | Is a moved event reminded again? | Yes, if its start moved into a later window. |
@@ -278,8 +286,8 @@ All tests are written before the code, per `CLAUDE.md`.
 - No mute row can be created for a managed profile.
 - The team's coaches and managers can read its mutes but can't change them. A parent, player, or another
   team's coach can't read them (D4).
-- Members can read their team's reminder settings. Only coaches and managers can write them. A parent,
-  player or club director gets `permission denied` (D5). Another team's coach can't read or write them.
+- Members can read their team's reminder settings. Coaches, managers and the club's directors can write
+  them (D5); a parent or player can't. Another team's coach can't read or write them.
 - `events.reminder` can be set by whoever can edit the event, and no one else.
 
 **Resolver (`tests/notification-recipients` unit and RLS):**

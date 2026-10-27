@@ -53,6 +53,8 @@ import {
 import { toast } from "sonner";
 import { EditRecurringPrompt, type RecurringEditScope } from "./edit-recurring-prompt";
 import { SeriesEditForm } from "./series-edit-form";
+import { ReminderSelect } from "@/components/events/reminder-select";
+import type { EventReminder } from "@/lib/notifications/reminder-rules";
 import { EventAvailability } from "@/components/availability/event-availability";
 import { getRecurrenceDescription } from "@/lib/utils/rrule";
 import { pinnedStartRule, resolveSeriesEdit, SeriesEditError } from "@/lib/events/series-edit";
@@ -208,6 +210,30 @@ export function EventEditForm({
   // D3: time, arrival time and location changes notify by themselves (the
   // database enqueues them). A title or notes edit only notifies if asked.
   const [notifyTeam, setNotifyTeam] = useState(false);
+  const [reminder, setReminder] = useState<EventReminder>((editingEvent.reminder as EventReminder) ?? null);
+
+  // A reminder setting is lista's behavior, not the schedule: when it's the
+  // only change, there is nothing to tell the team (team-notification-controls D13).
+  const changedBesidesReminder =
+    title !== editingEvent.title ||
+    eventType !== editingEvent.event_type ||
+    showNewLocation ||
+    locationId !== (editingEvent.location_id ?? "") ||
+    notes !== (editingEvent.notes ?? "") ||
+    startTime !== originalStart ||
+    endTime !== originalEnd ||
+    timeZone !== eventZone ||
+    arrivalTime !== (editingEvent.arrival_time?.toString() ?? "") ||
+    opponent !== (editingEvent.opponent ?? "") ||
+    homeAway !== (editingEvent.home_away ?? "") ||
+    uniform !== (editingEvent.uniform ?? "") ||
+    gameResult !== (editingEvent.game_result ?? NO_RESULT) ||
+    scoreFor !== (editingEvent.score_for?.toString() ?? "") ||
+    scoreAgainst !== (editingEvent.score_against?.toString() ?? "") ||
+    round !== (editingEvent.round ?? "") ||
+    leagueId !== (editingEvent.league_id ?? "");
+  const reminderOnly = reminder !== ((editingEvent.reminder as EventReminder) ?? null) && !changedBesidesReminder;
+  const askedNotice = notifyTeam && !reminderOnly;
 
   useEffect(() => {
     supabase
@@ -282,6 +308,7 @@ export function EventEditForm({
       arrival_time: arrivalTime !== "" ? parseInt(arrivalTime, 10) : null,
       ...(inTournament ? { round: round.trim() || null } : {}),
       league_id: eventType === "game" ? leagueId || null : null,
+      reminder,
     };
 
     // A series head carries the pattern. Pin its start before this occurrence
@@ -307,7 +334,7 @@ export function EventEditForm({
       eventData.arrival_time !== editingEvent.arrival_time ||
       eventData.location_id !== editingEvent.location_id;
 
-    if (!schedulingChanged && notifyTeam) {
+    if (!schedulingChanged && askedNotice) {
       const { error: queueError } = await supabase.rpc("enqueue_event_notification", {
         p_event_id: editingEvent.id,
         p_action: "updated",
@@ -317,7 +344,7 @@ export function EventEditForm({
       }
     }
 
-    const summary = schedulingChanged || notifyTeam ? await drainNotifications() : null;
+    const summary = schedulingChanged || askedNotice ? await drainNotifications() : null;
     toast.success(withNotice("Event updated", summary));
 
     setSaving(false);
@@ -585,16 +612,20 @@ export function EventEditForm({
             </div>
           )}
 
-          <div className="flex items-center justify-between rounded-md border p-4">
-            <div>
-              <Label htmlFor="notifyTeam">Notify the team</Label>
-              <p className="text-sm text-muted-foreground">
-                Date, time and location changes are always sent. Switch this on to tell
-                families about other edits too.
-              </p>
+          <ReminderSelect value={reminder} onChange={setReminder} teamId={teamId} eventType={eventType} />
+
+          {!reminderOnly && (
+            <div className="flex items-center justify-between rounded-md border p-4">
+              <div>
+                <Label htmlFor="notifyTeam">Notify the team</Label>
+                <p className="text-sm text-muted-foreground">
+                  Date, time and location changes are always sent. Switch this on to tell
+                  families about other edits too.
+                </p>
+              </div>
+              <Switch id="notifyTeam" checked={notifyTeam} onCheckedChange={setNotifyTeam} />
             </div>
-            <Switch id="notifyTeam" checked={notifyTeam} onCheckedChange={setNotifyTeam} />
-          </div>
+          )}
 
           <div className="flex gap-2 pt-2 border-t">
             <Button type="submit" disabled={saving}>
@@ -618,6 +649,7 @@ export function EventEditForm({
 function NotificationStatus({ eventId }: { eventId: string }) {
   const supabase = createClient();
   const [job, setJob] = useState<{
+    kind: string;
     status: string;
     created_at: string;
     sent: number;
@@ -631,7 +663,7 @@ function NotificationStatus({ eventId }: { eventId: string }) {
     async function load() {
       const { data } = await supabase
         .from("notification_jobs")
-        .select("id, status, created_at, notification_deliveries(status)")
+        .select("id, kind, status, created_at, notification_deliveries(status)")
         .eq("event_id", eventId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -640,6 +672,7 @@ function NotificationStatus({ eventId }: { eventId: string }) {
       if (cancelled || !data) return;
       const deliveries = (data.notification_deliveries ?? []) as { status: string }[];
       setJob({
+        kind: data.kind,
         status: data.status,
         created_at: data.created_at,
         sent: deliveries.filter((d) => d.status === "sent").length,
@@ -673,7 +706,8 @@ function NotificationStatus({ eventId }: { eventId: string }) {
 
   return (
     <div className="rounded-md border p-3 text-sm text-muted-foreground">
-      <span className="font-medium text-foreground">Notifications:</span> {label}
+      {/* The daily reminder is logged here too (team-notification-controls §4.3). */}
+      <span className="font-medium text-foreground">{job.kind === "reminder" ? "Reminder" : "Notifications"}:</span> {label}
       {!waiting && ` · ${when}`}
       {job.status === "failed" && " — we'll retry"}
     </div>

@@ -95,6 +95,7 @@ const GAME = {
   round: null,
   placement_rank: null,
   placement_label: null,
+  reminder: null,
   created_by: "coach-1",
   created_at: null,
 };

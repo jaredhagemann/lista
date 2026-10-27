@@ -201,6 +201,7 @@ describe("editing an event", () => {
     round: null,
     placement_rank: null,
     placement_label: null,
+    reminder: null,
     is_cancelled: false,
     created_by: "coach-1",
     created_at: null,
