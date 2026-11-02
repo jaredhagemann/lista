@@ -1,7 +1,7 @@
 # BUG-028 — The app tells a club owner they own teams when they try to delete their account
 
 **Severity:** P2
-**Status:** Fixed — shipped in 1.1.0; device check not recorded
+**Status:** Fixed — shipped in 1.1.0; device check passed on TestFlight (user)
 **Reported:** 2026-09-29 by Claude. Noted as a follow-up while fixing BUG-013 part 2, filed when reviewing
 the mobile release.
 **Area:** ios, account
@@ -110,6 +110,6 @@ Account in the app. The message names the club, and the button opens that club's
 ## Release record
 
 **2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
-live on the App Store. The on-device check in
+live on the App Store. The user reported the same day that the on-device checks in
 [the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
-has no recorded result, so this is **unverified on a device**.
+were run on TestFlight and passed.

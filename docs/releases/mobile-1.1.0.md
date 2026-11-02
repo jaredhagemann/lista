@@ -497,5 +497,5 @@ TestFlight build (production data: use a test team for anything that writes):
 
 Done 2026-11-02: BUG-023 moved to `fixed/`, and a fresh [mobile-next.md](./mobile-next.md) started.
 
-**The device checks above have no recorded results.** BUG-007, BUG-010, BUG-011, BUG-023, BUG-028, BUG-029 and
-BUG-031 each say so in a **Release record** section. When a check is run or was run, record the result there.
+**The device checks above were run on TestFlight and passed**, as the user reported on 2026-11-02. BUG-007, BUG-010,
+BUG-011, BUG-023, BUG-028, BUG-029 and BUG-031 each record this in a **Release record** section.

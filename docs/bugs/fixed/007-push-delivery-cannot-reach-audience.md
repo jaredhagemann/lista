@@ -1,7 +1,7 @@
 # BUG-007 — Push notifications cannot reach their intended recipients
 
 **Severity:** P1
-**Status:** Fixed — chat delivery verified in production 2026-09-20; the app side shipped in 1.1.0, device checks not recorded
+**Status:** Fixed — chat delivery verified in production 2026-09-20; the app side shipped in 1.1.0, device checks passed on TestFlight (user)
 **Reported:** 2026-09-04 by readiness review (finding 7)
 **Area:** notifications
 **Evidence class:** Mixed — token visibility Reproduced at the database boundary; route behavior Static. Fix **unverified in deployment**
@@ -252,6 +252,6 @@ upserts. Tracked as [BUG-023](./023-device-token-stuck-on-previous-account.md) u
 ## Release record
 
 **2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
-live on the App Store. The on-device check in
+live on the App Store. The user reported the same day that the on-device checks in
 [the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
-has no recorded result, so this is **unverified on a device**.
+were run on TestFlight and passed.
