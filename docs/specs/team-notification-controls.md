@@ -131,8 +131,8 @@ create table team_notification_mutes (
   notification settings." Both links go to Settings, signed in, with the team highlighted (D11).
 - **Mobile:** the same Teams section in `settings/notifications.tsx`, in the mobile PR (§7): grouped by club,
   "[Club] · [Team]", every team of the account and its managed players except archived ones. The team
-  switches save as they're flipped, as on web. The account switches keep the screen's "Save preferences"
-  button for now. The membership query adds `teams.organization_id`, so same-named clubs stay apart.
+  switches save as they're flipped, as on web, and sit below the account switches' "Save preferences"
+  button, which saves only those. The membership query adds `teams.organization_id`, so same-named clubs stay apart.
 
 ## 4. Coach: reminder controls
 
@@ -368,7 +368,7 @@ Separate PRs, in order:
 2. **Reminder rules, web:** the settings table, `events.reminder`, `shouldRemind` in the daily job,
    reminders through the delivery log, the team settings and event form UI
    (`components/settings/team-settings-form.tsx`, `components/calendar/event-form-dialog.tsx`).
-3. **Mobile:** the team mutes in `settings/notifications.tsx` (§3.4). No reminder controls (D14). This waits
-   until mobile 1.1.0 is released.
+3. **Mobile:** the team mutes in `settings/notifications.tsx` (§3.4). No reminder controls (D14). It ships in
+   the build after 1.1.0 (`docs/releases/mobile-next.md`).
 
 Reminder timing (§4.4) is a later spec revision, when the scheduler changes.
