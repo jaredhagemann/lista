@@ -146,10 +146,11 @@ describe("the zone's abbreviation in a series edit", () => {
     expect(rows).toContainEqual({ field: "Time zone", before: "America/Los Angeles (PST)", after: "America/Denver (MST)" });
   });
 
-  it("in the editor's review, comes from the occurrence the edit was opened on", () => {
+  it("in the editor's review, comes from the occurrence the edit was opened on", async () => {
+    // Dec 10 is missing, so the edit adds it, which is what opens the review.
     render(
       <SeriesEditForm
-        series={SERIES as never}
+        series={[SERIES[0], SERIES[2]] as never}
         openedId="head"
         scope="series"
         teamId="team-1"
@@ -163,7 +164,6 @@ describe("the zone's abbreviation in a series edit", () => {
     fireEvent.change(screen.getByLabelText("Time zone"), { target: { value: DENVER } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(screen.getByText("America/Los Angeles (PST)")).toBeTruthy();
-    expect(screen.getByText("America/Denver (MST)")).toBeTruthy();
+    expect(await screen.findByText("Time zone: America/Los Angeles (PST) → America/Denver (MST)")).toBeTruthy();
   });
 });
