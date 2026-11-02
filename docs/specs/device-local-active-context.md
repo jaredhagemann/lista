@@ -1,6 +1,6 @@
 # Spec — The active profile and team are per device
 
-**Status:** Decided 2026-10-16 (§4, D1–D7). **Web shipped** (§9, PR #138). **Mobile built** (PR 2), in review.
+**Status:** Decided 2026-10-16 (§4, D1–D7). **Web shipped** (§9, PR #138). **Mobile shipped** in 1.1.0 (PR #139, confirmed live 2026-11-02).
 **Requested:** 2026-10-16, by the user. It ships in mobile **1.1.0**, which waits for it (D7).
 **Scope:** web and the mobile app. No database migration.
 **Reference:** [Implementation audit](../reviews/device-local-active-context-audit.md) (Codex, 2026-10-16,

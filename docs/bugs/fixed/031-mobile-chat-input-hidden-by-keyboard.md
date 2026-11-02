@@ -2,7 +2,7 @@
 
 **Severity:** P1. Chat from the phone is unusable: you can't see what you type, or send it. The workaround is
 the web.
-**Status:** Fixed in code; reaches phones with the 1.1.0 build
+**Status:** Fixed — shipped in 1.1.0; device check not recorded
 **Reported:** 2026-09-30 by the user, testing TestFlight 1.1.0 (build 18) on an iPhone
 **Area:** ios, chat
 **Evidence class:** Mixed. The symptom is reproduced on a device (TestFlight build 18, production). The cause
@@ -79,7 +79,7 @@ ticket if it's wrong.
 - **Jest can't show a keyboard.** So test the contract instead: with the view measured at a given top, both
   chat screens pass that number as `keyboardVerticalOffset` (mock `measureInWindow`). This test fails against
   the current hard-coded 0.
-- **On a device, as part of the release checks** in `docs/releases/mobile-next.md`:
+- **On a device, as part of the release checks** in `docs/releases/mobile-1.1.0.md`:
   - In a channel and in a direct message, tap the box. It sits right above the keyboard, and Send works.
   - Repeat with iOS text size set large.
   - Repeat on a phone without a home button (larger top inset) if one is available.
@@ -110,9 +110,16 @@ ticket if it's wrong.
   pass a fixed 0.
 - **The component:** a measured top of 151 becomes the offset, and the offset is 0 before measuring.
 
-**On a device, required:** Jest can't show a keyboard. The checks are in `docs/releases/mobile-next.md` and
+**On a device, required:** Jest can't show a keyboard. The checks are in `docs/releases/mobile-1.1.0.md` and
 are to be run on the 1.1.0 TestFlight build:
 - In a channel and in a direct message, the box sits just above the keyboard, and Send works.
 - The same with iOS text size set large.
 
 The Android behavior (`height`) is unchanged and untested. The iOS release is what ships.
+
+## Release record
+
+**2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
+live on the App Store. The on-device check in
+[the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
+has no recorded result, so this is **unverified on a device**.

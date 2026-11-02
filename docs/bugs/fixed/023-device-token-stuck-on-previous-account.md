@@ -1,7 +1,7 @@
 # BUG-023 — A device keeps the previous account's push token, and re-registration fails silently
 
 **Severity:** P1
-**Status:** Open — device repaired in production 2026-09-20; the app fix waits on a mobile build
+**Status:** Fixed — shipped in mobile 1.1.0; the device check has no recorded result
 **Reported:** 2026-09-18 by the user, from production behaviour
 **Area:** notifications / ios
 **Evidence class:** **Reproduced in production** (delivery records and subscription rows, 2026-09-18)
@@ -41,7 +41,7 @@ row for that token, created 2026-04-15, owned by the other account.
 ## Cause
 
 Two things, and the second is a deployment coupling introduced by the fix for
-[BUG-007](./fixed/007-push-delivery-cannot-reach-audience.md).
+[BUG-007](./007-push-delivery-cannot-reach-audience.md).
 
 1. **Signing out never detached the device.** The token row is bound to whoever registered it, so it
    survived the sign-out and kept pointing at the previous account.
@@ -56,21 +56,21 @@ Two things, and the second is a deployment coupling introduced by the fix for
    both accounts would have pushed to the handset. Neither behaviour is right; the index turned a
    duplicate-delivery bug into a silent-failure one.
 
-## Fix
+## Fix as implemented
 
-Written, in the same PR as the chat-push fixes:
+Written in the same PR as the chat-push fixes, and shipped in mobile 1.1.0:
 
 - sign-out detaches this device by token, leaving the person's other devices alone
 - registration upserts on the token, so a device moves to whoever signs in on it
 - both log when the write is refused, so the next silent failure is audible
 
-**None of this reaches the handset until a new mobile build ships.** Until then the workaround is the SQL
-under Verification.
+None of this reached a handset until 1.1.0. Until then the workaround was the SQL under Verification, and it
+still applies to a phone on 1.0.12.
 
 **Decision, 2026-09-18 (user):** hold the build until the open bugs are worked through, and ship the mobile
 changes together. Interim rule: **accept invitations on the web**, since the installed build still enrols the
 parent as the player. What the build carries, and what stays broken until it does, is listed in
-[docs/releases/mobile-next.md](../releases/mobile-next.md).
+[docs/releases/mobile-1.1.0.md](../../releases/mobile-1.1.0.md).
 
 ## Regression test
 
@@ -92,7 +92,7 @@ set profile_id = (select id from profiles where email = '<signed-in account>')
 where expo_push_token = '<the token>';
 ```
 
-**After the next mobile build ships**, on a device with two accounts:
+**The check for the shipped build**, on a device with two accounts:
 
 1. Sign in as A, confirm `push_subscriptions` has a row for A with this device's token.
 2. Sign out. Confirm the row is gone.
@@ -110,5 +110,12 @@ Two things that repair also did, worth knowing if this recurs:
 - It leaves the other account with no registered device, which matches the facts: one handset, one person
   signed into it.
 
-The ticket stays open because the defect is not fixed, only its instance: any device that changes hands
-before the new build ships will do the same thing, silently.
+That repair fixed one device, not the defect. Any device that changed hands before 1.1.0 did the same thing,
+silently, and a phone still on 1.0.12 can.
+
+## Release record
+
+**2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
+live on the App Store. The on-device check in
+[the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
+has no recorded result, so this is **unverified on a device**.

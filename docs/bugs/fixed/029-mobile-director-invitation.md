@@ -1,7 +1,7 @@
 # BUG-029 — The app treats a club director invitation as a team invitation
 
 **Severity:** P3
-**Status:** Fixed in code; reaches phones with the next mobile build
+**Status:** Fixed — shipped in 1.1.0; device check not recorded
 **Reported:** 2026-09-29 by Claude. Noted as a follow-up while fixing BUG-013, filed when reviewing the mobile
 release.
 **Area:** ios, invitations
@@ -68,7 +68,7 @@ The screen's wording and whether it asks who you are come from `lib/invite-accep
   - `buildAcceptBody` accepts a director invitation as `self`, as the web does.
 - **The invitation screen** (`app/invite/[id].tsx`) uses both.
 
-**Reaches phones with the next mobile build:** see `docs/releases/mobile-next.md`.
+**Reaches phones with the next mobile build:** see `docs/releases/mobile-1.1.0.md`.
 
 ## Verification
 
@@ -78,3 +78,10 @@ answered the identity question.
 
 **After the next mobile build ships:** open a director invitation link in the app, signed out and then signed
 in. It reads as helping run the club, asks nothing about players, and accepting makes you a director.
+
+## Release record
+
+**2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
+live on the App Store. The on-device check in
+[the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
+has no recorded result, so this is **unverified on a device**.
