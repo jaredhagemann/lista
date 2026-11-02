@@ -110,7 +110,7 @@ See [D5 decision record](../../reviews/2026-09-15-bug-backlog-review.md#d5--what
 | --- | --- |
 | Backfill for events on a team with **no** timezone | Leave `events.timezone` unset. They keep following the team (then the viewer) until someone gives them a zone. Every **new** event gets one. Stored instants never change. |
 | Can the series editor change a whole series' zone? | Yes. Upcoming occurrences keep their local clock time in the new zone, under the usual "this and following" / "entire series" rules. |
-| Mobile display | In this fix. Ships with the held mobile build ([release notes](../../releases/mobile-next.md)). |
+| Mobile display | In this fix. Ships with the held mobile build ([release notes](../../releases/mobile-1.1.0.md)). |
 
 ## Proposed fix
 
@@ -290,7 +290,7 @@ Regression tests, all failing before the follow-up:
 2. **Production, after merge:** the same query. Then, as a coach, create an event with the Time zone set
    to a zone other than the team's. It must show that zone's label in the list, the detail page and the
    "new event" email.
-3. **Mobile:** the BUG-010 check in [mobile-next.md](../../releases/mobile-next.md), after the held build ships.
+3. **Mobile:** the BUG-010 check in [mobile-1.1.0.md](../../releases/mobile-1.1.0.md), after the held build ships.
    Jest uses Node's `Intl`, not Hermes, so on-device zone formatting is not yet verified.
 
 ### Later correction (2026-09-25)
@@ -304,3 +304,9 @@ BUG-010. Both are fixed by the game display work
 ([spec](../../specs/game-display-and-uniform-colors.md)), with a page-level test
 (`apps/web/tests/game-display-pages.test.tsx`).
 
+## Release record
+
+**2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
+live on the App Store. The user reported the same day that the on-device checks in
+[the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
+were run on TestFlight and passed.

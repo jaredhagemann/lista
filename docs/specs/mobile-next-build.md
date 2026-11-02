@@ -1,10 +1,9 @@
 # Mobile: the next build
 
-**Status:** Decided 2026-09-29 (scope §1, release §4). In progress. See §5 for the PR plan and where each part
-stands.
+**Status:** Released as 1.1.0 (confirmed live 2026-11-02). Decided 2026-09-29 (scope §1, release §4). §5 is the PR plan.
 **App:** `apps/mobile` (Expo / React Native, iOS). **Last shipped:** `ios-v1.0.12`, 2026-04-14 (commit
 `b3473c71b`).
-**Already in the build** (merged, waiting on it): the fixes in `docs/releases/mobile-next.md`:
+**Already in the build** (merged, waiting on it): the fixes in `docs/releases/mobile-1.1.0.md`:
 - BUG-007, gaps 1 and 4
 - BUG-010, BUG-011 and BUG-023
 - BUG-028 (#99) and BUG-029 (#100)
@@ -56,7 +55,7 @@ The web has moved on since April. This build brings the phone in line with it wh
 ## 3. Compatibility with the installed build
 
 Phones on 1.0.12 keep working until they update, so nothing server-side may assume the new build. The release
-checklist in `docs/releases/mobile-next.md` asks for this review. Since April it has to cover every migration
+checklist in `docs/releases/mobile-1.1.0.md` asks for this review. Since April it has to cover every migration
 after `b3473c71b`, checking each against what 1.0.12 reads and writes:
 - BUG-013 (clubs, owners, closure)
 - uniform colors
@@ -69,7 +68,7 @@ This build adds no server change.
 
 **Done 2026-09-30 (part 5):** no change requires 1.1.0. The one breakage, the push-token index, is BUG-023,
 fixed in this build. Two by-design refusals reach 1.0.12 users as silent or generic failures: answering for
-another team's event, and a closed club. The full review is in `docs/releases/mobile-next.md` →
+another team's event, and a closed club. The full review is in `docs/releases/mobile-1.1.0.md` →
 "Compatibility review".
 
 ## 4. Release process
@@ -87,7 +86,7 @@ updated, which is why the release notes said 1.0.0.
   Vitest and the phone's Jest and `tsc`.
 - **Nothing stopped a tag on a failing commit.** Fixed in #101: the TestFlight workflow runs the phone's tests
   and `tsc` before it builds.
-- **Stale version:** `app.json` and `docs/releases/mobile-next.md` said 1.0.0. Fixed in #104: `app.json` is
+- **Stale version:** `app.json` and `docs/releases/mobile-1.1.0.md` said 1.0.0. Fixed in #104: `app.json` is
   1.1.0 and the release notes name 1.0.12 as shipped.
 
 | # | Question | Decision (2026-09-29) |
@@ -99,7 +98,7 @@ updated, which is why the release notes said 1.0.0.
 
 ## 5. Plan and progress
 
-One PR per part. Each is test-first, and adds its entry and on-device check to `docs/releases/mobile-next.md`.
+One PR per part. Each is test-first, and adds its entry and on-device check to `docs/releases/mobile-1.1.0.md`.
 
 | Part | What | PR | Status |
 | --- | --- | --- | --- |

@@ -1,7 +1,7 @@
 # BUG-011 — Invitation acceptance creates the wrong player identity on mobile
 
 **Severity:** P1
-**Status:** Fixed — repair verified in production 2026-09-18; native acceptance check pending
+**Status:** Fixed — repair verified in production 2026-09-18; shipped in 1.1.0, native acceptance check passed on TestFlight (user)
 **Reported:** 2026-09-04 by readiness review (finding 11)
 **Area:** invites / identity / mobile
 **Evidence class:** Static — code inspection only. The duplicate identity it predicted was **found and repaired in production** (2026-09-18)
@@ -261,3 +261,10 @@ Full RLS suite after the fix: **408 passed**.
 - **Still to confirm:** the native acceptance check — inviting a player whose guardian already manages a
   child on another team, accepting it in the app as the guardian, and seeing the existing child gain a team.
   Until that runs, the prevention half is verified only at the database boundary.
+
+## Release record
+
+**2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
+live on the App Store. The user reported the same day that the on-device checks in
+[the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
+were run on TestFlight and passed.

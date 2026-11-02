@@ -1,7 +1,7 @@
 # BUG-007 — Push notifications cannot reach their intended recipients
 
 **Severity:** P1
-**Status:** Fixed — chat delivery verified in production 2026-09-20; the app-side checks wait on a mobile build
+**Status:** Fixed — chat delivery verified in production 2026-09-20; the app side shipped in 1.1.0, device checks passed on TestFlight (user)
 **Reported:** 2026-09-04 by readiness review (finding 7)
 **Area:** notifications
 **Evidence class:** Mixed — token visibility Reproduced at the database boundary; route behavior Static. Fix **unverified in deployment**
@@ -235,7 +235,7 @@ fixed in PR #71 — the sender was pushed their own chat message through their o
 rejection was recorded as `sent`; and signing out left the handset attached to the previous account. The
 last of these also exposed a deployment coupling introduced here: the `unique(expo_push_token)` index this
 fix added makes the *installed* mobile build fail registration silently, because it inserts rather than
-upserts. Tracked as [BUG-023](../023-device-token-stuck-on-previous-account.md) until a new build ships.
+upserts. Tracked as [BUG-023](./023-device-token-stuck-on-previous-account.md) until a new build ships.
 
 **Deployed and verified 2026-09-20** (PR #66, with the follow-up fixes in #71):
 - The production SQL checks passed (user).
@@ -243,8 +243,15 @@ upserts. Tracked as [BUG-023](../023-device-token-stuck-on-previous-account.md) 
   phone. The old fan-out could not see that person's token at all.
 - The delivery records are the evidence trail: every push carries a recipient, a channel and an outcome, and
   an Expo rejection now records `failed` with the service's own reason rather than a hopeful `sent`.
-- **Still waiting on a mobile build**, and listed in [the release notes](../../releases/mobile-next.md):
+- **Still waiting on a mobile build**, and listed in [the release notes](../../releases/mobile-1.1.0.md):
   messages sent *from* the app (gap 1), and a second device keeping the first alive (gap 4). Both are app
   code; the server half of each is live.
 - Also outstanding: a guardian with no roster row confirming they receive their child's team reminders
   (gap 2). The recipient resolution behind it is covered by tests against a real database.
+
+## Release record
+
+**2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
+live on the App Store. The user reported the same day that the on-device checks in
+[the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
+were run on TestFlight and passed.

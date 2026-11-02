@@ -9,7 +9,7 @@
  *
  * Jest can't show a keyboard, so this pins the contract: the measured top is
  * the offset, and both chat screens use it. The on-device check is in
- * docs/releases/mobile-next.md.
+ * docs/releases/mobile-1.1.0.md.
  */
 
 import React from "react";
