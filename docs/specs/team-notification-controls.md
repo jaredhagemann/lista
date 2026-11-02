@@ -1,7 +1,8 @@
 # Team Notification Controls
 
-**Status:** Draft. Decisions D1–D13 settled (§5). Reminder timing is deferred (D7).
-**Scope:** web app (database, notification server, settings and event UI), then the mobile app.
+**Status:** Draft. Decisions D1–D14 settled (§5). Reminder timing is deferred (D7).
+**Scope:** web app (database, notification server, settings and event UI), then the mobile app's team
+mutes. Reminder controls are web-only (D14).
 
 Two features that share one place in the code, where recipients are resolved:
 
@@ -128,7 +129,10 @@ create table team_notification_mutes (
   free team's org isn't a club, even though every team has one.
 - **Email footer:** "You're getting this because you're on [Team]. **Mute [Team]** or manage your
   notification settings." Both links go to Settings, signed in, with the team highlighted (D11).
-- **Mobile:** the same section in `settings/notifications.tsx`, in the mobile PR (§7).
+- **Mobile:** the same Teams section in `settings/notifications.tsx`, in the mobile PR (§7): grouped by club,
+  "[Club] · [Team]", every team of the account and its managed players except archived ones. The team
+  switches save as they're flipped, as on web. The account switches keep the screen's "Save preferences"
+  button for now. The membership query adds `teams.organization_id`, so same-named clubs stay apart.
 
 ## 4. Coach: reminder controls
 
@@ -281,7 +285,7 @@ When this is picked up, the design notes are:
 
 ## 5. Decisions
 
-Settled 2026-10-20; D4 revised and D13 added 2026-10-22; D5 revised 2026-10-26.
+Settled 2026-10-20; D4 revised and D13 added 2026-10-22; D5 revised 2026-10-26; D14 added 2026-10-27.
 
 | # | Question | Decision |
 | --- | --- | --- |
@@ -298,6 +302,7 @@ Settled 2026-10-20; D4 revised and D13 added 2026-10-22; D5 revised 2026-10-26.
 | D11 | A no-sign-in "Mute this team" link in emails | A settings link now. A signed one-click link (and a `List-Unsubscribe` header) is a separate change. |
 | D12 | Do tournament games get their own type switch? | No: they follow the game rule. |
 | D13 | Does changing a reminder setting notify the team? | No, never: one event, a series, or the team's settings (§4.1). Added 2026-10-22. |
+| D14 | Do reminder controls come to mobile? | No, web only (2026-10-27). A team's settings are set once and rarely changed, and the mobile event screen edits nothing, so neither the team settings nor the event's reminder field is added there. Mobile gets only the team mutes. |
 
 ## 6. Test plan
 
@@ -363,7 +368,7 @@ Separate PRs, in order:
 2. **Reminder rules, web:** the settings table, `events.reminder`, `shouldRemind` in the daily job,
    reminders through the delivery log, the team settings and event form UI
    (`components/settings/team-settings-form.tsx`, `components/calendar/event-form-dialog.tsx`).
-3. **Mobile:** the team mutes in `settings/notifications.tsx`, reminder settings in `settings/team.tsx`, the
-   reminder field on the event screen. This waits until mobile 1.1.0 is tagged.
+3. **Mobile:** the team mutes in `settings/notifications.tsx` (§3.4). No reminder controls (D14). This waits
+   until mobile 1.1.0 is released.
 
 Reminder timing (§4.4) is a later spec revision, when the scheduler changes.
