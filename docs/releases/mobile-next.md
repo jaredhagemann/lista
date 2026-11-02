@@ -3,8 +3,8 @@
 **Status:** unreleased. Everything below is merged to `main`, but **only reaches phones when a new build ships**.
 **Current shipped version:** 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`). Its notes are in
 [mobile-1.1.0.md](./mobile-1.1.0.md).
-**Next version:** not chosen. `apps/mobile/app.json` still says 1.1.0, so set the version before the next
-TestFlight build. The release is the matching `ios-v*` tag.
+**Next version:** 1.1.1, set in `apps/mobile/app.json`. Checkpoint builds for testing run from the Actions tab
+("iOS TestFlight", Run workflow), which builds `main` at this version. The release is the `ios-v1.1.1` tag.
 
 The point of this file is that "waiting on a build" is easy to forget. Each entry says what the **installed**
 build does, so the cost of waiting stays visible.
