@@ -2,7 +2,7 @@
 
 **Severity:** P1. Chat from the phone is unusable: you can't see what you type, or send it. The workaround is
 the web.
-**Status:** Fixed — shipped in 1.1.0; device check not recorded
+**Status:** Fixed — shipped in 1.1.0; device check passed on TestFlight (user)
 **Reported:** 2026-09-30 by the user, testing TestFlight 1.1.0 (build 18) on an iPhone
 **Area:** ios, chat
 **Evidence class:** Mixed. The symptom is reproduced on a device (TestFlight build 18, production). The cause
@@ -120,6 +120,6 @@ The Android behavior (`height`) is unchanged and untested. The iOS release is wh
 ## Release record
 
 **2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
-live on the App Store. The on-device check in
+live on the App Store. The user reported the same day that the on-device checks in
 [the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
-has no recorded result, so this is **unverified on a device**.
+were run on TestFlight and passed.

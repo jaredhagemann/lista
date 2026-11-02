@@ -1,7 +1,7 @@
 # BUG-023 — A device keeps the previous account's push token, and re-registration fails silently
 
 **Severity:** P1
-**Status:** Fixed — shipped in mobile 1.1.0; the device check has no recorded result
+**Status:** Fixed — shipped in mobile 1.1.0; device check passed on TestFlight (user)
 **Reported:** 2026-09-18 by the user, from production behaviour
 **Area:** notifications / ios
 **Evidence class:** **Reproduced in production** (delivery records and subscription rows, 2026-09-18)
@@ -116,6 +116,6 @@ silently, and a phone still on 1.0.12 can.
 ## Release record
 
 **2026-11-02:** this reached phones in mobile 1.1.0 (tag `ios-v1.1.0`, `2cc88665e`), which the user confirmed is
-live on the App Store. The on-device check in
+live on the App Store. The user reported the same day that the on-device checks in
 [the 1.1.0 release notes](../../releases/mobile-1.1.0.md#on-the-testflight-build-before-submitting-for-review)
-has no recorded result, so this is **unverified on a device**.
+were run on TestFlight and passed.
