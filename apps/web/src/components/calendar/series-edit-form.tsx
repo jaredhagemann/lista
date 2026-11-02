@@ -353,7 +353,12 @@ function SeriesEditFormBody({
       });
     }
     if (zoneChanged) {
-      changes.push({ field: "Time zone", before: formatZoneName(seriesZone), after: formatZoneName(timeZone) });
+      // As it stands on the events' dates, not today (BUG-040).
+      changes.push({
+        field: "Time zone",
+        before: formatZoneName(seriesZone, anchor.start_time),
+        after: formatZoneName(timeZone, anchor.start_time),
+      });
     }
     if (newRule) {
       changes.push({
