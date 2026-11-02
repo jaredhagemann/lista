@@ -1,7 +1,7 @@
 # BUG-004 — The privacy page misstates who can see contact details
 
 **Severity:** P2 (regraded from P1 on 2026-09-15 — see Severity note)
-**Status:** Open
+**Status:** Fixed
 **Reported:** 2026-09-04 by readiness review (finding 4)
 **Area:** privacy / rls
 **Evidence class:** Reproduced (local stack) — **unverified in deployment**
@@ -76,27 +76,42 @@ layer already implements the decided behavior.
 
 **Caveat on the outer boundary.** D8's "no access outside the team" is **not currently enforced** — not
 because of the profiles policy, which is correctly scoped, but because
-[BUG-001](./fixed/001-team-members-self-insert-coach.md) lets any authenticated user insert themselves into any
+[BUG-001](./001-team-members-self-insert-coach.md) lets any authenticated user insert themselves into any
 team and thereby become a "teammate." **Fixing BUG-001 is what actually enforces D8's outer boundary.**
 That dependency is the most important thing on this ticket; the privacy-page edit is the easy half.
 
-## Proposed fix
+## Fix as implemented
 
-Correct the privacy page to describe what D8 decided — email and contact details, date of birth, and
-photos are visible to teammates; directors and owners see their whole club.
+**Branch:** `fix/004-privacy-page-contact-visibility`
+**PR:** see the PR for this branch
+**Migration:** none. No policy changes, as D8 decided.
 
-Change **no policy**. The data layer is already correct, and widening it to clubmates was explicitly
-declined.
+`apps/web/src/app/privacy/page.tsx`: the sharing section now says what's shared and with whom, and the effective
+date is updated, as the page's own Changes section promises.
 
-## Regression test
+Writing it against the real behavior turned up more than this ticket listed, and the page covers all of it:
 
-Assert against **direct PostgREST queries** on the base table, not rendered screens:
+- **Gender** is on `profiles`, so teammates can read it too.
+- **A guardian's phone number** (`profile_managers.phone`) wasn't mentioned anywhere on the page.
+- **The team page shows a player's guardian to every member.** `dashboard/team/page.tsx` reads their name,
+  relationship, email and phone with the service role, on purpose, so RLS alone understates it.
+- **Coaches and managers can read a guardian's whole profile**, date of birth and gender included.
 
-- self reads own email and DOB — permitted
-- teammate reads email and DOB — permitted (D8)
-- **clubmate on a different team — denied**, which is the case that must not silently widen
-- org director reads any profile in their club — permitted (existing design)
-- **unrelated user outside the team and club — denied**, which is the case that must not regress
-- guardian reads their managed child — permitted
+**Left out on purpose:** the "can't see" sentence doesn't name photos. How they're served is open in
+[BUG-016](../016-storage-buckets-private-vs-public-url.md).
 
-Add a check that the privacy page's claims match the policy, so the two cannot drift apart again.
+## Verification
+
+**Tests:**
+- `apps/web/tests/privacy-page.test.tsx` holds the page to these claims. All of it failed against the old page.
+- `tests/rls/profiles.test.ts`, "who can read a profile's personal details", uses direct queries on the base tables:
+  self, teammate, guardian, coach and director are allowed; a clubmate on another team and an outsider read nothing.
+  These describe existing behavior, so they passed before the page changed. They guard against the policy drifting.
+
+**Not tested:** the team page's service-role read, which is from code inspection. Its member detail page reads the
+member through RLS first, so someone on another team gets a 404 (also from code inspection).
+
+**Deployment verification required:** after deploy, open `/privacy` in production and confirm the new text and date.
+The deployed profile policies have still not been checked against the local ones. **Not yet done.**
+
+**Found while fixing:** [BUG-041](../041-guardian-profile-hidden-from-teammates.md).
