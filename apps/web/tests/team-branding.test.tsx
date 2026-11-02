@@ -133,6 +133,71 @@ describe("the team picker", () => {
     expect(within(menu).getByText("Rec Soccer")).toBeTruthy();
     expect(within(menu).queryByText(/ - Rec Soccer/)).toBeNull();
   });
+
+  describe("its order", () => {
+    const club = (id: string, name: string) => ({ id, name, org_name_public: null, logo_url: null, plan: "club_small" });
+    const free = { name: "Mine", org_name_public: null, logo_url: null, plan: "free" };
+
+    async function menuOrder(memberships: unknown[]) {
+      const user = userEvent.setup();
+      render(<TeamSwitcher allMemberships={memberships as never} activeMembership={memberships[0] as never} />);
+      await user.click(screen.getByRole("button"));
+      const menu = await screen.findByRole("menu");
+      return within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.querySelector("p")?.textContent)
+        .filter(Boolean);
+    }
+
+    it("groups by club A–Z, then team A–Z, with teams outside a club last", async () => {
+      const zebra = club("o-z", "Zebra FC");
+      const alpha = club("o-a", "Alpha FC");
+
+      expect(
+        await menuOrder([
+          membership("1", { name: "Solo", organization_id: "o-1", organizations: free }),
+          membership("2", { name: "Boys", organization_id: "o-z", organizations: zebra }),
+          membership("3", { name: "Girls", organization_id: "o-a", organizations: alpha }),
+          membership("4", { name: "Adults", organization_id: "o-2", organizations: free }),
+          membership("5", { name: "Adults", organization_id: "o-z", organizations: zebra }),
+          membership("6", { name: "Boys", organization_id: "o-a", organizations: alpha }),
+        ])
+      ).toEqual(["Alpha FC - Boys", "Alpha FC - Girls", "Zebra FC - Adults", "Zebra FC - Boys", "Adults", "Solo"]);
+    });
+
+    it("keeps two clubs with the same name apart", async () => {
+      const first = club("o-1", "United");
+      const second = club("o-2", "United");
+      const order = await menuOrder([
+        membership("1", { name: "A", organization_id: "o-1", organizations: first }),
+        membership("2", { name: "B", organization_id: "o-2", organizations: second }),
+        membership("3", { name: "C", organization_id: "o-1", organizations: first }),
+      ]);
+
+      expect(order).toEqual(["United - A", "United - C", "United - B"]);
+    });
+
+    it("puts age groups in number order", async () => {
+      const slofc = club("o-1", "SLOFC");
+
+      expect(
+        await menuOrder([
+          membership("1", { name: "12U Girls", organization_id: "o-1", organizations: slofc }),
+          membership("2", { name: "8U Girls", organization_id: "o-1", organizations: slofc }),
+          membership("3", { name: "10U Girls", organization_id: "o-1", organizations: slofc }),
+        ])
+      ).toEqual(["SLOFC - 8U Girls", "SLOFC - 10U Girls", "SLOFC - 12U Girls"]);
+    });
+
+    it("lists a team once when two of the account's people are on it", async () => {
+      const slofc = club("o-1", "SLOFC");
+      const team = { name: "12U Girls", organization_id: "o-1", organizations: slofc };
+
+      expect(await menuOrder([membership("1", team), { ...(membership("1", team) as object), profile_id: "u-2" }])).toEqual([
+        "SLOFC - 12U Girls",
+      ]);
+    });
+  });
 });
 
 describe("the header's top left", () => {
