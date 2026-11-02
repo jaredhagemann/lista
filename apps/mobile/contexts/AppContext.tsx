@@ -35,6 +35,8 @@ export type Team = {
   logo_url: string | null;
   home_uniform: string | null;
   away_uniform: string | null;
+  /** Keeps same-named clubs apart (lib/team-mutes). */
+  organization_id?: string | null;
   /** The club, for its branding (lib/team-branding). */
   organizations?: OrgBranding | null;
 };
@@ -157,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { data: membershipsData, error: membershipsError } = await supabase
       .from("team_members")
       .select(
-        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform, archived_at, organizations(name, org_name_public, logo_url, plan, brand_color_secondary)), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
+        "id, team_id, profile_id, role, teams(id, name, season, logo_url, home_uniform, away_uniform, archived_at, organization_id, organizations(name, org_name_public, logo_url, plan, brand_color_secondary)), profiles(id, first_name, last_name, email, avatar_url, active_team_id)"
       )
       .in("profile_id", [userId, ...managed.map((m) => m.managed_id)])
       .order("created_at");

@@ -19,7 +19,19 @@ is what happens otherwise. Each migration gets a note here saying why those buil
 
 ## What is in the build
 
-Nothing yet.
+### Mute one team from the app — [spec §3.4](../specs/team-notification-controls.md)
+
+**Installed build:** the notification settings only have the account-wide switches. A team mute set on the web
+still applies on the phone, because the server applies it, but it can't be seen or changed in the app.
+
+**New build:** Settings → Notifications has a Teams section, as on the web. There's one switch per team, grouped
+by club, with club teams named "[club] · [team]". Each switch saves as it's flipped, and off stops the team's
+email and push, chat included. Reminder controls stay on the web (D14).
+
+Files: `app/(app)/settings/notifications.tsx`, `lib/team-mutes.ts`, `contexts/AppContext.tsx`,
+`__tests__/TeamMutesScreen.test.tsx`, `__tests__/team-mutes.test.ts`.
+
+No migration. `team_notification_mutes` shipped with PR #141, and 1.0.12 and 1.1.0 never read it.
 
 ## Before shipping
 
@@ -30,7 +42,14 @@ Nothing yet.
 
 ## On the TestFlight build, before submitting for review
 
-Nothing yet.
+- **Team mutes:** on an account with a club team and a free team, open Settings → Notifications.
+  - The club team is under its club's name as "[club] · [team]", and the free team is under "Other teams".
+  - Turn a team off and back out of the screen without tapping Save, then reopen it: it's still off, and the web
+    shows it off too.
+  - Send that team's chat message from another account: no push arrives. Another team's message still does.
+  - As a guardian, a team you're on only through a managed player is listed, and your mute doesn't affect the
+    other guardian.
+  - With the phone offline, flip a switch: it goes back and says it couldn't save.
 
 ## After release
 
