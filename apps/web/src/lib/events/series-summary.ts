@@ -65,7 +65,12 @@ export function seriesEditSummary({
     if (before !== after) changes.push({ field: "Time", before, after });
   }
   if (newZone && newZone !== seriesZone) {
-    changes.push({ field: "Time zone", before: formatZoneName(seriesZone), after: formatZoneName(newZone) });
+    // As it stands on the events' dates, like the Time row, not today (BUG-040).
+    changes.push({
+      field: "Time zone",
+      before: formatZoneName(seriesZone, anchor.start_time),
+      after: formatZoneName(newZone, moved?.start_time ?? anchor.start_time),
+    });
   }
   if (patternChanged) {
     changes.push({
