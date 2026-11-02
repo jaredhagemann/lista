@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { compareNames } from "@/lib/team-branding";
 import type { MutableTeam } from "@/lib/notifications/mutable-team";
 
 /** "Club · Team", unless the team's name already starts with the club's. */
@@ -19,7 +20,7 @@ type TeamGroup = { key: string; heading: string | null; teams: MutableTeam[] };
 
 /** Clubs A–Z, then the teams in no club, each list A–Z. No headings when no team is in a club. */
 function groupByClub(teams: MutableTeam[]): TeamGroup[] {
-  const byName = (a: MutableTeam, b: MutableTeam) => a.name.localeCompare(b.name);
+  const byName = (a: MutableTeam, b: MutableTeam) => compareNames(a.name, b.name);
   const clubs = new Map<string, TeamGroup>();
   const others: MutableTeam[] = [];
   for (const team of teams) {
@@ -31,7 +32,7 @@ function groupByClub(teams: MutableTeam[]): TeamGroup[] {
     group.teams.push(team);
     clubs.set(team.club.id, group);
   }
-  const groups = [...clubs.values()].sort((a, b) => a.heading!.localeCompare(b.heading!));
+  const groups = [...clubs.values()].sort((a, b) => compareNames(a.heading!, b.heading!));
   for (const group of groups) group.teams.sort(byName);
   if (others.length > 0) {
     groups.push({ key: "other", heading: groups.length > 0 ? "Other teams" : null, teams: others.sort(byName) });

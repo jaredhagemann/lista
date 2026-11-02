@@ -40,12 +40,12 @@ export function teamBranding(team: BrandableTeam): {
   };
 }
 
-const compareNames = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+/** A–Z, with numbers by value, so 8U comes before 10U. */
+export const compareNames = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
 
 /**
  * The team picker's order: clubs A–Z, each club's teams A–Z, then the teams in
- * no club. Numbers sort by value, so 8U comes before 10U. Clubs with the same
- * name stay apart, by their id.
+ * no club. Clubs with the same name stay apart, by their id.
  */
 export function compareByClubThenTeam(
   a: BrandableTeam & { organization_id?: string | null },

@@ -128,7 +128,7 @@ export function TeamSwitcher({
                     <p className="text-xs text-muted-foreground">
                       {multiProfile
                         ? `${profilesOnTeam.length} profiles`
-                        : m.role}
+                        : displayLabel(m.role)}
                       {m.teams.season ? ` · ${m.teams.season}` : ""}
                     </p>
                   </div>

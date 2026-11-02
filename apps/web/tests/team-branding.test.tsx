@@ -134,6 +134,17 @@ describe("the team picker", () => {
     expect(within(menu).queryByText(/ - Rec Soccer/)).toBeNull();
   });
 
+  it("shows each team's role as the button does, capitalized", async () => {
+    const user = userEvent.setup();
+    render(<TeamSwitcher allMemberships={[CLUB_TEAM]} activeMembership={CLUB_TEAM} />);
+
+    await user.click(screen.getByRole("button", { name: /\(Coach\)/ }));
+    const menu = await screen.findByRole("menu");
+
+    expect(within(menu).getByText("Coach")).toBeTruthy();
+    expect(within(menu).queryByText("coach")).toBeNull();
+  });
+
   describe("its order", () => {
     const club = (id: string, name: string) => ({ id, name, org_name_public: null, logo_url: null, plan: "club_small" });
     const free = { name: "Mine", org_name_public: null, logo_url: null, plan: "free" };

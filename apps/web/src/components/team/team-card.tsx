@@ -50,7 +50,7 @@ export function TeamCard({
 
   return (
     <section aria-label="Team" className="h-full">
-      <Card className="h-full">
+      <Card className="h-full pt-3.5">
         <CardContent className="flex flex-1 flex-col gap-4">
           <div className="flex items-center gap-4">
             {brand.logoUrl ? (

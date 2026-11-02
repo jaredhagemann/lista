@@ -215,6 +215,30 @@ describe("teams grouped by club (§3.4)", () => {
     ]);
   });
 
+  it("puts age groups in number order, in a club and out of one, as the team picker does", () => {
+    const { container } = render(
+      <TeamMutesSection
+        profileId={ME}
+        teams={[
+          { id: "t-1", name: "U10 Girls", club: SLOFC },
+          { id: "t-2", name: "U9 Girls", club: SLOFC },
+          { id: "t-3", name: "10U Rec" },
+          { id: "t-4", name: "8U Rec" },
+        ]}
+        mutedTeamIds={[]}
+      />
+    );
+
+    expect(layout(container)).toEqual([
+      "# San Luis Obispo Futbol Club",
+      "San Luis Obispo Futbol Club · U9 Girls",
+      "San Luis Obispo Futbol Club · U10 Girls",
+      "# Other teams",
+      "8U Rec",
+      "10U Rec",
+    ]);
+  });
+
   it("names a club team's switch with the club too", () => {
     render(<TeamMutesSection profileId={ME} teams={GROUPED} mutedTeamIds={["t-u10"]} />);
 
