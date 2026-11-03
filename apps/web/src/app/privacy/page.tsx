@@ -6,7 +6,7 @@ export default function PrivacyPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 text-sm text-foreground">
       <h1 className="mb-2 text-3xl font-bold tracking-tight">Privacy Policy</h1>
-      <p className="mb-10 text-muted-foreground">Effective date: April 3, 2026</p>
+      <p className="mb-10 text-muted-foreground">Effective date: November 2, 2026</p>
 
       <section className="mb-8">
         <p>
@@ -23,7 +23,7 @@ export default function PrivacyPage() {
           <li><span className="text-foreground font-medium">Account information</span> — your name and email address when you sign up.</li>
           <li><span className="text-foreground font-medium">Profile information</span> — optional details such as date of birth, gender, and profile photo.</li>
           <li><span className="text-foreground font-medium">Team information</span> — role, jersey number, and position within a team.</li>
-          <li><span className="text-foreground font-medium">Managed profiles</span> — if you are a parent or guardian, you may create profiles for children in your care. These profiles are linked to your account and subject to the same protections as your own data.</li>
+          <li><span className="text-foreground font-medium">Managed profiles</span> — if you are a parent or guardian, you may create profiles for children in your care. These profiles are linked to your account and subject to the same protections as your own data. You may also add your phone number and your relationship to the player.</li>
           <li><span className="text-foreground font-medium">Content you create</span> — chat messages, event responses, and availability submissions.</li>
           <li><span className="text-foreground font-medium">Device information</span> — push notification tokens to deliver notifications to your device.</li>
         </ul>
@@ -45,12 +45,34 @@ export default function PrivacyPage() {
 
       <section className="mb-8">
         <h2 className="mb-3 text-lg font-semibold">Information shared with teammates</h2>
-        <p>
-          Lista is a team communication platform. Your name, profile photo, role, jersey number,
-          and position are visible to other members of teams you belong to. Chat messages you send
-          are visible to the participants of that channel. Your email address is visible to team
-          admins (coaches, managers, and directors) and to users who manage your profile.
+        <p className="mb-3">
+          Lista is a team communication platform, so the people on your teams can see your details.
+          Other members of a team you belong to, including the parents and guardians of its players,
+          can see:
         </p>
+        <ul className="mb-3 list-disc space-y-2 pl-5 text-muted-foreground">
+          <li>Your name, profile photo, role, jersey number, and position.</li>
+          <li>Your email address.</li>
+          <li>Your date of birth and gender, if you&apos;ve added them.</li>
+        </ul>
+        <p className="mb-3">
+          A child&apos;s managed profile is shared the same way, with the members of the child&apos;s teams.
+        </p>
+        <p className="mb-3">
+          If you&apos;re a parent or guardian, other members of your child&apos;s teams can see your name, your
+          relationship to the player, your email address, and your phone number if you&apos;ve added one, even if
+          you aren&apos;t on the team yourself. The coaches and managers of those teams can also see your date of
+          birth and gender, if you&apos;ve added them.
+        </p>
+        <p className="mb-3">
+          Club directors and owners can see these details for everyone on their club&apos;s teams. People who
+          manage your profile, such as a parent or guardian, can see it too.
+        </p>
+        <p className="mb-3">
+          Members of other teams in your club, and people outside your teams, can&apos;t see your email address,
+          phone number, date of birth, or gender.
+        </p>
+        <p>Chat messages you send are visible to the participants of that channel.</p>
       </section>
 
       <section className="mb-8">

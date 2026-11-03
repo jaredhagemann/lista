@@ -39,7 +39,7 @@ were modified out of band, was **not** established by the review.
 
 **D8 resolved — user decision, 2026-09-15:** children's photos may be viewed by **teammates**,
 with no access outside the team. Shared with
-[BUG-004](./004-profile-email-exposed-to-teammates.md).
+[BUG-004](./fixed/004-profile-email-exposed-to-teammates.md).
 
 **This settles the fix direction: the buckets stay private.**
 
