@@ -14,6 +14,7 @@ export type OrgBranding = {
   name?: string | null;
   org_name_public?: string | null;
   logo_url?: string | null;
+  favicon_url?: string | null;
   plan?: string | null;
   brand_color_secondary?: string | null;
 };

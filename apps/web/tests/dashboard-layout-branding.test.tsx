@@ -61,7 +61,7 @@ vi.mock("@/components/layout/session-watch", () => ({
 }));
 
 import { screen } from "@testing-library/react";
-import DashboardLayout from "@/app/dashboard/layout";
+import DashboardLayout, { generateMetadata } from "@/app/dashboard/layout";
 
 const SLOFC = { name: "San Luis Obispo FC", org_name_public: "SLOFC", logo_url: "https://x/slofc.png", plan: "club_small" };
 
@@ -88,6 +88,60 @@ describe("the dashboard layout", () => {
     }
     const memberships = mocks.navProps?.allMemberships as Array<{ teams: { organizations: unknown } }>;
     expect(memberships[0].teams.organizations).toEqual(SLOFC);
+  });
+
+  // BUG-042: a club with no subdomain has no tenant, so the active team is what brands the page.
+  describe("the favicon", () => {
+    const FAVICON = "https://x/slofc-favicon.png";
+    const onTeam = (organizations: unknown) => {
+      mocks.tables.profiles = { id: "u-1", active_team_id: "t-1" };
+      mocks.tables.profile_managers = [];
+      mocks.tables.team_members = [
+        {
+          id: "m-1",
+          team_id: "t-1",
+          profile_id: "u-1",
+          role: "coach",
+          teams: { id: "t-1", name: "12U Girls", logo_url: "https://x/team.png", organization_id: "org-1", organizations },
+        },
+      ];
+    };
+
+    it("asks for the club's favicon", async () => {
+      onTeam(SLOFC);
+      mocks.selects.length = 0;
+
+      await generateMetadata();
+
+      const query = mocks.selects.find((s) => s.table === "team_members" && s.columns.includes("teams("));
+      expect(query?.columns).toContain("favicon_url");
+    });
+
+    it("is the active club team's", async () => {
+      onTeam({ ...SLOFC, favicon_url: FAVICON });
+
+      expect((await generateMetadata()).icons).toEqual({ icon: { url: FAVICON } });
+    });
+
+    it("is the club's logo when the club has no favicon", async () => {
+      onTeam({ ...SLOFC, favicon_url: null });
+
+      expect((await generateMetadata()).icons).toEqual({ icon: { url: SLOFC.logo_url } });
+    });
+
+    it("is left to the root layout for a team outside a club, even with its own logo", async () => {
+      onTeam({ name: "Rec", org_name_public: null, logo_url: null, favicon_url: FAVICON, plan: "free" });
+
+      expect((await generateMetadata()).icons).toBeUndefined();
+    });
+
+    it("is left to the root layout with no team", async () => {
+      mocks.tables.profiles = { id: "u-1", active_team_id: null };
+      mocks.tables.profile_managers = [];
+      mocks.tables.team_members = [];
+
+      expect((await generateMetadata()).icons).toBeUndefined();
+    });
   });
 
   // BUG-036: the page watches the session for the account it was rendered for.
