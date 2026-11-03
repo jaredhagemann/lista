@@ -36,6 +36,10 @@ export async function middleware(request: NextRequest) {
   // (BUG-027): a layout can't read the pathname itself. Always set here, so a
   // client can't supply its own.
   requestHeaders.set("x-request-path", request.nextUrl.pathname + request.nextUrl.search);
+  // The app trusts the tenant headers, so only the ones set below may reach it (BUG-043).
+  for (const name of [...requestHeaders.keys()]) {
+    if (name.startsWith("x-tenant-")) requestHeaders.delete(name);
+  }
   if (tenant) {
     requestHeaders.set("x-tenant-id", tenant.organizationId);
     requestHeaders.set("x-tenant-slug", tenant.slug);

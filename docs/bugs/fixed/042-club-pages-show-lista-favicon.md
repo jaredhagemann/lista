@@ -63,9 +63,10 @@ the original bug, because it came from Next adding a file, so one test also fail
 | Club with a favicon and no subdomain, coach and player | The club's only, on the dashboard and on Settings |
 | Simulated club domain, by sending `x-tenant-*` headers | The club's only |
 
-**Not tested:** a real club subdomain, which needs Redis and DNS. The simulated row stands in for it.
+**Not tested:** a real club subdomain, which needs Redis and DNS. The simulated row stands in for it. That simulation
+no longer works, because BUG-043 clears those headers.
 
 **Deployment verification required:** after deploy, repeat the `curl` above: one icon link, the club's. Then look at the
 tab itself, since browsers cache favicons and a hard refresh or a new tab may be needed. **Not yet done.**
 
-**Found while fixing:** [BUG-043](../043-client-can-supply-tenant-headers.md).
+**Found while fixing:** [BUG-043](./043-client-can-supply-tenant-headers.md).
