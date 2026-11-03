@@ -40,6 +40,28 @@ export function teamBranding(team: BrandableTeam): {
   };
 }
 
+/** A–Z, with numbers by value, so 8U comes before 10U. */
+export const compareNames = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+
+/**
+ * The team picker's order: clubs A–Z, each club's teams A–Z, then the teams in
+ * no club. Clubs with the same name stay apart, by their id.
+ */
+export function compareByClubThenTeam(
+  a: BrandableTeam & { organization_id?: string | null },
+  b: BrandableTeam & { organization_id?: string | null }
+): number {
+  const clubA = teamBranding(a).clubName;
+  const clubB = teamBranding(b).clubName;
+  if (clubA && clubB) {
+    const club = compareNames(clubA, clubB) || (a.organization_id ?? "").localeCompare(b.organization_id ?? "");
+    if (club) return club;
+  } else if (clubA || clubB) {
+    return clubA ? -1 : 1;
+  }
+  return compareNames(a.name, b.name);
+}
+
 /** lista's own blue, from its logo: the accent for teams outside a club. */
 export const LISTA_BLUE = "#01D7F4";
 

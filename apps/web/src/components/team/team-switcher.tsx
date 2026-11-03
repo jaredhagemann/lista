@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { CreateTeamForm } from "@/components/team/create-team-form";
 import type { Database } from "@/types/database";
-import { teamBranding, type OrgBranding } from "@/lib/team-branding";
+import { compareByClubThenTeam, teamBranding, type OrgBranding } from "@/lib/team-branding";
 import { displayLabel } from "@/lib/labels";
 import { useNavigate } from "@/components/layout/navigation-progress";
 
@@ -54,7 +54,7 @@ export function TeamSwitcher({
   // both the parent and a managed profile are members.
   const uniqueTeams = Array.from(
     new Map(allMemberships.map((m) => [m.team_id, m])).values()
-  );
+  ).sort((a, b) => compareByClubThenTeam(a.teams, b.teams));
 
   async function handleSwitch(teamId: string) {
     if (teamId === activeMembership?.team_id) return;
@@ -128,7 +128,7 @@ export function TeamSwitcher({
                     <p className="text-xs text-muted-foreground">
                       {multiProfile
                         ? `${profilesOnTeam.length} profiles`
-                        : m.role}
+                        : displayLabel(m.role)}
                       {m.teams.season ? ` · ${m.teams.season}` : ""}
                     </p>
                   </div>
