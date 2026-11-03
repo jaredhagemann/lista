@@ -61,6 +61,6 @@ describe("the privacy page's sharing section", () => {
   it("carries the date of this change, as its Changes section promises", () => {
     render(<PrivacyPage />);
 
-    expect(screen.getByText("Effective date: November 2, 2026")).toBeTruthy();
+    expect(screen.getByText("Effective date: November 3, 2026")).toBeTruthy();
   });
 });
