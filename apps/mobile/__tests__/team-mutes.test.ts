@@ -88,6 +88,20 @@ describe("groupByClub", () => {
     ]);
   });
 
+  it("puts age groups in number order, in a club and out of one", () => {
+    expect(
+      shape([
+        { id: "1", name: "U10 Girls", club: SLOFC },
+        { id: "2", name: "U9 Girls", club: SLOFC },
+        { id: "3", name: "10U Rec", club: null },
+        { id: "4", name: "8U Rec", club: null },
+      ])
+    ).toEqual([
+      ["San Luis Obispo Futbol Club", ["U9 Girls", "U10 Girls"]],
+      ["Other teams", ["8U Rec", "10U Rec"]],
+    ]);
+  });
+
   it("keeps two clubs with the same name apart", () => {
     const groups = groupByClub([
       { id: "1", name: "U10", club: { id: "org-1", name: "United" } },
