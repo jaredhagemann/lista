@@ -1,8 +1,9 @@
 /**
  * The teams in the notification settings' Teams section: the web's rules, copied
  * (spec: docs/specs/team-notification-controls.md §3.1, §3.4). Keep in step with
- * apps/web/src/lib/notifications/mutable-team.ts and
- * apps/web/src/components/settings/team-mutes-section.tsx.
+ * apps/web/src/lib/notifications/mutable-team.ts,
+ * apps/web/src/components/settings/team-mutes-section.tsx and compareNames in
+ * apps/web/src/lib/team-branding.ts.
  */
 
 import { teamBranding, type OrgBranding } from "./team-branding";
@@ -45,9 +46,12 @@ export function teamLabel(team: MutableTeam): string {
   return `${club} · ${team.name}`;
 }
 
+/** A–Z, with numbers by value, so 8U comes before 10U. */
+const compareNames = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+
 /** Clubs A–Z, then the teams in no club, each list A–Z. No headings when no team is in a club. */
 export function groupByClub(teams: MutableTeam[]): TeamGroup[] {
-  const byName = (a: MutableTeam, b: MutableTeam) => a.name.localeCompare(b.name);
+  const byName = (a: MutableTeam, b: MutableTeam) => compareNames(a.name, b.name);
   const clubs = new Map<string, TeamGroup>();
   const others: MutableTeam[] = [];
   for (const team of teams) {
@@ -59,7 +63,7 @@ export function groupByClub(teams: MutableTeam[]): TeamGroup[] {
     group.teams.push(team);
     clubs.set(team.club.id, group);
   }
-  const groups = [...clubs.values()].sort((a, b) => a.heading!.localeCompare(b.heading!));
+  const groups = [...clubs.values()].sort((a, b) => compareNames(a.heading!, b.heading!));
   for (const group of groups) group.teams.sort(byName);
   if (others.length > 0) {
     groups.push({ key: "other", heading: groups.length > 0 ? "Other teams" : null, teams: others.sort(byName) });
