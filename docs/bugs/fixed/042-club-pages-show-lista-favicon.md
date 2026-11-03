@@ -66,7 +66,10 @@ the original bug, because it came from Next adding a file, so one test also fail
 **Not tested:** a real club subdomain, which needs Redis and DNS. The simulated row stands in for it. That simulation
 no longer works, because BUG-043 clears those headers.
 
-**Deployment verification required:** after deploy, repeat the `curl` above: one icon link, the club's. Then look at the
-tab itself, since browsers cache favicons and a hard refresh or a new tab may be needed. **Not yet done.**
+**Deployment verification:**
+- **Done, 2026-11-03, by Claude:** repeated the `curl` above on `slofc.lista.team` after deploy. It lists one icon link, the
+  club's.
+- **Not yet done:** looking at the tab itself in a browser. Browsers cache favicons, so a hard refresh or a new tab may
+  be needed.
 
 **Found while fixing:** [BUG-043](./043-client-can-supply-tenant-headers.md).
