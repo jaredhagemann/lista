@@ -1,5 +1,8 @@
+import { cache } from "react";
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { clubFaviconUrl, clubIcons } from "@/lib/favicon";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { SessionWatch } from "@/components/layout/session-watch";
@@ -11,6 +14,27 @@ import { isClubPlan, hasClubAccess } from "@/lib/plan";
 
 export type { ManagedProfileEntry } from "@/lib/active-context";
 
+/** The session and this device's context, once per request: the layout and its metadata both need them. */
+const loadDashboard = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return { supabase, user, context: user ? await loadActiveContext(supabase, user.id) : null };
+});
+
+/**
+ * The active club team's favicon, as the header shows its logo. A club with no
+ * subdomain has no tenant, so the root layout can't know it. Otherwise the root
+ * layout's stands (BUG-042).
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const { context } = await loadDashboard();
+  const team = context?.activeMembership?.teams;
+  const favicon = team ? clubFaviconUrl(team) : null;
+  return favicon ? { icons: clubIcons(favicon) } : {};
+}
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -19,17 +43,13 @@ export default async function DashboardLayout({
   const requestHeaders = await headers();
   const tenant = getTenantFromHeaders(requestHeaders);
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
   // This device's person and team (docs/specs/device-local-active-context.md).
   // A device with no valid saved context gets one chosen here, and saves it
   // below; after that, other devices' switches don't move it.
-  const context = await loadActiveContext(supabase, user.id);
+  const { supabase, user, context } = await loadDashboard();
+
+  if (!user || !context) redirect("/login");
+
   const { ownProfile, allMemberships, activeMembership } = context;
   const activeProfile = context.activeProfile ?? ownProfile;
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
+import { clubIcons, LISTA_ICONS } from "@/lib/favicon";
 import { getTenantFromHeaders } from "@/lib/supabase/tenant";
 import { AppNameProvider } from "@/context/app-name-context";
 import { ProgressBar } from "@/components/layout/progress-bar";
@@ -20,13 +21,12 @@ const geistMono = Geist_Mono({
 export async function generateMetadata(): Promise<Metadata> {
   const tenant = getTenantFromHeaders(await headers());
   const appName = tenant?.isWhiteLabel ? (tenant.orgNamePublic ?? "Lista") : "Lista";
+  const clubFavicon = tenant?.isWhiteLabel ? tenant.faviconUrl || tenant.logoUrl : null;
   return {
     title: { template: `%s | ${appName}`, default: appName },
     description: "Zero-cost, ad-free team management. Scheduling, notifications, and roster management.",
     manifest: "/manifest.json",
-    icons: tenant?.isWhiteLabel && tenant.faviconUrl
-      ? { icon: tenant.faviconUrl }
-      : undefined,
+    icons: clubFavicon ? clubIcons(clubFavicon) : LISTA_ICONS,
   };
 }
 

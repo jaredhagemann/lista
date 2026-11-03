@@ -175,7 +175,7 @@ export const loadActiveContext = cache(async function loadActiveContext(
   const { data: rows, error: membershipsError } = await supabase
     .from("team_members")
     // Each team's club branding, for the header and team picker (spec: team-branding-and-labels).
-    .select("*, teams(*, organizations(name, org_name_public, logo_url, plan)), profiles(*)")
+    .select("*, teams(*, organizations(name, org_name_public, logo_url, favicon_url, plan)), profiles(*)")
     .in("profile_id", [userId, ...managedProfiles.map((m) => m.profile.id)])
     .order("created_at");
   const allMemberships = (rows ?? []) as unknown as ActiveContextMembership[];
