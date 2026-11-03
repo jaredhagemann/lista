@@ -64,7 +64,7 @@ export function InviteSignupForm({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email,
+        inviteId,
         password: form.password,
         firstName: form.firstName,
         lastName: form.lastName,
