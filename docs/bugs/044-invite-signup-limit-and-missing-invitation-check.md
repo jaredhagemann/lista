@@ -198,8 +198,8 @@ and reloading fixes it.
 
 **Not tested:** reaching the new limit of 30, which the test checks only as configuration, and a real club subdomain.
 
-**Deployment verification required, not yet done:** after deploy, on production:
+**Deployment verification, on production:**
 
-1. `POST /api/auth/invite-signup` with no invitation and an address you control: expect 403, and no account for it.
-   **Don't run this before the deploy**, since it would create the account.
-2. Accept a real invitation as a new user, end to end.
+1. **Done, 2026-11-04, by Claude:** `POST /api/auth/invite-signup` with a password and no invitation returned 403 with the
+   refusal message. The email was left out so that it couldn't create an account; the old code answered that with 400.
+2. **Not yet done:** accept a real invitation as a new user, end to end.

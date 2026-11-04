@@ -61,5 +61,5 @@ taking the client's name. The other two are the legitimate paths: other headers 
 **Browser, local stack:** `/login` with client-sent headers had the title "Simulated Club" before the fix. After it, the
 title is "Lista" and the icons are Lista's, the same as a request without them.
 
-**Deployment verification required:** after deploy, send `/login` on `www.lista.team` the `x-tenant-*` headers and confirm
-the title is still "Lista". Also confirm a club's site, such as `slofc.lista.team`, keeps its branding. **Not yet done.**
+**Deployment verification, done 2026-11-04 by Claude:** `/login` on `www.lista.team` with `x-tenant-*` headers is titled
+"Lista", and `slofc.lista.team/login` is still titled "SLOFC". This checks titles only; no email was sent.
