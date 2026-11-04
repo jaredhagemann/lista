@@ -1,8 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadActiveContext } from "@/lib/active-context";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Users, Calendar } from "lucide-react";
+import { ClubAgenda } from "@/components/club/club-agenda";
+import { ClubTeamList } from "@/components/club/club-team-list";
+import { agendaQueryRange, buildAgenda, type AgendaEvent } from "@/lib/club/agenda";
+import { teamRecord } from "@/lib/events/team-record";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { clubSecondaryColor, compareNames, LISTA_BLUE } from "@/lib/team-branding";
 
 export const metadata = { title: "Club Overview" };
 
@@ -16,98 +20,88 @@ export default async function ClubOverviewPage() {
   // This device's team (docs/specs/device-local-active-context.md), checked.
   const activeTeamId = (await loadActiveContext(supabase, user.id)).activeMembership?.team_id ?? null;
 
-  const { data: team } = await supabase
+  const { data: activeTeam } = await supabase
     .from("teams")
-    .select("organization_id")
+    .select("organization_id, timezone")
     .eq("id", activeTeamId ?? "")
     .single();
 
-  const orgId = team?.organization_id;
+  const orgId = activeTeam?.organization_id;
   if (!orgId) redirect("/dashboard");
 
-  // Fetch all active teams in the org
-  const { data: teams } = await supabase
+  const { data: teams, error: teamsError } = await supabase
     .from("teams")
-    .select("id, name")
+    .select("id, name, timezone")
     .eq("organization_id", orgId)
-    .is("archived_at", null)
-    .order("name");
+    .is("archived_at", null);
 
-  const teamIds = (teams ?? []).map((t) => t.id);
+  const sortedTeams = [...(teams ?? [])].sort((a, b) => compareNames(a.name, b.name));
+  const teamIds = sortedTeams.map((t) => t.id);
 
-  // Fetch member count and upcoming events in parallel
   const now = new Date();
-  const weekFromNow = new Date(now);
-  weekFromNow.setDate(weekFromNow.getDate() + 7);
-  const [{ count: memberCount }, { count: upcomingCount }] = await Promise.all([
-    supabase
-      .from("team_members")
-      .select("profile_id", { count: "exact", head: true })
-      .in("team_id", teamIds.length ? teamIds : [""]),
-    supabase
-      .from("events")
-      .select("id", { count: "exact", head: true })
-      .in("team_id", teamIds.length ? teamIds : [""])
-      .gte("start_time", now.toISOString())
-      .lte("start_time", weekFromNow.toISOString()),
+  const { endsAfter, startsBefore } = agendaQueryRange(now);
+
+  const [{ data: org }, events, results, { data: managedLinks }] = await Promise.all([
+    supabase.from("organizations").select("plan, brand_color_secondary").eq("id", orgId).maybeSingle(),
+    teamIds.length === 0
+      ? { data: [] as AgendaEvent[], error: null }
+      : fetchAllRows<AgendaEvent>((from, to) =>
+          // Through unknown: the typed client can't resolve `tournament_id(...)`, as
+          // events has two relationships to itself.
+          supabase
+            .from("events")
+            .select("id, team_id, title, event_type, opponent, home_away, score_for, score_against, start_time, end_time, timezone, is_cancelled, round, tournament:tournament_id(title)")
+            .in("team_id", teamIds)
+            .gt("end_time", endsAfter)
+            .lt("start_time", startsBefore)
+            .order("id")
+            .range(from, to) as unknown as PromiseLike<{ data: AgendaEvent[] | null; error: unknown }>,
+        ),
+    // The dashboard's Overall Record, for every team (team-branding-and-labels §4).
+    teamIds.length === 0
+      ? { data: [], error: null }
+      : fetchAllRows((from, to) =>
+          supabase
+            .from("events")
+            .select("id, team_id, start_time, timezone, opponent, home_away, game_result, score_for, score_against")
+            .in("team_id", teamIds)
+            .eq("event_type", "game")
+            .not("game_result", "is", null)
+            .order("id")
+            .range(from, to),
+        ),
+    supabase.from("profile_managers").select("managed_id").eq("manager_id", user.id),
   ]);
 
-  const stats = [
-    {
-      label: "Active Teams",
-      value: teams?.length ?? 0,
-      icon: Building2,
-    },
-    {
-      label: "Total Members",
-      value: memberCount ?? 0,
-      icon: Users,
-      note: "across all teams",
-    },
-    {
-      label: "Events This Week",
-      value: upcomingCount ?? 0,
-      icon: Calendar,
-    },
-  ];
+  // The teams setActiveTeam will switch to: the viewer's own, and those of players they manage.
+  const { data: viewerMemberships } = await supabase
+    .from("team_members")
+    .select("team_id")
+    .in("profile_id", [user.id, ...(managedLinks ?? []).map((l) => l.managed_id)])
+    .in("team_id", teamIds);
+  const linkableTeamIds = new Set(
+    (viewerMemberships ?? []).map((m) => m.team_id).filter((id): id is string => !!id),
+  );
+
+  const days = buildAgenda(events.data, sortedTeams, { now, homeZone: activeTeam?.timezone });
+
+  const teamsWithRecords = sortedTeams.map((team) => ({
+    ...team,
+    record: teamRecord(results.data.filter((game) => game.team_id === team.id), now),
+  }));
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Club Overview</h1>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {stats.map((s) => {
-          const Icon = s.icon;
-          return (
-            <Card key={s.label}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {s.label}
-                </CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold">{s.value}</p>
-                {s.note && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">{s.note}</p>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      <ClubAgenda days={days} linkableTeamIds={linkableTeamIds} failed={!!(teamsError || events.error)} />
 
-      {teams && teams.length > 0 && (
-        <div>
-          <h2 className="mb-3 text-lg font-semibold">Teams</h2>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {teams.map((t) => (
-              <Card key={t.id} className="p-4">
-                <p className="font-medium">{t.name}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
+      {sortedTeams.length > 0 && (
+        <ClubTeamList
+          teams={teamsWithRecords}
+          winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
+          failed={!!results.error}
+        />
       )}
     </div>
   );
