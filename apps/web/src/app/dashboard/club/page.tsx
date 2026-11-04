@@ -94,8 +94,6 @@ export default async function ClubOverviewPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Club Overview</h1>
 
-      <ClubAgenda days={days} linkableTeamIds={linkableTeamIds} failed={!!(teamsError || events.error)} />
-
       {sortedTeams.length > 0 && (
         <ClubTeamList
           teams={teamsWithRecords}
@@ -103,6 +101,8 @@ export default async function ClubOverviewPage() {
           failed={!!results.error}
         />
       )}
+
+      <ClubAgenda days={days} linkableTeamIds={linkableTeamIds} failed={!!(teamsError || events.error)} />
     </div>
   );
 }

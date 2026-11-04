@@ -207,6 +207,15 @@ describe("the Events this week card", () => {
 });
 
 describe("the Teams section", () => {
+  it("comes before the agenda, without a visible heading", async () => {
+    await renderPage();
+
+    const list = screen.getByRole("list", { name: "Teams" });
+    const agenda = screen.getByRole("region", { name: "Events this week" });
+    expect(list.compareDocumentPosition(agenda) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Teams" })).toBeNull();
+  });
+
   it("lists teams in number order, in one column", async () => {
     await renderPage();
 
