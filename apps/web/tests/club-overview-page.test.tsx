@@ -153,7 +153,7 @@ describe("the Events this week card", () => {
     expect(card.getByText("10U Girls")).toBeTruthy();
     expect(card.getByText("Practice")).toBeTruthy();
     expect(card.getByText("8U Girls")).toBeTruthy();
-    expect(card.getByText("vs Santa Maria FC")).toBeTruthy();
+    expect(card.getByText("8U Girls vs Santa Maria FC")).toBeTruthy();
   });
 
   it("marks a cancelled event", async () => {

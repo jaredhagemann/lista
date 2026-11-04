@@ -49,7 +49,7 @@ export function ClubAgenda({
           <CardTitle className="text-sm font-medium">Events this week</CardTitle>
           <Calendar className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="divide-y [&>*:not(:first-child)]:pt-5 [&>*:not(:last-child)]:pb-3">
           {failed ? (
             <p className="text-sm text-muted-foreground">Couldn&apos;t load events. Refresh the page to try again.</p>
           ) : days.length === 0 ? (
@@ -58,7 +58,7 @@ export function ClubAgenda({
             days.map((day) => (
               <div key={day.key} className="space-y-1">
                 <h3 className="text-sm font-semibold">{day.heading}</h3>
-                <ul className="divide-y">
+                <ul>
                   {day.items.map((item) => (
                     <li key={item.event.id}>
                       {item.event.team_id && linkableTeamIds.has(item.event.team_id) ? (

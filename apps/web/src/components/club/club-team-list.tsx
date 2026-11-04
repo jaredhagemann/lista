@@ -45,13 +45,16 @@ export function ClubTeamList({
           <li key={team.id} aria-label={team.name}>
             <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="min-w-0 font-medium">{team.name}</p>
-              {failed ? (
-                <p className="text-sm text-muted-foreground">Couldn&apos;t load record</p>
-              ) : team.record ? (
-                <CompactRecord record={team.record} winColor={winColor} />
-              ) : (
-                <p className="text-sm text-muted-foreground">No results yet</p>
-              )}
+              {/* The record's height, so a team without one has a card the same height. */}
+              <div className="flex min-h-10 items-center">
+                {failed ? (
+                  <p className="text-sm text-muted-foreground">Couldn&apos;t load record</p>
+                ) : team.record ? (
+                  <CompactRecord record={team.record} winColor={winColor} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No results yet</p>
+                )}
+              </div>
             </Card>
           </li>
         ))}

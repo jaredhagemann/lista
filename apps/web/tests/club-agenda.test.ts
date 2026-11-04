@@ -120,13 +120,19 @@ describe("a row", () => {
     expect(item.time).toBe("4:00 PM – 5:30 PM PST");
   });
 
-  it("doesn't repeat the team's name in a game's title", () => {
+  it("titles a game as the Schedule does", () => {
     const days = build([
       event({ id: "home", event_type: "game", opponent: "Santa Maria FC", home_away: "home" }),
       event({ id: "away", event_type: "game", opponent: "Arroyo Grande", home_away: "away" }),
     ]);
 
-    expect(days[0].items.map((i) => i.title)).toEqual(["@ Arroyo Grande", "vs Santa Maria FC"]);
+    expect(days[0].items.map((i) => i.title)).toEqual(["10U Girls @ Arroyo Grande", "10U Girls vs Santa Maria FC"]);
+  });
+
+  it("uses a game's own title when it has no opponent", () => {
+    const [item] = build([event({ event_type: "game", title: "Scrimmage" })])[0].items;
+
+    expect(item.title).toBe("Scrimmage");
   });
 
   it("shows a game's score once it has one", () => {
@@ -134,7 +140,7 @@ describe("a row", () => {
       event({ event_type: "game", opponent: "Santa Maria FC", home_away: "home", score_for: 2, score_against: 1 }),
     ])[0].items;
 
-    expect(item.title).toBe("vs Santa Maria FC · 2–1");
+    expect(item.title).toBe("10U Girls vs Santa Maria FC · 2–1");
   });
 
   it("names a tournament game's tournament and round", () => {

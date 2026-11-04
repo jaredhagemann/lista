@@ -90,8 +90,7 @@ export function buildAgenda(
     items.push({
       event,
       teamName: team.name,
-      // The row names the team, so a game's title leaves it out: "vs Santa Maria FC".
-      title: gameTitle(event, "").trim(),
+      title: gameTitle(event, team.name),
       time: isTournament(event)
         ? tournamentDates(event, zone)
         : formatEventTimeRange(event.start_time, event.end_time, zone),
