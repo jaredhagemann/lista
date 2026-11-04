@@ -47,7 +47,9 @@ class MockIntersectionObserver {
   }
   observe() {}
   unobserve() {}
-  disconnect() {}
+  disconnect() {
+    h.ioInstances = h.ioInstances.filter((io) => io !== this);
+  }
 }
 
 import { LeaderboardTab, isSelfBelowFold } from "@/components/training/leaderboard-tab";
@@ -110,11 +112,44 @@ describe("isSelfBelowFold()", () => {
 // ── Pinned-row behavior ─────────────────────────────────────────────────────
 
 describe("LeaderboardTab — pinned self row", () => {
-  function fireIntersection(entry: { isIntersecting: boolean; boundingClientRect: { top: number } }) {
+  type Entry = { isIntersecting: boolean; boundingClientRect: { top: number } };
+
+  function fireLiveObservers(entry: Entry) {
     act(() => {
       h.ioInstances.forEach((io) => io.cb([entry]));
     });
   }
+
+  // The row reaches the page before the effect that observes it runs, and an event
+  // fired in that gap is lost (BUG-030).
+  async function fireIntersection(entry: Entry) {
+    await waitFor(() => expect(h.ioInstances.length).toBeGreaterThan(0));
+    fireLiveObservers(entry);
+  }
+
+  it("still pins when the event comes straight after the row reaches the page", async () => {
+    h.boardRows = makeRows();
+    h.summaryRow = { total_minutes: 140, session_count: 3, rank: 12, denominator: 15 };
+
+    // Resume as soon as the row is on the page, which is before effects run. This
+    // forces the timing that failed in CI; findByText usually gives effects time.
+    const { container } = render(<LeaderboardTab {...baseProps} />);
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (!container.textContent?.includes("Me Myself")) return;
+        watcher.disconnect();
+        resolve();
+      };
+      const watcher = new MutationObserver(check);
+      watcher.observe(container, { childList: true, subtree: true, characterData: true });
+      check();
+    });
+    expect(h.ioInstances).toHaveLength(0);
+
+    await fireIntersection({ isIntersecting: false, boundingClientRect: { top: 900 } });
+
+    await waitFor(() => expect(screen.getAllByText("You")).toHaveLength(2));
+  });
 
   it("does not pin while the self row is in view (only the list badge shows)", async () => {
     h.boardRows = makeRows();
@@ -123,7 +158,7 @@ describe("LeaderboardTab — pinned self row", () => {
     render(<LeaderboardTab {...baseProps} />);
     await screen.findByText("Me Myself");
 
-    fireIntersection({ isIntersecting: true, boundingClientRect: { top: 400 } });
+    await fireIntersection({ isIntersecting: true, boundingClientRect: { top: 400 } });
 
     // Just the one "You" badge in the ranked list — no pinned copy.
     expect(screen.getAllByText("You")).toHaveLength(1);
@@ -136,7 +171,7 @@ describe("LeaderboardTab — pinned self row", () => {
     render(<LeaderboardTab {...baseProps} />);
     await screen.findByText("Me Myself");
 
-    fireIntersection({ isIntersecting: false, boundingClientRect: { top: 900 } });
+    await fireIntersection({ isIntersecting: false, boundingClientRect: { top: 900 } });
 
     // Two "You" badges now: the real list row + the pinned copy.
     await waitFor(() => expect(screen.getAllByText("You")).toHaveLength(2));
@@ -156,10 +191,10 @@ describe("LeaderboardTab — pinned self row", () => {
     render(<LeaderboardTab {...baseProps} />);
     await screen.findByText("Me Myself");
 
-    fireIntersection({ isIntersecting: false, boundingClientRect: { top: 900 } });
+    await fireIntersection({ isIntersecting: false, boundingClientRect: { top: 900 } });
     await waitFor(() => expect(screen.getAllByText("You")).toHaveLength(2));
 
-    fireIntersection({ isIntersecting: true, boundingClientRect: { top: 300 } });
+    await fireIntersection({ isIntersecting: true, boundingClientRect: { top: 300 } });
     await waitFor(() => expect(screen.getAllByText("You")).toHaveLength(1));
   });
 
@@ -172,7 +207,7 @@ describe("LeaderboardTab — pinned self row", () => {
     await screen.findByText("Player 1");
 
     // Even if an observer somehow fires below-fold, there is nothing to pin.
-    fireIntersection({ isIntersecting: false, boundingClientRect: { top: 900 } });
+    fireLiveObservers({ isIntersecting: false, boundingClientRect: { top: 900 } });
 
     expect(screen.queryByText("You")).toBeNull();
   });
