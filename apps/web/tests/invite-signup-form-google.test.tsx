@@ -228,7 +228,7 @@ describe("InviteSignupForm — email/password path still works after the Google 
     expect(url).toBe("/api/auth/invite-signup");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init?.body as string)).toEqual({
-      email: INVITE_EMAIL,
+      inviteId: INVITE_ID,
       password: "supersecret",
       firstName: PREFILLED_FIRST,
       lastName: PREFILLED_LAST,
