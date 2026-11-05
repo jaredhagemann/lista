@@ -1,14 +1,11 @@
 # BUG-045 — The progress bar ends before the page has loaded, and a team switch loads the event twice
 
 **Severity:** P3
-**Status:** Open
+**Status:** Fixed
 **Reported:** 2026-11-04 by the product owner, reviewing Club Overview (#157)
 **Area:** navigation, dashboard
 **Evidence class:** Mixed — see below
-**Last verified:** `47dc11a4e`, production build on the local stack
-
-Filed while #157 is open. The agenda and `RefreshAfterTeamSwitch` named below arrive with that PR, so the fix
-branches from `main` once it is merged.
+**Last verified:** this branch, production build on the local stack
 
 P3 because nothing is broken: every page still loads, and the grey placeholder appears straight away.
 
@@ -73,6 +70,10 @@ The logged switch made 22 dashboard requests after the click, including one `307
   wasted. A switch took about 250 ms longer in the table above, but that time wasn't split across these steps, so
   how much of it the direct link saves is unmeasured.
 
+**Found while fixing:** on the way through the event page, the placeholder goes away when the first render
+redirects, and nothing replaces it until the page comes back. That's the empty gap in the table under
+**Verification**.
+
 **Inferred:** the repeated sidebar requests look like link prefetches running again after `router.refresh()` in
 `RefreshAfterTeamSwitch`. The direct link below doesn't remove them, because the refresh is still needed.
 
@@ -92,8 +93,8 @@ Points to handle:
 - **No stuck bar:** the bar must end if the navigation fails or the viewer goes elsewhere, so ending it belongs in
   the effect's cleanup.
 - **Pages without a placeholder:** their content arrives with the URL change, so they keep ending there.
-- **Several placeholders in a row:** a switch may show the placeholder more than once on its way to the event
-  (not yet checked). If so, the bar should run through them as one, without flickering.
+- **Several placeholders in a row:** the browser timings saw at most one on the way to an event, but the bar should
+  still run through several without flickering.
 
 ### 2. Link straight to the switch from the agenda
 
@@ -138,8 +139,54 @@ Written first, failing against the unfixed code:
 **PR:** #NN
 **Migration:** none
 
-What changed and why that closes the cause.
+**The bar.** `PageSkeleton` now renders `ProgressWhileMounted`, which reports to `NavigationProgressContext` for as
+long as it's on screen, so the bar ends when the placeholder goes. It uses a layout effect and a count held in a ref
+because the URL change arrives in the same commit as the placeholder, before the reported state has updated.
+`start()` no longer resets a bar that's already running.
+
+Two faults in the bar's timers are fixed too, because the new flow would have exposed them. A second URL change just
+after a finish cancelled the fade and left the bar stuck at full width, and a new start during a fade had its bar
+hidden by the old timer. Pending frames and timers are now kept in one ref and cancelled by the next start or finish.
+
+Because any placeholder now runs the bar, it also runs for placeholders no click started, such as after the back
+button.
+
+**The agenda.** An event on another team links straight to `/dashboard/switch-team`, with `prefetch={false}`, which
+skips the first render. An event on the active team still links to the event.
+
+**Not changed:**
+
+- Other in-app links to another team's event still go through the event page, so they keep the empty gap, now with
+  the bar already finished.
+- The header still corrects itself after the event appears.
+- The sidebar routes are still requested again after a switch.
 
 ## Verification
 
-**Test:** `apps/web/tests/…` — states which test fails against the unfixed code.
+**Tests:** `apps/web/tests/progress-bar-placeholder.test.tsx` (new, 8 cases, 5 fail against the unfixed code),
+one new case in `navigation-feedback.test.tsx`, and three new cases in `club-overview-page.test.tsx` (2 fail against
+the unfixed code, and the third covers the legitimate path). The three that pass against the unfixed code cover the
+legitimate paths: the bar ending when content replaces the placeholder, on a failure, and on a page with no
+placeholder.
+
+**Browser, production build on the local stack.** Median ms after clicking an event on another team, 8 clicks with no
+added latency and 4 with 300 ms added to each dashboard request. The old-link columns have the new bar too, because
+the direct link is what's being compared.
+
+| | Old link | Direct link | Old link, +300 ms | Direct link, +300 ms |
+| --- | --- | --- | --- | --- |
+| Placeholder appears | 65 | 216 | 413 | 535 |
+| Placeholder goes and the bar finishes | 369 | 537 | 713 | 841 |
+| Event content appears | 633 | 537 | 1278 | 841 |
+| Header shows the right team | 770 | 668 | 1712 | 1271 |
+
+- **Bar:** it now finishes as the content appears on the direct link and on same-team clicks, and it was at rest
+  afterwards on every click. Same-team content appeared at 373 ms, against 360 ms before this fix.
+- **Trade-off:** the direct link has no prefetched route to show, so the placeholder appears later, and only the bar
+  answers the click until then. In exchange the empty gap is gone and the content arrives sooner.
+- **Prefetching:** showing the direct link and hovering over it for 3 seconds, then reloading, left the active team
+  unchanged.
+
+**Not tested:** production. Added latency is an approximation, and neither the database nor the server was remote.
+
+**Deployment verification required:** none. No authorization, storage, cron or delivery behavior changed.

@@ -70,11 +70,19 @@ function NextPage() {
   return <p>The next page</p>;
 }
 
-function FakeRouter({ children }: { children: ReactNode }) {
+function FakeRouter({ children, placeholder }: { children: ReactNode; placeholder?: boolean }) {
   const [href, setHref] = useState<string | null>(null);
   useEffect(() => {
     nav.go = setHref;
   }, []);
+  // A new boundary shows its fallback even in a transition, as a route's loading.tsx does.
+  if (href && placeholder) {
+    return (
+      <Suspense key="next-route" fallback={<PageSkeleton />}>
+        <NextPage />
+      </Suspense>
+    );
+  }
   return <Suspense fallback={<p>Blank</p>}>{href ? <NextPage /> : children}</Suspense>;
 }
 
@@ -153,6 +161,32 @@ describe("clicking a roster member", () => {
 
     expect(nav.pushed).toEqual(["/dashboard/team/member-1"]);
     expect(screen.getByText("Zoey Butler").closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("true");
+    expect(progressBar()).not.toBeNull();
+
+    await act(async () => {
+      nav.gate.release();
+      await nav.gate.promise;
+    });
+
+    await waitFor(() => expect(screen.getByText("The next page")).toBeTruthy());
+    expect(progressBar()).toBeNull();
+  });
+});
+
+describe("clicking through to a page with a loading placeholder", () => {
+  it("keeps the progress bar running until the content replaces the placeholder (BUG-045)", async () => {
+    render(
+      <ProgressBar>
+        <FakeRouter placeholder>
+          <TeamRoster members={[zoey]} isAdmin teamId={TEAM} />
+        </FakeRouter>
+      </ProgressBar>
+    );
+
+    await act(async () => screen.getByText("Zoey Butler").click());
+
+    // The transition has ended, as it does in Next once the placeholder is up.
+    expect(screen.getByRole("status", { name: "Loading" })).toBeTruthy();
     expect(progressBar()).not.toBeNull();
 
     await act(async () => {

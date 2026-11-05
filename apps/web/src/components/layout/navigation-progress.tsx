@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useContext, useEffect, useState, useTransition } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { NavigationProgressContext } from "@/components/layout/progress-bar";
+
+/**
+ * Runs the progress bar while mounted. A layout effect, so the bar knows before
+ * it reacts to the URL change that arrives in the same commit (BUG-045).
+ */
+export function ProgressWhileMounted() {
+  const report = useContext(NavigationProgressContext);
+  useLayoutEffect(() => report?.(), [report]);
+  return null;
+}
 
 /**
  * Navigate from code, with feedback while the next page is on its way.
