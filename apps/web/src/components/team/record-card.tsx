@@ -76,6 +76,33 @@ function LastTournamentSummary({ tournament }: { tournament: LastTournament }) {
   );
 }
 
+/** A bar split in proportion to wins, losses and ties, read out as those counts. */
+export function RecordBar({
+  record,
+  winColor,
+  className = "h-3",
+}: {
+  record: Pick<TeamRecord, "wins" | "losses" | "ties">;
+  winColor: string;
+  className?: string;
+}) {
+  const { wins, losses, ties } = record;
+  const played = wins + losses + ties;
+  const share = (n: number) => `${(n / played) * 100}%`;
+  return (
+    <div
+      role="img"
+      aria-label={`${plural(wins, "win", "wins")}, ${plural(losses, "loss", "losses")}, ${plural(ties, "tie", "ties")}`}
+      className={`flex overflow-hidden rounded-full bg-muted ${className}`}
+    >
+      <div style={{ width: share(wins), backgroundColor: winColor }} />
+      {/* Black would vanish on the dark theme's card, so it turns white there. */}
+      <div className="bg-black dark:bg-white" style={{ width: share(losses) }} />
+      <div className="bg-neutral-400" style={{ width: share(ties) }} />
+    </div>
+  );
+}
+
 /**
  * Wins, losses and ties, with a bar split in those proportions. Beside a last
  * game or tournament it has its own heading, matching the "Last game" tag
@@ -83,8 +110,6 @@ function LastTournamentSummary({ tournament }: { tournament: LastTournament }) {
  */
 function Stats({ record, winColor, heading }: { record: TeamRecord; winColor: string; heading?: string }) {
   const { wins, losses, ties } = record;
-  const played = wins + losses + ties;
-  const share = (n: number) => `${(n / played) * 100}%`;
   const stats = [
     { label: "Wins", value: wins },
     { label: "Losses", value: losses },
@@ -105,16 +130,7 @@ function Stats({ record, winColor, heading }: { record: TeamRecord; winColor: st
           </div>
         ))}
       </div>
-      <div
-        role="img"
-        aria-label={`${plural(wins, "win", "wins")}, ${plural(losses, "loss", "losses")}, ${plural(ties, "tie", "ties")}`}
-        className="flex h-3 overflow-hidden rounded-full bg-muted"
-      >
-        <div style={{ width: share(wins), backgroundColor: winColor }} />
-        {/* Black would vanish on the dark theme's card, so it turns white there. */}
-        <div className="bg-black dark:bg-white" style={{ width: share(losses) }} />
-        <div className="bg-neutral-400" style={{ width: share(ties) }} />
-      </div>
+      <RecordBar record={record} winColor={winColor} />
     </div>
   );
 }
