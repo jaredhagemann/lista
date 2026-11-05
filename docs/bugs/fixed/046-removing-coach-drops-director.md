@@ -102,7 +102,7 @@ whether it has its own removal path.
 ## Fix as implemented
 
 **Branch:** `fix/046-removing-coach-drops-director`
-**PR:** #NN
+**PR:** #159
 **Migration:** `supabase/migrations/20261105000000_remove_team_member_role.sql`
 
 **The database decides.** `remove_team_member_role(p_member_id, p_team_id)` runs as the caller, with a team admin
