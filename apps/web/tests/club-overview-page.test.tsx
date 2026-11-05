@@ -62,6 +62,14 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+vi.mock("next/link", () => ({
+  default: ({ href, prefetch, children, ...rest }: React.ComponentProps<"a"> & { prefetch?: boolean }) => (
+    <a href={href} data-prefetch={prefetch === undefined ? undefined : String(prefetch)} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
 import ClubOverviewPage from "@/app/dashboard/club/page";
 
 const LA = "America/Los_Angeles";
@@ -180,6 +188,39 @@ describe("the Events this week card", () => {
 
     expect(screen.getByText("Couldn't load events. Refresh the page to try again.")).toBeTruthy();
     expect(screen.queryByText("No events in the next 7 days.")).toBeNull();
+  });
+
+  describe("an event on another team the viewer is on (BUG-045)", () => {
+    beforeEach(() => {
+      setTable("team_members", [
+        { team_id: "u10", profile_id: VIEWER },
+        { team_id: "u8", profile_id: VIEWER },
+      ]);
+      setTable("events", [agendaEvent(), agendaEvent({ id: "e-2", team_id: "u8", title: "Other practice" })]);
+    });
+
+    it("links straight to the team switch, which comes back to the event", async () => {
+      await renderPage();
+
+      const href = new URL(screen.getByRole("link", { name: /Other practice/ }).getAttribute("href")!, "http://x");
+      expect(href.pathname).toBe("/dashboard/switch-team");
+      expect(href.searchParams.get("team")).toBe("u8");
+      expect(href.searchParams.get("next")).toBe("/dashboard/schedule/e-2");
+    });
+
+    it("isn't fetched ahead of a click, because following it changes the viewer's team", async () => {
+      await renderPage();
+
+      expect(screen.getByRole("link", { name: /Other practice/ }).getAttribute("data-prefetch")).toBe("false");
+    });
+
+    it("leaves an event on the active team linking to the event itself", async () => {
+      await renderPage();
+
+      const link = screen.getByRole("link", { name: /^.*Practice$/ });
+      expect(link.getAttribute("href")).toBe("/dashboard/schedule/e-1");
+      expect(link.getAttribute("data-prefetch")).toBeNull();
+    });
   });
 
   it("links an event on a team the viewer is on, and not one on a team they aren't", async () => {

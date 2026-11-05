@@ -28,17 +28,24 @@ function AgendaRow({ item }: { item: AgendaItem }) {
   );
 }
 
+/** Straight to the switch for another team's event, sparing it a trip through the event page. */
+function switchHref(teamId: string, eventId: string) {
+  return `/dashboard/switch-team?${new URLSearchParams({ team: teamId, next: `/dashboard/schedule/${eventId}` })}`;
+}
+
 /**
  * The club's week, like Google Calendar's Schedule view. A row links to its event
- * only for a team the viewer can switch to: that page switches to the event's
- * team, and sends anyone not on it to the dashboard.
+ * only for a team the viewer can switch to: the switch sends anyone not on the
+ * team to the dashboard.
  */
 export function ClubAgenda({
   days,
+  activeTeamId,
   linkableTeamIds,
   failed,
 }: {
   days: AgendaDay[];
+  activeTeamId: string | null;
   linkableTeamIds: Set<string>;
   failed: boolean;
 }) {
@@ -62,12 +69,23 @@ export function ClubAgenda({
                   {day.items.map((item) => (
                     <li key={item.event.id}>
                       {item.event.team_id && linkableTeamIds.has(item.event.team_id) ? (
-                        <Link
-                          href={`/dashboard/schedule/${item.event.id}`}
-                          className="block rounded-md transition-colors hover:bg-accent"
-                        >
-                          <AgendaRow item={item} />
-                        </Link>
+                        item.event.team_id === activeTeamId ? (
+                          <Link
+                            href={`/dashboard/schedule/${item.event.id}`}
+                            className="block rounded-md transition-colors hover:bg-accent"
+                          >
+                            <AgendaRow item={item} />
+                          </Link>
+                        ) : (
+                          // Never prefetched: following this link changes the viewer's team.
+                          <Link
+                            href={switchHref(item.event.team_id, item.event.id)}
+                            prefetch={false}
+                            className="block rounded-md transition-colors hover:bg-accent"
+                          >
+                            <AgendaRow item={item} />
+                          </Link>
+                        )
                       ) : (
                         <AgendaRow item={item} />
                       )}

@@ -102,7 +102,7 @@ export default async function ClubOverviewPage() {
         />
       )}
 
-      <ClubAgenda days={days} linkableTeamIds={linkableTeamIds} failed={!!(teamsError || events.error)} />
+      <ClubAgenda days={days} activeTeamId={activeTeamId} linkableTeamIds={linkableTeamIds} failed={!!(teamsError || events.error)} />
     </div>
   );
 }
