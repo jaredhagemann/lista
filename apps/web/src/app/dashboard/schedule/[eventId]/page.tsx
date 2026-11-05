@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { EventDetail } from "@/components/calendar/event-detail";
+import { RefreshAfterTeamSwitch } from "@/components/layout/refresh-after-team-switch";
 import { getActiveMembership } from "@/lib/get-active-membership";
 import { EMAIL_ANSWER_PARAMS, isAnswer, recordEmailAnswer } from "@/lib/availability/email-answer";
 import { EmailAnswerNotice } from "@/components/availability/email-answer-notice";
@@ -173,6 +174,7 @@ export default async function EventDetailPage({
 
   return (
     <>
+      {query.switched && <RefreshAfterTeamSwitch />}
       {emailAnswer && <EmailAnswerNotice notice={emailAnswer} cleanPath={cleanPath} />}
       <EventDetail
         event={event}
