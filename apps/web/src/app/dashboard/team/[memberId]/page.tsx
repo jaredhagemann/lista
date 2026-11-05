@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect, notFound } from "next/navigation";
 import { RosterProfile } from "@/components/team/roster-profile";
 import { getActiveProfileId, getActiveMembership } from "@/lib/get-active-membership";
+import { isClubAdminOfTeam } from "@/lib/club/club-admin";
 import type { Database } from "@/types/database";
 
 type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
@@ -79,7 +80,7 @@ export default async function MemberProfilePage({
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  const [{ data: rawManagers }, { data: rawPendingInvites }] =
+  const [{ data: rawManagers }, { data: rawPendingInvites }, isClubDirector] =
     await Promise.all([
       admin
         .from("profile_managers")
@@ -92,6 +93,8 @@ export default async function MemberProfilePage({
         .eq("managed_profile_id", member.profile_id!)
         .is("accepted_at", null)
         .order("created_at"),
+      // For the role editor and the removal dialog, which only admins see.
+      isAdmin ? isClubAdminOfTeam(admin, member.team_id!, member.profile_id!) : false,
     ]);
 
   const managers = (rawManagers ?? []) as ProfileManagerRow[];
@@ -116,6 +119,7 @@ export default async function MemberProfilePage({
       canEditProfile={canEditProfile}
       canRemoveManagers={canRemoveManagers}
       isAdmin={isAdmin}
+      isClubDirector={isClubDirector}
       isOwnProfile={isOwnProfile}
       teamId={member.team_id!}
     />

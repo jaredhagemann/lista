@@ -67,7 +67,7 @@ production. Nobody has done this removal in production yet; this ticket comes fr
 | Chat when the row becomes `director` | Keep the team-wide channel; drop private group memberships as any removal does. Directors aren't in groups unless someone adds them | Keep the team channel and private groups. Removing a director only changes their role on the team | 2026-11-05 | `docs/specs/multi-tenant-architecture.md`, `20260917000004_chat_access_control.sql:5-7` |
 | Upcoming availability when the row becomes `director` | Keep it: they're still on the roster | Keep it | 2026-11-05 | |
 | Team owner check (`team.ts:175`) when the row becomes `director` | Skip it for a change to `director`: a director owning a club team is normal (`create_club_team` does this) | Skip it: only the role changes | 2026-11-05 | |
-| The roster's role editor can change a `director` row to coach, manager or player | Leave it: that's how a director starts coaching, and the team stays in their app | Leave it, out of scope | 2026-11-05 | |
+| The roster's role editor can change a `director` row to coach, manager or player | Leave it: that's how a director starts coaching, and the team stays in their app | Revised the same day: the role editor offers Director for a club owner or director, and only for them, so a coach or manager can move them between director and a team role | 2026-11-05 | |
 
 ## Cause
 
@@ -103,7 +103,8 @@ whether it has its own removal path.
 
 **Branch:** `fix/046-removing-coach-drops-director`
 **PR:** #159
-**Migration:** `supabase/migrations/20261105000000_remove_team_member_role.sql`
+**Migrations:** `supabase/migrations/20261105000000_remove_team_member_role.sql`,
+`supabase/migrations/20261105000001_director_role_needs_directorship.sql`
 
 **The database decides.** `remove_team_member_role(p_member_id, p_team_id)` runs as the caller, with a team admin
 check, and in one transaction:
@@ -123,13 +124,23 @@ groups, availability and invitations are left alone. It refuses `director_row` w
 the club. Remove them from the club in club settings." It returns any error rather than going on to delete. Only
 `not_club_admin` continues to today's removal.
 
-**The roster.** Remove is hidden on a `director` row. After a removal that kept the row, the toast says "<name> is a
-club director, so they stay on the team as a director."
+**The roster.** The member page now looks up whether the person is an owner or director of the team's club
+(`isClubAdminOfTeam`, for admins only).
+
+- **Role editor:** offers Director for them, and only for them, so a coach or manager can move them between
+  `director` and coach, manager or player.
+- **Remove:** hidden on a `director` row.
+- **Confirmation dialog:** for them, says they'll stay on the team as a director.
+- **Toast:** after a removal that kept the row, says "<name> is a club director, so they stay on the team as a
+  director."
+
+**Only club admins hold director rows.** A trigger refuses a row becoming `director`, by insert or role change,
+unless the person is an owner or director of the team's club. The access rules let any team admin change a row's
+role, so without this the role could be given to anyone through the API. Rows already `director` aren't rechecked
+on other edits. Every place that adds director rows does so after the directorship exists.
 
 **Not changed:**
 
-- The confirmation dialog still says the member "will lose all access to team pages", because the roster doesn't know
-  who is a director.
 - The access rules still let a team admin delete any `team_members` row directly, through the API rather than the app.
 - A director with no row of their own on a team still can't use Remove there (`team.ts:140-152`).
 
@@ -137,20 +148,27 @@ club director, so they stay on the team as a director."
 
 **Tests, all failing against the unfixed code except where noted:**
 
-- `tests/rls/team-member-removal-director.test.ts` (new, 8). Covers the director's and the owner's rows becoming
+- `tests/rls/team-member-removal-director.test.ts` (new, 14). The first 8 cover the director's and the owner's rows becoming
   `director`, a `director` row refused and left, and a coach who isn't a club admin left for the caller to remove. It
   also covers someone removed from the club with `remove_org_director`, a directorship of another club, a missing
-  row, and a caller who can't run the team refused with `42501`.
+  row, and a caller who can't run the team refused with `42501`. Five more cover the role. A coach can set a director's
+  row to `director` and back, and the owner's row can be set to `director`. The three refusals, which failed against
+  the unfixed code, are a non-admin player, a director of another club, and a new row for an outsider. One more covers
+  `isClubAdminOfTeam`.
 - `tests/unit/team-actions.test.ts` (4 new). A kept director has no owner check, no cleanup and no delete. A
   `director_row` is refused, and an error from the check stops the removal. Anyone else is removed as before; this
   one passed against the unfixed code, as it covers the path that must keep working.
-- `apps/web/tests/roster-remove-director.test.tsx` (new, 3). Covers the toast for a kept director, Remove hidden on a
-  `director` row, and the old toast for anyone else, which passed against the unfixed code.
+- `apps/web/tests/roster-remove-director.test.tsx` (new, 7). Covers the toast for a kept director, Remove hidden on a
+  `director` row, Director offered and saved, a director row given a team role, and the confirmation text. Two passed
+  against the unfixed code because they cover what must keep working: the old toast for anyone else, and no Director
+  offered for anyone else.
 
 **Browser, local stack (dev server).** A temporary user, a director of the seed club with a `coach` row on its
-team, a team channel membership and an upcoming RSVP. The seed coach removed them from the roster:
+team, a team channel membership and an upcoming RSVP. Signed in as the seed coach:
 
-- The toast said they stay on as director.
+- The role editor offered Director for them. Saving it made the row `director`, and saving Coach made it `coach` again.
+- A seed player who isn't a director wasn't offered Director.
+- Removing them, the confirmation said they'd stay on the team as a director, and the toast said the same.
 - The same row became `director`, and the channel membership and the RSVP were still there.
 - Their profile then had no Remove.
 - Signed in as them, the club portal opened with the header on the team as `(Director)`.
@@ -158,8 +176,11 @@ team, a team channel membership and an upcoming RSVP. The seed coach removed the
 The seed team has no private groups, so keeping a group membership wasn't seen in the browser. The action doesn't
 touch channels on this path; the unit test checks that no cleanup runs.
 
+The full RLS suite passes locally (56 files, 732 tests).
+
 **Not tested:** staging and production.
 
-**Deployment verification required:** the migration adds a function that changes `team_members`. After deploy,
-confirm `remove_team_member_role` exists in production and that `anon` can't run it. A removal of a coaching director
+**Deployment verification required:** the migrations add a function that changes `team_members` and a trigger on it.
+After deploy, confirm `remove_team_member_role` and the `team_members_director_needs_directorship` trigger exist in
+production, and that `anon` can't run the function. A removal of a coaching director
 in production would confirm the whole path. Not yet checked.

@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, afterAll } from "vitest";
+import { isClubAdminOfTeam } from "@/lib/club/club-admin";
 import {
   adminClient,
   createTestUser,
@@ -147,5 +148,98 @@ describe("remove_team_member_role", () => {
 
     expect(error?.code).toBe("42501");
     expect((await row(teamId, director.user.id))!.role).toBe("coach");
+  });
+});
+
+// ── Setting the director role on a team (BUG-046, 2026-11-05) ────────────────
+//
+// The roster's role editor offers Director for a club owner or director, so a
+// coach can move them between director and a team role. Only they can hold a
+// `director` row: the database refuses one for anyone else.
+
+describe("the director role on a team", () => {
+  async function setRole(client: Client, memberId: string, role: string) {
+    return client.from("team_members").update({ role }).eq("id", memberId).select("role");
+  }
+
+  it("lets a coach set a club director's row to director, and back", async () => {
+    const { director, teamId } = await setupClub();
+    const coach = await createTestUser();
+    await addTeamMember(teamId, coach.user.id, "coach");
+    const target = (await row(teamId, director.user.id))!;
+
+    const toDirector = await setRole(coach.client, target.id, "director");
+    expect(toDirector.error).toBeNull();
+    expect((await row(teamId, director.user.id))!.role).toBe("director");
+
+    const toManager = await setRole(coach.client, target.id, "manager");
+    expect(toManager.error).toBeNull();
+    expect((await row(teamId, director.user.id))!.role).toBe("manager");
+  });
+
+  it("lets the club owner's row be set to director", async () => {
+    const { owner, director, teamId } = await setupClub();
+    const target = (await row(teamId, owner.user.id))!;
+
+    const { error } = await setRole(director.client, target.id, "director");
+
+    expect(error).toBeNull();
+    expect((await row(teamId, owner.user.id))!.role).toBe("director");
+  });
+
+  it("refuses director for someone who isn't an owner or director of the club", async () => {
+    const { owner, teamId } = await setupClub();
+    const player = await createTestUser();
+    await addTeamMember(teamId, player.user.id, "player");
+    const target = (await row(teamId, player.user.id))!;
+
+    const { error } = await setRole(owner.client, target.id, "director");
+
+    expect(error?.code).toBe("42501");
+    expect((await row(teamId, player.user.id))!.role).toBe("player");
+  });
+
+  it("refuses director for a director of another club", async () => {
+    const { owner, teamId } = await setupClub();
+    const elsewhere = await createTestUser();
+    const { orgId: otherOrg } = await createTestTeam(elsewhere.user.id);
+    await addOrgMember(otherOrg, elsewhere.user.id, "director");
+    await addTeamMember(teamId, elsewhere.user.id, "coach");
+    const target = (await row(teamId, elsewhere.user.id))!;
+
+    const { error } = await setRole(owner.client, target.id, "director");
+
+    expect(error?.code).toBe("42501");
+    expect((await row(teamId, elsewhere.user.id))!.role).toBe("coach");
+  });
+
+  it("refuses a new director row for someone who isn't a club admin", async () => {
+    const { teamId } = await setupClub();
+    const outsider = await createTestUser();
+
+    const { error } = await adminClient
+      .from("team_members")
+      .insert({ team_id: teamId, profile_id: outsider.user.id, role: "director" });
+
+    expect(error?.code).toBe("42501");
+    expect(await row(teamId, outsider.user.id)).toBeNull();
+  });
+});
+
+// ── Who the role editor offers Director for ──────────────────────────────────
+
+describe("isClubAdminOfTeam", () => {
+  it("is true for the club's owner and directors, and false for anyone else", async () => {
+    const { owner, director, teamId } = await setupClub();
+    const coach = await createTestUser();
+    await addTeamMember(teamId, coach.user.id, "coach");
+    const elsewhere = await createTestUser();
+    const { orgId: otherOrg } = await createTestTeam(elsewhere.user.id);
+    await addOrgMember(otherOrg, elsewhere.user.id, "director");
+
+    expect(await isClubAdminOfTeam(adminClient as never, teamId, owner.user.id)).toBe(true);
+    expect(await isClubAdminOfTeam(adminClient as never, teamId, director.user.id)).toBe(true);
+    expect(await isClubAdminOfTeam(adminClient as never, teamId, coach.user.id)).toBe(false);
+    expect(await isClubAdminOfTeam(adminClient as never, teamId, elsewhere.user.id)).toBe(false);
   });
 });

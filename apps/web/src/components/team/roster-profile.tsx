@@ -64,6 +64,8 @@ interface RosterProfileProps {
   canEditProfile: boolean;
   canRemoveManagers: boolean;
   isAdmin: boolean;
+  /** An owner or director of the team's club: Director is a role they can have here (BUG-046). */
+  isClubDirector?: boolean;
   isOwnProfile: boolean;
   teamId: string;
 }
@@ -76,6 +78,7 @@ export function RosterProfile({
   canEditProfile,
   canRemoveManagers,
   isAdmin,
+  isClubDirector = false,
   isOwnProfile,
   teamId,
 }: RosterProfileProps) {
@@ -156,6 +159,7 @@ export function RosterProfile({
           canEditProfile={canEditProfile}
           canRemoveManagers={canRemoveManagers}
           isAdmin={isAdmin}
+          isClubDirector={isClubDirector}
           teamId={teamId}
         />
       ) : (
@@ -187,12 +191,21 @@ export function RosterProfile({
               <DialogHeader>
                 <DialogTitle>Remove Member</DialogTitle>
                 <DialogDescription>
-                  Are you sure you want to remove{" "}
-                  <strong>
-                    {profile.first_name} {profile.last_name}
-                  </strong>{" "}
-                  from the team? Their profile and history will be preserved,
-                  but they will lose all access to team pages.
+                  {isClubDirector ? (
+                    <>
+                      <strong>{fullName}</strong> is a club director, so they&apos;ll stay on
+                      the team as a director. Only their role here changes.
+                    </>
+                  ) : (
+                    <>
+                      Are you sure you want to remove{" "}
+                      <strong>
+                        {profile.first_name} {profile.last_name}
+                      </strong>{" "}
+                      from the team? Their profile and history will be preserved,
+                      but they will lose all access to team pages.
+                    </>
+                  )}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -315,6 +328,7 @@ function EditMode({
   canEditProfile,
   canRemoveManagers,
   isAdmin,
+  isClubDirector,
   teamId,
 }: {
   member: TeamMemberWithProfile;
@@ -323,6 +337,7 @@ function EditMode({
   canEditProfile: boolean;
   canRemoveManagers: boolean;
   isAdmin: boolean;
+  isClubDirector: boolean;
   teamId: string;
 }) {
   const profile = member.profiles;
@@ -520,7 +535,7 @@ function EditMode({
                 <Select
                   value={role}
                   onValueChange={(v) =>
-                    setRole(v as "coach" | "manager" | "player")
+                    setRole(v as "coach" | "manager" | "player" | "director")
                   }
                 >
                   <SelectTrigger className="flex-1">
@@ -530,6 +545,7 @@ function EditMode({
                     <SelectItem value="coach">Coach</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="player">Player</SelectItem>
+                    {isClubDirector && <SelectItem value="director">Director</SelectItem>}
                   </SelectContent>
                 </Select>
                 <Button
