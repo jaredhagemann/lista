@@ -136,7 +136,7 @@ Written first, failing against the unfixed code:
 ## Fix as implemented
 
 **Branch:** `fix/045-navigation-feedback`
-**PR:** #NN
+**PR:** #158
 **Migration:** none
 
 **The bar.** `PageSkeleton` now renders `ProgressWhileMounted`, which reports to `NavigationProgressContext` for as
