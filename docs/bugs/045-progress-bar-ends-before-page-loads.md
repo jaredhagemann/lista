@@ -70,7 +70,8 @@ The logged switch made 22 dashboard requests after the click, including one `307
   the bar while the page's server data is still loading.
 - **The switch:** the event page has to render far enough to find the event is on another team. It then
   redirects to the switch route, which redirects back, and the event page renders again. The first render is
-  wasted, and this accounts for the extra wait: about 250 ms in the table above.
+  wasted. A switch took about 250 ms longer in the table above, but that time wasn't split across these steps, so
+  how much of it the direct link saves is unmeasured.
 
 **Inferred:** the repeated sidebar requests look like link prefetches running again after `router.refresh()` in
 `RefreshAfterTeamSwitch`. The direct link below doesn't remove them, because the refresh is still needed.
@@ -91,8 +92,8 @@ Points to handle:
 - **No stuck bar:** the bar must end if the navigation fails or the viewer goes elsewhere, so ending it belongs in
   the effect's cleanup.
 - **Pages without a placeholder:** their content arrives with the URL change, so they keep ending there.
-- **Several placeholders in a row:** a switch shows the placeholder more than once on its way to the event. The
-  bar should run through them as one, without flickering.
+- **Several placeholders in a row:** a switch may show the placeholder more than once on its way to the event
+  (not yet checked). If so, the bar should run through them as one, without flickering.
 
 ### 2. Link straight to the switch from the agenda
 
