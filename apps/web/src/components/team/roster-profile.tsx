@@ -101,7 +101,11 @@ export function RosterProfile({
       toast.error(result.error);
       setRemoving(false);
     } else {
-      toast.success("Member removed from team");
+      toast.success(
+        "keptAsDirector" in result && result.keptAsDirector
+          ? `${fullName} is a club director, so they stay on the team as a director.`
+          : "Member removed from team"
+      );
       navigate("/dashboard/team");
     }
   }
@@ -164,8 +168,9 @@ export function RosterProfile({
         />
       )}
 
-      {/* Remove from team — always visible to admins viewing another member's profile */}
-      {isAdmin && !isOwnProfile && (
+      {/* Remove from team — for admins viewing another member's profile. A director's
+          place on the team comes with the directorship, removed in club settings. */}
+      {isAdmin && !isOwnProfile && member.role !== "director" && (
         <>
           <div className="border-t pt-2">
             <Button

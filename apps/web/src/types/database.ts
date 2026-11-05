@@ -1626,6 +1626,10 @@ export type Database = {
         Args: { p_actor_id: string; p_org_id: string; p_profile_id: string }
         Returns: undefined
       }
+      remove_team_member_role: {
+        Args: { p_member_id: string; p_team_id: string }
+        Returns: string
+      }
       reopen_club: { Args: { p_org_id: string }; Returns: undefined }
       respond_ownership_transfer: {
         Args: { p_accept: boolean; p_actor_id: string; p_transfer_id: string }
