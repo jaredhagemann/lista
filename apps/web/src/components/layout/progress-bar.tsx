@@ -8,28 +8,48 @@ import {
   useState,
   Suspense,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 /**
  * Registers a navigation that is on its way; the returned function ends it.
  * useNavigate reports through this, because a router.push from a click handler
- * is no anchor click and the bar would otherwise never start.
+ * is no anchor click and the bar would otherwise never start. A page's loading
+ * placeholder reports too, so the bar lasts until the content is on screen.
  */
 export type ReportNavigation = () => () => void;
 
 export const NavigationProgressContext = createContext<ReportNavigation | null>(null);
 
-function ProgressBarInner({ color, reported }: { color: string; reported: boolean }) {
+function ProgressBarInner({
+  color,
+  reported,
+  reportedCount,
+}: {
+  color: string;
+  reported: boolean;
+  reportedCount: RefObject<number>;
+}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const barRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef(false);
+  // What's still scheduled from the last start or finish, cancelled by the next.
+  const pendingRef = useRef<{ frame?: number; timer?: ReturnType<typeof setTimeout> }>({});
+
+  const cancelPending = useCallback(() => {
+    if (pendingRef.current.frame !== undefined) cancelAnimationFrame(pendingRef.current.frame);
+    clearTimeout(pendingRef.current.timer);
+    pendingRef.current = {};
+  }, []);
 
   const start = useCallback(() => {
     const bar = barRef.current;
-    if (!bar) return;
+    // Already running, as when a link's placeholder takes over: carry on from here.
+    if (!bar || activeRef.current) return;
 
+    cancelPending();
     activeRef.current = true;
     // Styled imperatively like the width, so the bar never re-renders mid-navigation.
     bar.setAttribute("aria-hidden", "false");
@@ -38,44 +58,45 @@ function ProgressBarInner({ color, reported }: { color: string; reported: boolea
     bar.style.opacity = "1";
 
     // Double rAF ensures the reset above has painted before we start growing
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    pendingRef.current.frame = requestAnimationFrame(() => {
+      pendingRef.current.frame = requestAnimationFrame(() => {
         bar.style.transition = "width 8s cubic-bezier(0.04, 0.6, 0.3, 0.97)";
         bar.style.width = "85%";
       });
     });
-  }, []);
+  }, [cancelPending]);
 
   // Navigation complete — snap bar to 100% then fade out
   const finish = useCallback(() => {
     const bar = barRef.current;
     if (!bar || !activeRef.current) return;
+    cancelPending();
     activeRef.current = false;
     bar.setAttribute("aria-hidden", "true");
 
     bar.style.transition = "width 150ms ease-out";
     bar.style.width = "100%";
 
-    const fadeTimer = setTimeout(() => {
+    pendingRef.current.timer = setTimeout(() => {
       bar.style.transition = "opacity 200ms ease-out";
       bar.style.opacity = "0";
 
-      const resetTimer = setTimeout(() => {
+      pendingRef.current.timer = setTimeout(() => {
         bar.style.transition = "none";
         bar.style.width = "0%";
         bar.style.opacity = "1";
       }, 200);
-
-      return () => clearTimeout(resetTimer);
     }, 150);
+  }, [cancelPending]);
 
-    return () => clearTimeout(fadeTimer);
-  }, []);
+  // A link's navigation is done when the URL changes, unless the page is still
+  // loading behind its placeholder, which shows in that same commit. This reads
+  // the count, because the reported state hasn't caught up with it yet.
+  useEffect(() => {
+    if (reportedCount.current === 0) finish();
+  }, [pathname, searchParams, reportedCount, finish]);
 
-  // A link's navigation is done when the URL changes.
-  useEffect(finish, [pathname, searchParams, finish]);
-
-  // A reported navigation (useNavigate) runs the bar for as long as it is pending.
+  // A reported navigation (useNavigate) or a page's placeholder runs the bar for as long as it lasts.
   useEffect(() => (reported ? start() : finish()), [reported, start, finish]);
 
   // Start bar on link click — attach to document so it works regardless of
@@ -135,15 +156,20 @@ function ProgressBarInner({ color, reported }: { color: string; reported: boolea
 /** The bar along the top of every page, and the context that programmatic navigations report to. */
 export function ProgressBar({ color, children }: { color?: string | null; children?: ReactNode }) {
   const [reported, setReported] = useState(0);
+  const reportedCount = useRef(0);
   const report = useCallback<ReportNavigation>(() => {
+    reportedCount.current += 1;
     setReported((n) => n + 1);
-    return () => setReported((n) => n - 1);
+    return () => {
+      reportedCount.current -= 1;
+      setReported((n) => n - 1);
+    };
   }, []);
 
   return (
     <NavigationProgressContext.Provider value={report}>
       <Suspense>
-        <ProgressBarInner color={color ?? "#6366f1"} reported={reported > 0} />
+        <ProgressBarInner color={color ?? "#6366f1"} reported={reported > 0} reportedCount={reportedCount} />
       </Suspense>
       {children}
     </NavigationProgressContext.Provider>
