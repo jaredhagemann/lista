@@ -135,7 +135,7 @@ describe("POST /api/club/directors/invite", () => {
 
     const [message] = mocks.sendEmail.mock.calls[0] as unknown as [{ to: string; subject: string; html: string }];
     expect(message.to).toBe("d@test.local");
-    expect(message.subject).toContain("Westside FC");
+    expect(message.subject).toBe("You're invited to join Westside FC");
     expect(message.html).toContain("/invite/inv-1");
     expect(message.html).toContain("Olive Owner");
     expect(message.html).toContain("director");

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient } from "@/lib/api-auth";
 import { sendEmail } from "@/lib/notifications/email";
-import { renderInviteEmail } from "@/emails/invite-email";
+import { inviteSubject, renderInviteEmail } from "@/emails/invite-email";
 import { orgInviteBaseUrl, orgInviteBranding } from "@/lib/invitations/invite-base-url";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   try {
     await sendEmail({
       to: email,
-      subject: `You've been invited to help run ${clubName} on ${brand.name}`,
+      subject: inviteSubject({ teamName: clubName, kind: "club" }),
       ...(await renderInviteEmail({ teamName: clubName, inviterName, role: "director", inviteUrl, brand, kind: "club" })),
       brandName: brand.fromName,
     });

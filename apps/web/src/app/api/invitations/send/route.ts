@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
 import { sendEmail } from "@/lib/notifications/email";
-import { renderInviteEmail } from "@/emails/invite-email";
+import { inviteSubject, renderInviteEmail } from "@/emails/invite-email";
 import { guardianOfName, inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import type { Database } from "@/types/database";
 import { invitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
@@ -204,12 +204,13 @@ export async function POST(request: Request) {
   const inviteUrl = `${baseUrl}/invite/${invitationId}`;
 
   // Attempt send before insert so email_status is determined at insert time
+  const inviteeName = [firstName, lastName].map((n) => n?.trim()).filter(Boolean).join(" ");
   let emailSent = false;
   try {
     await sendEmail({
       to: email,
-      subject: `You've been invited to join ${teamName} on ${brand.name}`,
-      ...(await renderInviteEmail({ teamName, inviterName, role, inviteUrl, brand, guardianOf })),
+      subject: inviteSubject({ teamName, guardianOf, inviteeName }),
+      ...(await renderInviteEmail({ teamName, inviterName, role, inviteUrl, brand, guardianOf, inviteeName })),
       brandName: brand.fromName,
     });
     emailSent = true;

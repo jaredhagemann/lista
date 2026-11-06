@@ -1,6 +1,6 @@
 import { LISTA_BRAND, clubEmailBrand, type EmailBrand } from "@/emails/brand";
 import type { RenderedEmail } from "@/emails/layout";
-import { renderInviteEmail } from "@/emails/invite-email";
+import { inviteSubject, renderInviteEmail } from "@/emails/invite-email";
 import { renderEventEmail, type AnswerRow } from "@/emails/event-email";
 import { gameTitle } from "@/lib/events/game-display";
 import { renderSeriesUpdateEmail } from "@/emails/series-update-email";
@@ -201,34 +201,64 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
       group: "Invitations",
       name: "invite-player-club",
       title: "Player invitation, club team",
-      subject: "You've been invited to join 12U Girls on SLOFC",
+      subject: inviteSubject({ teamName: "12U Girls", inviteeName: "Maya Lopez" }),
+      brand: club,
+      render: () =>
+        renderInviteEmail({
+          teamName: "12U Girls",
+          inviterName: "Sam Okafor",
+          role: "player",
+          inviteeName: "Maya Lopez",
+          inviteUrl: `${APP}/invite/sample`,
+          brand: club,
+        }),
+    },
+    {
+      group: "Invitations",
+      name: "invite-player-lista",
+      title: "Player invitation, team outside a club",
+      subject: inviteSubject({ teamName: "Rec Soccer", inviteeName: "Maya Lopez" }),
+      brand: LISTA_BRAND,
+      render: () =>
+        renderInviteEmail({
+          teamName: "Rec Soccer",
+          inviterName: "Sam Okafor",
+          role: "player",
+          inviteeName: "Maya Lopez",
+          inviteUrl: `${APP}/invite/sample`,
+          brand: LISTA_BRAND,
+        }),
+    },
+    {
+      group: "Invitations",
+      name: "invite-coach-club",
+      title: "Coach invitation, club team",
+      subject: inviteSubject({ teamName: "12U Girls", inviteeName: "Jordan Lee" }),
+      brand: club,
+      render: () =>
+        renderInviteEmail({
+          teamName: "12U Girls",
+          inviterName: "Olive Owner",
+          role: "coach",
+          inviteeName: "Jordan Lee",
+          inviteUrl: `${APP}/invite/sample`,
+          brand: club,
+        }),
+    },
+    {
+      group: "Invitations",
+      name: "invite-player-no-name",
+      title: "Player invitation without a name (an older invitation, resent)",
+      subject: inviteSubject({ teamName: "12U Girls" }),
       brand: club,
       render: () =>
         renderInviteEmail({ teamName: "12U Girls", inviterName: "Sam Okafor", role: "player", inviteUrl: `${APP}/invite/sample`, brand: club }),
     },
     {
       group: "Invitations",
-      name: "invite-player-lista",
-      title: "Player invitation, team outside a club",
-      subject: "You've been invited to join Rec Soccer on Lista",
-      brand: LISTA_BRAND,
-      render: () =>
-        renderInviteEmail({ teamName: "Rec Soccer", inviterName: "Sam Okafor", role: "player", inviteUrl: `${APP}/invite/sample`, brand: LISTA_BRAND }),
-    },
-    {
-      group: "Invitations",
-      name: "invite-coach-club",
-      title: "Coach invitation, club team",
-      subject: "You've been invited to join 12U Girls on SLOFC",
-      brand: club,
-      render: () =>
-        renderInviteEmail({ teamName: "12U Girls", inviterName: "Olive Owner", role: "coach", inviteUrl: `${APP}/invite/sample`, brand: club }),
-    },
-    {
-      group: "Invitations",
       name: "invite-guardian-club",
       title: "Guardian invitation, for a player on the team",
-      subject: "You've been invited to join 12U Girls on SLOFC",
+      subject: inviteSubject({ teamName: "12U Girls", guardianOf: "Ava" }),
       brand: club,
       // Stored with the role "manager" (BUG-012); the email says Guardian.
       render: () =>
@@ -245,7 +275,7 @@ export function emailSamples(club: EmailBrand = sampleClub()): EmailSample[] {
       group: "Invitations",
       name: "invite-director",
       title: "Director invitation (joins the club)",
-      subject: "You've been invited to help run SLOFC on SLOFC",
+      subject: inviteSubject({ teamName: "SLOFC", kind: "club" }),
       brand: club,
       render: () =>
         renderInviteEmail({

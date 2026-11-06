@@ -154,6 +154,25 @@ describe("the layout", () => {
     expect(html).toMatch(/color:\s*#111827/i);
   });
 
+  // invite-email-names (2026-11-06): logos twice the size, for every email.
+  it("a club logo is shown up to 96px tall and 400px wide", async () => {
+    const { html } = await renderInviteEmail({ ...INVITE, brand: CLUB });
+    const logo = html.match(new RegExp(`<img[^>]*src="${CLUB_LOGO}"[^>]*>`))![0];
+
+    expect(logo).toContain('height="96"');
+    expect(logo).toMatch(/max-height:\s*96px/);
+    expect(logo).toMatch(/max-width:\s*400px/);
+  });
+
+  it("lista's mark is 96px tall, with the wordmark to match", async () => {
+    const { html } = await renderInviteEmail({ ...INVITE, brand: LISTA_BRAND });
+    const mark = html.match(/<img[^>]*lista-mark\.png[^>]*>/)![0];
+
+    expect(mark).toContain('height="96"');
+    expect(mark).toContain('width="107"');
+    expect(html).toMatch(/font-size:\s*69px[^>]*>lista</);
+  });
+
   it("has an inbox preview line", async () => {
     const { html } = await renderInviteEmail({ ...INVITE, brand: LISTA_BRAND });
     expect(html).toContain("Coach Sarah has invited you to join U12 Blue");
@@ -444,6 +463,7 @@ describe("previews (scripts/email-previews.ts)", () => {
       "invite-player-club",
       "invite-player-lista",
       "invite-coach-club",
+      "invite-player-no-name",
       "invite-guardian-club",
       "invite-director",
       "event-created-game-guardian",
@@ -485,6 +505,8 @@ describe("previews (scripts/email-previews.ts)", () => {
     expect(subject("series-updated-club")).toBe("Updated: Tuesday practice — 12 events");
     expect(subject("reminder-game-guardian")).toBe("Reminder: 12U Girls @ Rivals FC tomorrow");
     expect(subject("club-ownership-offer")).toBe("Olive Owner wants to hand SLOFC over to you");
+    expect(subject("invite-player-club")).toBe("Invitation for Maya Lopez: join 12U Girls");
+    expect(subject("invite-director")).toBe("You're invited to join SLOFC");
   });
 
   it("every sample renders", async () => {

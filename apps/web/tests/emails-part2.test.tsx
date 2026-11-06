@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import { renderEventEmail, type AnswerRow } from "@/emails/event-email";
-import { renderInviteEmail } from "@/emails/invite-email";
+import { inviteSubject, renderInviteEmail } from "@/emails/invite-email";
 import { LISTA_BRAND, clubEmailBrand } from "@/emails/brand";
 
 const CLUB = clubEmailBrand({ name: "San Luis Obispo FC", org_name_public: "SLOFC", logo_url: null, plan: "club_small", brand_color_secondary: "#C8102E" });
@@ -204,9 +204,87 @@ describe("an invitation", () => {
     expect(text).toContain("as Ava's guardian");
   });
 
-  it("a director invitation asks you to help run the club", async () => {
-    const { html } = await renderInviteEmail({ ...INVITE, teamName: "SLOFC", role: "director", kind: "club", brand: CLUB });
-    expect(html).toContain("Help run SLOFC");
+  it("a director invitation is headed 'Join [club]', not 'Help run SLOFC on SLOFC'", async () => {
+    const { html, text } = await renderInviteEmail({ ...INVITE, teamName: "SLOFC", role: "director", kind: "club", brand: CLUB });
+
+    expect(html).toContain(">Join SLOFC<");
+    expect(html).not.toContain("SLOFC on SLOFC");
+    expect(text).toContain("Sam Okafor has invited you to help run SLOFC as a director.");
+  });
+});
+
+// ── Invitations: the invitee's name and role (invite-email-names, 2026-11-06) ───
+
+describe("an invitation's name and role", () => {
+  const INVITE = { teamName: "12U Girls", inviterName: "Sam Okafor", inviteUrl: "https://lista.team/invite/abc" };
+
+  it("names the invitee and the role in the sentence", async () => {
+    const { text } = await renderInviteEmail({ ...INVITE, role: "player", inviteeName: "Maya Lopez", brand: CLUB });
+    expect(text).toContain("Sam Okafor has invited Maya Lopez to join 12U Girls as a player.");
+  });
+
+  it("without a name, says you, and still names the role", async () => {
+    const { text } = await renderInviteEmail({ ...INVITE, role: "coach", brand: CLUB });
+    expect(text).toContain("Sam Okafor has invited you to join 12U Girls as a coach.");
+  });
+
+  it("has a details table: who it's for, role, team and inviter", async () => {
+    const { html, text } = await renderInviteEmail({ ...INVITE, role: "coach", inviteeName: "Jordan Lee", brand: CLUB });
+
+    expect(html).toContain("email-data");
+    for (const [label, value] of [["Invitation for", "Jordan Lee"], ["Role", "Coach"], ["Team", "12U Girls"], ["Invited by", "Sam Okafor"]]) {
+      expect(text).toMatch(new RegExp(`${label}\\s+${value}`));
+    }
+  });
+
+  it("a guardian invitation names the player in the table, and no invitee", async () => {
+    const { text } = await renderInviteEmail({ ...INVITE, role: "manager", guardianOf: "Ava", inviteeName: "Ava Smith", brand: CLUB });
+
+    expect(text).toMatch(/Player\s+Ava/);
+    expect(text).toMatch(/Role\s+Guardian/);
+    expect(text).not.toContain("Invitation for");
+    expect(text).toContain("has invited you to join 12U Girls as Ava's guardian.");
+  });
+
+  it("a director invitation's table names the club", async () => {
+    const { text } = await renderInviteEmail({ ...INVITE, teamName: "SLOFC", role: "director", kind: "club", brand: CLUB });
+
+    expect(text).toMatch(/Role\s+Director/);
+    expect(text).toMatch(/Club\s+SLOFC/);
+  });
+
+  it("a player's invitation tells a parent they can accept for them", async () => {
+    const { text } = await renderInviteEmail({ ...INVITE, role: "player", inviteeName: "Maya Lopez", brand: CLUB });
+    expect(text).toContain("Not Maya? If you're Maya's parent or guardian, use the same button to accept for them.");
+  });
+
+  it("a coach's invitation has no parent line", async () => {
+    const { text } = await renderInviteEmail({ ...INVITE, role: "coach", inviteeName: "Jordan Lee", brand: CLUB });
+    expect(text).not.toContain("parent or guardian");
+  });
+
+  it("the inbox preview names the invitee", async () => {
+    const { html } = await renderInviteEmail({ ...INVITE, role: "player", inviteeName: "Maya Lopez", brand: CLUB });
+    expect(html).toContain("Sam Okafor has invited Maya Lopez to join 12U Girls as a player");
+  });
+});
+
+describe("inviteSubject", () => {
+  it("names the invitee, not the role", () => {
+    expect(inviteSubject({ teamName: "12U Girls", inviteeName: "Maya Lopez" })).toBe("Invitation for Maya Lopez: join 12U Girls");
+  });
+
+  it("without a name, invites you", () => {
+    expect(inviteSubject({ teamName: "12U Girls" })).toBe("You're invited to join 12U Girls");
+    expect(inviteSubject({ teamName: "12U Girls", inviteeName: "  " })).toBe("You're invited to join 12U Girls");
+  });
+
+  it("a director's: join the club", () => {
+    expect(inviteSubject({ teamName: "SLOFC", kind: "club" })).toBe("You're invited to join SLOFC");
+  });
+
+  it("a guardian's isn't addressed to the player", () => {
+    expect(inviteSubject({ teamName: "12U Girls", inviteeName: "Ava Smith", guardianOf: "Ava" })).toBe("You're invited to join 12U Girls");
   });
 });
 
