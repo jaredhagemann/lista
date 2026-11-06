@@ -213,6 +213,28 @@ describe("POST /api/club/directors/remove", () => {
     });
   });
 
+  it("says what the removal did, for the owner to see (BUG-047)", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        teams_passed: ["12U Girls"],
+        director_places_removed: 3,
+        roles_kept: [{ team: "14U Boys", role: "coach" }],
+      },
+      error: null,
+    });
+
+    const res = await remove(post("/api/club/directors/remove", { orgId: ORG, profileId: "dir-1" }));
+
+    expect(await res.json()).toEqual({
+      success: true,
+      summary: {
+        teamsPassed: ["12U Girls"],
+        directorPlacesRemoved: 3,
+        rolesKept: [{ team: "14U Boys", role: "coach" }],
+      },
+    });
+  });
+
   it("a non-owner is refused with 403", async () => {
     mocks.rpc.mockResolvedValue(rpcError("42501", "NOT_AUTHORIZED: only the club owner can remove directors"));
 

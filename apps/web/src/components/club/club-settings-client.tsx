@@ -23,6 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { UserPlus } from "lucide-react";
+import { RemoveDirectorDialog, type DirectorImpact } from "@/components/club/remove-director-dialog";
 
 type Director = {
   profile_id: string;
@@ -32,6 +33,8 @@ type Director = {
     last_name: string | null;
     email: string | null;
   } | null;
+  /** For the owner: what removing them would change (BUG-047). */
+  impact?: DirectorImpact;
 };
 
 export function ClubSettingsClient({
@@ -56,6 +59,9 @@ export function ClubSettingsClient({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
+
+  // The director being removed, in the confirmation dialog (BUG-047).
+  const [removing, setRemoving] = useState<Director | null>(null);
 
   async function handleSaveName(e: React.FormEvent) {
     e.preventDefault();
@@ -102,20 +108,8 @@ export function ClubSettingsClient({
     }
   }
 
-  async function handleRemoveDirector(profileId: string) {
-    const res = await fetch("/api/club/directors/remove", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orgId: org.id, profileId }),
-    });
-    if (!res.ok) {
-      const { error } = await res.json();
-      toast.error(error ?? "Failed to remove director");
-      return;
-    }
-    toast.success("Director removed");
-    router.refresh();
-  }
+  const fullName = (d: Director) =>
+    [d.profiles?.first_name, d.profiles?.last_name].filter(Boolean).join(" ") || d.profiles?.email || "this director";
 
   return (
     <div className="space-y-8">
@@ -235,7 +229,7 @@ export function ClubSettingsClient({
                               size="sm"
                               variant="ghost"
                               className="text-destructive hover:text-destructive"
-                              onClick={() => handleRemoveDirector(d.profile_id)}
+                              onClick={() => setRemoving(d)}
                             >
                               Remove
                             </Button>
@@ -250,6 +244,20 @@ export function ClubSettingsClient({
           </Table>
         </div>
       </section>
+
+      <RemoveDirectorDialog
+        orgId={org.id}
+        clubName={org.orgNamePublic || org.name}
+        director={
+          removing && {
+            profileId: removing.profile_id,
+            name: fullName(removing),
+            firstName: removing.profiles?.first_name || fullName(removing),
+            impact: removing.impact,
+          }
+        }
+        onClose={() => setRemoving(null)}
+      />
     </div>
   );
 }

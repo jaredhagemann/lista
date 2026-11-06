@@ -1629,7 +1629,7 @@ export type Database = {
       }
       remove_org_director: {
         Args: { p_actor_id: string; p_org_id: string; p_profile_id: string }
-        Returns: undefined
+        Returns: Json
       }
       remove_team_member_role: {
         Args: { p_member_id: string; p_team_id: string }
