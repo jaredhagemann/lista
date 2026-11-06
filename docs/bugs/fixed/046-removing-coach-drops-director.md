@@ -68,6 +68,7 @@ production. Nobody has done this removal in production yet; this ticket comes fr
 | Upcoming availability when the row becomes `director` | Keep it: they're still on the roster | Keep it | 2026-11-05 | |
 | Team owner check (`team.ts:175`) when the row becomes `director` | Skip it for a change to `director`: a director owning a club team is normal (`create_club_team` does this) | Skip it: only the role changes | 2026-11-05 | |
 | The roster's role editor can change a `director` row to coach, manager or player | Leave it: that's how a director starts coaching, and the team stays in their app | Revised the same day: the role editor offers Director for a club owner or director, and only for them, so a coach or manager can move them between director and a team role | 2026-11-05 | |
+| Who counts as a club owner or director here (from the PR review) | A director always; an owner only while the organization is on a Club plan. `create_team` records every standalone team's creator as its free organization's owner, which the spec calls record keeping | Decided in the review fix; open to the product owner | 2026-11-05 | `docs/reviews/2026-11-05-pr159-review.md` finding 2, `docs/specs/multi-tenant-architecture.md` (backfill, downgrade to free) |
 
 ## Cause
 
@@ -104,7 +105,8 @@ whether it has its own removal path.
 **Branch:** `fix/046-removing-coach-drops-director`
 **PR:** #159
 **Migrations:** `supabase/migrations/20261105000000_remove_team_member_role.sql`,
-`supabase/migrations/20261105000001_director_role_needs_directorship.sql`
+`supabase/migrations/20261105000001_director_role_needs_directorship.sql`,
+`supabase/migrations/20261105000002_club_admin_of_team.sql` (review fixes)
 
 **The database decides.** `remove_team_member_role(p_member_id, p_team_id)` runs as the caller, with a team admin
 check, and in one transaction:
@@ -139,6 +141,25 @@ unless the person is an owner or director of the team's club. The access rules l
 role, so without this the role could be given to anyone through the API. Rows already `director` aren't rechecked
 on other edits. Every place that adds director rows does so after the directorship exists.
 
+**Review fixes** (`docs/reviews/2026-11-05-pr159-review.md`), in the third migration:
+
+- **One check, with a lock.** `club_admin_of_team(team, profile)` is now the only test of who counts, used by the
+  trigger, `remove_team_member_role`, team creation and `isClubAdminOfTeam` (through the service role). It locks the
+  qualifying `organization_members` row `FOR SHARE`. Before, the trigger read it without a lock, so a role edit
+  made while `remove_org_director` was still running could leave a `director` row, and team admin access, after
+  the directorship was gone. Now the edit either waits and is refused, or finishes first and the removal deletes
+  the row.
+- **Free teams.** A director always counts, and an owner only while the organization is on a Club plan, so a
+  standalone team's owner keeps the "Transfer ownership" guard and isn't offered Director. A club that cancels
+  goes back to `free`, and its owner is then treated as a free team owner, as the spec describes.
+- **New club teams.** `POST /api/club/teams` enrolled the owners and directors it had read before making the team,
+  so one leaving in between made the trigger refuse the whole insert, and the route still returned 201 with nobody
+  on the team. `enroll_club_admins(team)` now enrolls whoever qualifies when it runs and returns them. If it fails,
+  or the creator isn't among them, the route deletes the new team and returns 500 with "Couldn't add you to the
+  new team. Please try again." `create_club_team` enrolls through it too.
+
+Both new functions are for the service role only.
+
 **Not changed:**
 
 - The access rules still let a team admin delete any `team_members` row directly, through the API rather than the app.
@@ -155,6 +176,18 @@ on other edits. Every place that adds director rows does so after the directorsh
   row to `director` and back, and the owner's row can be set to `director`. The three refusals, which failed against
   the unfixed code, are a non-admin player, a director of another club, and a new row for an outsider. One more covers
   `isClubAdminOfTeam`.
+- The same file, 6 more for the review fixes, 5 of which failed before them. Two overlap a role edit with
+  `remove_org_director` in separate sessions, in each order. A standalone team made by `create_team` is checked as
+  not a club admin: no Director, removal left to the owner guard. Once the organization is on a Club plan its owner
+  counts; this one passed before, as it covers what must keep working. `POST /api/club/teams` runs against the
+  local database with a director removed between its read and the enrollment, and still enrolls the creator.
+  Clients can't run the two new functions.
+- `apps/web/tests/club-api.test.ts` (3 new, 2 replaced). The route enrolls through `enroll_club_admins`, and a
+  failed enrollment, or one without the creator, removes the team and returns 500. These replace the test that
+  expected 201 after a failed enrollment.
+- The reviewer's probes, run against the fix: the race, the free team and the migration replay pass. The
+  team-creation probe can't reach the new code, because its stand-in client has no `rpc`. The test above is the
+  same scenario with `rpc` passed through.
 - `tests/unit/team-actions.test.ts` (4 new). A kept director has no owner check, no cleanup and no delete. A
   `director_row` is refused, and an error from the check stops the removal. Anyone else is removed as before; this
   one passed against the unfixed code, as it covers the path that must keep working.
@@ -176,11 +209,15 @@ team, a team channel membership and an upcoming RSVP. Signed in as the seed coac
 The seed team has no private groups, so keeping a group membership wasn't seen in the browser. The action doesn't
 touch channels on this path; the unit test checks that no cleanup runs.
 
-The full RLS suite passes locally (56 files, 732 tests).
+The full RLS suite passes locally (56 files, 738 tests) after the review fixes. Its first run caught
+`create_club_team` still enrolling a free organization's owner, which the trigger refused; it now uses
+`enroll_club_admins`, and those files pass.
 
 **Not tested:** staging and production.
 
-**Deployment verification required:** the migrations add a function that changes `team_members` and a trigger on it.
-After deploy, confirm `remove_team_member_role` and the `team_members_director_needs_directorship` trigger exist in
-production, and that `anon` can't run the function. A removal of a coaching director
+**Deployment verification required:** the migrations add functions that change `team_members` and a trigger on it.
+After deploy, confirm `remove_team_member_role`, `club_admin_of_team`, `enroll_club_admins` and the
+`team_members_director_needs_directorship` trigger exist in production, and that `anon` can't run the functions.
+The new app needs them: member removal and club team creation fail until the migrations finish, and the migration
+workflow runs alongside the Vercel deploy, so check the migration job finished. A removal of a coaching director
 in production would confirm the whole path. Not yet checked.

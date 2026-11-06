@@ -59,18 +59,27 @@ const mocks = vi.hoisted(() => {
           Promise.resolve({ data: null, error: updateErrors[table] ?? null }),
       }),
       delete: () => ({
-        eq: () => Promise.resolve({ data: null, error: null }),
+        eq: (_col: string, value: unknown) => {
+          if (table === "teams") deletedTeams.push(value);
+          return Promise.resolve({ data: null, error: null });
+        },
       }),
     };
   });
 
   const savedContexts: unknown[] = [];
 
+  // enroll_club_admins: the profiles it enrolled.
+  const mockRpc = vi.fn();
+  const deletedTeams: unknown[] = [];
+
   return {
     savedContexts,
     mockResolveRequestUser,
     mockAssertTeamAdmin,
     mockFrom,
+    mockRpc,
+    deletedTeams,
     tableData,
     tableCounts,
     insertErrors,
@@ -80,7 +89,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/api-auth", () => ({
   resolveRequestUser: mocks.mockResolveRequestUser,
-  adminClient: () => ({ from: mocks.mockFrom }),
+  adminClient: () => ({ from: mocks.mockFrom, rpc: mocks.mockRpc }),
   assertTeamAdmin: mocks.mockAssertTeamAdmin,
 }));
 
@@ -205,6 +214,8 @@ describe("POST /api/club/teams — success", () => {
     mocks.tableData.profiles = PROFILE;
     mocks.tableData.organization_members = ORG_MEMBERS;
     mocks.savedContexts.length = 0;
+    mocks.deletedTeams.length = 0;
+    mocks.mockRpc.mockResolvedValue({ data: ["profile-uuid", "other-profile-uuid"], error: null });
   });
 
   // device-local-active-context, D5: this browser lands on the new team.
@@ -218,10 +229,31 @@ describe("POST /api/club/teams — success", () => {
     ]);
   });
 
-  it("saves nothing when the creator's enrollment failed: it isn't a team they're on", async () => {
-    mocks.insertErrors.team_members = { message: "duplicate key" };
+  it("enrolls whoever is an owner or director when the team is made, not the list read earlier (BUG-046)", async () => {
+    const res = await POST(makeTeamsRequest({ orgId: "org-1", teamName: "U12 Boys Blue" }));
+    const { teamId } = await res.json();
 
-    await POST(makeTeamsRequest({ orgId: "org-1", teamName: "U12 Boys Blue" }));
+    expect(mocks.mockRpc).toHaveBeenCalledWith("enroll_club_admins", { p_team_id: teamId });
+  });
+
+  it("removes the team and says so when enrollment fails, and saves nothing (BUG-046)", async () => {
+    mocks.mockRpc.mockResolvedValue({ data: null, error: { message: "NOT_A_CLUB_DIRECTOR" } });
+
+    const res = await POST(makeTeamsRequest({ orgId: "org-1", teamName: "U12 Boys Blue" }));
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe("Couldn't add you to the new team. Please try again.");
+    expect(mocks.deletedTeams).toHaveLength(1);
+    expect(mocks.savedContexts).toEqual([]);
+  });
+
+  it("removes the team when the creator wasn't among those enrolled (BUG-046)", async () => {
+    mocks.mockRpc.mockResolvedValue({ data: ["other-profile-uuid"], error: null });
+
+    const res = await POST(makeTeamsRequest({ orgId: "org-1", teamName: "U12 Boys Blue" }));
+
+    expect(res.status).toBe(500);
+    expect(mocks.deletedTeams).toHaveLength(1);
     expect(mocks.savedContexts).toEqual([]);
   });
 
@@ -232,15 +264,6 @@ describe("POST /api/club/teams — success", () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.ok).toBe(true);
-  });
-
-  it("returns 201 even when member enrollment insert fails (non-fatal)", async () => {
-    mocks.insertErrors.teams = null; // team insert succeeds
-    mocks.insertErrors.team_members = { message: "duplicate key" }; // members fail
-    const res = await POST(
-      makeTeamsRequest({ orgId: "org-1", teamName: "U12 Boys Blue" })
-    );
-    expect(res.status).toBe(201);
   });
 
   it("returns 500 when the team insert itself fails", async () => {
@@ -263,6 +286,7 @@ describe("POST /api/club/teams — team limit", () => {
     mocks.mockResolveRequestUser.mockResolvedValue(AUTHED_USER);
     mocks.tableData.profiles = PROFILE;
     mocks.tableData.organization_members = ORG_MEMBERS;
+    mocks.mockRpc.mockResolvedValue({ data: ["profile-uuid"], error: null });
   });
 
   it("rejects the 11th team for a club_small org (limit 10) with the exact message", async () => {

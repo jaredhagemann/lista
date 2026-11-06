@@ -2,24 +2,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 
 /**
- * Whether the profile is an owner or director of the team's club (BUG-046). The
- * roster's role editor offers Director for them, and only them: the database
- * refuses a `director` row for anyone else.
+ * Whether the profile is a director of the team's club, or its owner while it's
+ * on a Club plan (BUG-046). A standalone team's owner isn't one. The roster's
+ * role editor offers Director for them, and only them: the database refuses a
+ * `director` row for anyone else. Needs the service-role client; it's the
+ * same check the database makes.
  */
 export async function isClubAdminOfTeam(
-  supabase: SupabaseClient<Database>,
+  admin: SupabaseClient<Database>,
   teamId: string,
   profileId: string
 ): Promise<boolean> {
-  const { data: team } = await supabase.from("teams").select("organization_id").eq("id", teamId).maybeSingle();
-  if (!team?.organization_id) return false;
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("role")
-    .eq("organization_id", team.organization_id)
-    .eq("profile_id", profileId)
-    .in("role", ["owner", "director"])
-    .maybeSingle();
-  return !!membership;
+  const { data } = await admin.rpc("club_admin_of_team", {
+    p_team_id: teamId,
+    p_profile_id: profileId,
+  });
+  return data === true;
 }
