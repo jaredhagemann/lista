@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveRequestUser, adminClient, assertTeamAdmin } from "@/lib/api-auth";
 import { sendEmail } from "@/lib/notifications/email";
-import { renderInviteEmail } from "@/emails/invite-email";
+import { inviteSubject, renderInviteEmail } from "@/emails/invite-email";
 import { inviteBaseUrl, inviteBranding } from "@/lib/invitations/invite-base-url";
 import { bulkInvitationLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { validateBulkRows } from "@/lib/invitations/bulk-validate";
@@ -150,12 +150,14 @@ export async function POST(request: Request) {
     const inviteUrl = `${baseUrl}/invite/${invitationId}`;
     const role = row.role.toLowerCase() as InvitationRole;
 
+    const inviteeName = `${row.first_name.trim()} ${row.last_name.trim()}`.trim();
+
     let emailSent = false;
     try {
       await sendEmail({
         to: row.email.trim(),
-        subject: `You've been invited to join ${teamName} on ${brand.name}`,
-        ...(await renderInviteEmail({ teamName, inviterName, role, inviteUrl, brand })),
+        subject: inviteSubject({ teamName, inviteeName }),
+        ...(await renderInviteEmail({ teamName, inviterName, role, inviteUrl, brand, inviteeName })),
         brandName: brand.fromName,
       });
       emailSent = true;

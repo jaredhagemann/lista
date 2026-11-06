@@ -222,6 +222,14 @@ describe("POST /api/invitations/bulk-send — send-before-insert", () => {
     expect(body.failed).toBe(0);
   });
 
+  it("addresses each email to the row's name, with the role (invite-email-names)", async () => {
+    await POST(makeRequest({ teamId: TEAM_ID, rows: [VALID_ROW] }));
+
+    const [message] = mocks.mockSendEmail.mock.calls[0] as unknown as [{ subject: string; text: string }];
+    expect(message.subject).toMatch(/^Invitation for Jane Smith: join /);
+    expect(message.text).toMatch(/has invited Jane Smith to join .* as a player./);
+  });
+
   it("inserts with email_status='sent' when Resend succeeds", async () => {
     mocks.mockSendEmail.mockResolvedValue(undefined);
     await POST(makeRequest({ teamId: TEAM_ID, rows: [VALID_ROW] }));
