@@ -163,6 +163,22 @@ export async function removeTeamMember(memberId: string, teamId: string) {
 
   const profileId = target.profile_id!;
 
+  // A club owner or director stays on the team as director; only their role
+  // here goes (BUG-046). The database decides, against the directorship, in one
+  // transaction. Their chat and availability are left as they are.
+  const { data: outcome, error: roleError } = await supabase.rpc("remove_team_member_role", {
+    p_member_id: memberId,
+    p_team_id: teamId,
+  });
+  if (roleError) return { error: roleError.message };
+  if (outcome === "director_row") {
+    return { error: "Directors are on every team in the club. Remove them from the club in club settings." };
+  }
+  if (outcome === "kept_as_director") {
+    revalidatePath("/dashboard/team");
+    return { success: true, keptAsDirector: true };
+  }
+
   // Block removal of the current team owner — they must transfer ownership first.
   // This applies whether the removal is self-initiated or initiated by another admin.
   // Non-owner admins may remove themselves freely.

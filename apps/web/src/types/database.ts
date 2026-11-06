@@ -1513,6 +1513,10 @@ export type Database = {
         Args: { p_actor_id: string; p_confirm_name: string; p_org_id: string }
         Returns: undefined
       }
+      club_admin_of_team: {
+        Args: { p_profile_id: string; p_team_id: string }
+        Returns: boolean
+      }
       club_is_closed: { Args: { p_org_id: string }; Returns: boolean }
       club_member_emails: {
         Args: { p_org_id: string }
@@ -1574,6 +1578,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      enroll_club_admins: { Args: { p_team_id: string }; Returns: string[] }
       event_notification_snapshot: {
         Args: { e: Database["public"]["Tables"]["events"]["Row"] }
         Returns: Json
@@ -1625,6 +1630,10 @@ export type Database = {
       remove_org_director: {
         Args: { p_actor_id: string; p_org_id: string; p_profile_id: string }
         Returns: undefined
+      }
+      remove_team_member_role: {
+        Args: { p_member_id: string; p_team_id: string }
+        Returns: string
       }
       reopen_club: { Args: { p_org_id: string }; Returns: undefined }
       respond_ownership_transfer: {
