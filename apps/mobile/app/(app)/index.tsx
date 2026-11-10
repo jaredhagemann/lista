@@ -18,7 +18,7 @@ import { displayLabel } from "../../lib/labels";
 import { gameTitle } from "../../lib/game-display";
 import { teamRecord, type ResultGame, type TeamRecord } from "../../lib/team-record";
 import { TeamCard, type TeamCardMember } from "../../components/TeamCard";
-import { RecordCard, type LastTournament, type LeagueRow } from "../../components/RecordCard";
+import { RecordCard, type CardTournament, type LeagueRow } from "../../components/RecordCard";
 import { leagueLabel, leagueRecords, type League } from "../../lib/leagues";
 import { eventTypeColors, PART_OF_COLOR } from "../../lib/event-type-colors";
 import {
@@ -26,6 +26,8 @@ import {
   isTournament,
   isUnderway,
   placementText,
+  recordCardTournament,
+  remainingGames,
   tournamentDates,
   tournamentLine,
   tournamentRecord,
@@ -55,7 +57,7 @@ type Event = {
   league: { name: string; season: string } | null;
 };
 
-/** A finished tournament, placed or not, for the Record card (D8, revised 2026-10-14). */
+/** A finished or underway tournament for the Record card (D8, revised 2026-10-14; tournament-in-progress-record). */
 type PlacedTournament = {
   id: string;
   title: string;
@@ -89,7 +91,7 @@ export default function HomeScreen() {
   const [members, setMembers] = useState<TeamCardMember[]>([]);
   // Games with a result, for the Record card; the team's zone for its date line.
   const [record, setRecord] = useState<TeamRecord | null>(null);
-  const [lastTournament, setLastTournament] = useState<LastTournament | null>(null);
+  const [cardTournament, setCardTournament] = useState<CardTournament | null>(null);
   const [leagueRows, setLeagueRows] = useState<LeagueRow[]>([]);
   const [teamTimeZone, setTeamTimeZone] = useState<string | null>(null);
   // TL-026: whether the last attempt at the card's reads failed. TL-027: the
@@ -112,7 +114,7 @@ export default function HomeScreen() {
 
     const teamId = membership.teamId;
     const now = new Date().toISOString();
-    const [eventsResult, membersResult, resultsResult, placedResult, leaguesResult] = await Promise.all([
+    const [eventsResult, membersResult, resultsResult, placedResult, leaguesResult, underwayResult] = await Promise.all([
       supabase
         .from("events")
         .select(
@@ -130,7 +132,7 @@ export default function HomeScreen() {
         .eq("team_id", membership.teamId),
       supabase
         .from("events")
-        .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, league_id, teams(timezone)")
+        .select("id, start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, league_id, teams(timezone)")
         .eq("team_id", membership.teamId)
         .eq("event_type", "game")
         .not("game_result", "is", null),
@@ -151,7 +153,43 @@ export default function HomeScreen() {
         .select("id, name, season, archived_at")
         .eq("team_id", membership.teamId)
         .is("archived_at", null),
+      // Tournaments underway: one with a result takes the card's tournament
+      // section (docs/specs/tournament-in-progress-record.md).
+      supabase
+        .from("events")
+        .select("id, title, start_time, end_time, timezone, placement_rank, placement_label, teams(timezone)")
+        .eq("team_id", membership.teamId)
+        .eq("event_type", "tournament")
+        .eq("is_cancelled", false)
+        .lte("start_time", now)
+        .gt("end_time", now),
     ]);
+    if (read !== latestRead.current) return;
+
+    const results = (resultsResult.data ?? []) as unknown as (ResultGame & {
+      tournament_id: string | null;
+      league_id: string | null;
+      teams: { timezone: string | null } | null;
+    })[];
+    // D8, revised 2026-10-14: the latest finished tournament always shows its
+    // results, until a newer one finishes. The latest by end, whatever order
+    // arrived. A tournament underway replaces it from its first result (Q9).
+    const finished = ((placedResult.data ?? []) as unknown as PlacedTournament[]).sort(
+      (a, b) => Date.parse(b.end_time) - Date.parse(a.end_time)
+    )[0];
+    const shown = recordCardTournament((underwayResult.data ?? []) as unknown as PlacedTournament[], finished, results);
+    // Its games without a result, only read while it's on.
+    const remainingResult = shown?.current
+      ? await supabase
+          .from("events")
+          .select("id, start_time, timezone, opponent, home_away, round, game_result, is_cancelled")
+          .eq("team_id", teamId)
+          .eq("tournament_id", shown.tournament.id)
+          .eq("event_type", "game")
+          .eq("is_cancelled", false)
+          .is("game_result", null)
+          .order("start_time", { ascending: true })
+      : { data: [], error: null };
     if (read !== latestRead.current) return;
 
     setEvents((eventsResult.data ?? []) as unknown as Event[]);
@@ -159,13 +197,13 @@ export default function HomeScreen() {
 
     // TL-026: a failed read is not an empty one. Keep the record already shown,
     // if any, and let the card say the reads failed.
-    if (resultsResult.error || placedResult.error || leaguesResult.error) {
+    if (resultsResult.error || placedResult.error || leaguesResult.error || underwayResult.error || remainingResult.error) {
       setRecordFailed(true);
       // Another team's record is never kept (TL-027): this is a first load for this team.
       if (recordTeam !== teamId) {
         setRecord(null);
         setLeagueRows([]);
-        setLastTournament(null);
+        setCardTournament(null);
         setRecordTeam(null);
       }
       setLoading(false);
@@ -174,26 +212,18 @@ export default function HomeScreen() {
     }
     setRecordFailed(false);
     setRecordTeam(teamId);
-    const results = (resultsResult.data ?? []) as unknown as (ResultGame & {
-      tournament_id: string | null;
-      league_id: string | null;
-      teams: { timezone: string | null } | null;
-    })[];
     setLeagueRows(leagueRecords((leaguesResult.data ?? []) as unknown as League[], results));
     const overall = teamRecord(results);
     setRecord(overall);
-    // D8, revised 2026-10-14: the latest finished tournament always shows its
-    // results, until a newer one finishes. The latest by end, whatever order arrived.
-    const finished = ((placedResult.data ?? []) as unknown as PlacedTournament[]).sort(
-      (a, b) => Date.parse(b.end_time) - Date.parse(a.end_time)
-    )[0];
-    setLastTournament(
-      finished
+    setCardTournament(
+      shown
         ? {
-            title: finished.title,
-            placement: placementText(finished) ?? "",
-            record: tournamentRecord(finished.id, results),
-            dates: tournamentDates(finished),
+            title: shown.tournament.title,
+            placement: placementText(shown.tournament) ?? "",
+            record: tournamentRecord(shown.tournament.id, results),
+            dates: tournamentDates(shown.tournament),
+            current: shown.current,
+            remaining: remainingGames(remainingResult.data ?? []),
           }
         : null
     );
@@ -392,14 +422,15 @@ export default function HomeScreen() {
         />
 
         {/* A result, a finished tournament or an active league shows the card (2026-10-15). */}
-        {record || lastTournament || leagueRows.length > 0 || recordFailed ? (
+        {record || cardTournament || leagueRows.length > 0 || recordFailed ? (
           <View className="mt-4">
             <RecordCard
               teamName={membership.teamName}
               record={record}
               teamTimeZone={teamTimeZone}
               winColor={membership.winColor}
-              lastTournament={lastTournament}
+              tournament={cardTournament}
+              onOpenGame={(id) => router.push(`/(app)/schedule/${id}` as any)}
               leagues={leagueRows}
               status={!recordFailed ? "ok" : recordTeam === membership.teamId ? "stale" : "failed"}
               onRetry={fetchData}
