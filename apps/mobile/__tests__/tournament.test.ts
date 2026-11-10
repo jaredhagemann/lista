@@ -11,6 +11,8 @@ import {
   isTournament,
   isUnderway,
   placementText,
+  recordCardTournament,
+  remainingGames,
   tournamentDates,
   tournamentLine,
   tournamentRecord,
@@ -99,5 +101,78 @@ describe("effectiveAnswer", () => {
   it("clearing the game's answer falls back to the tournament's", () => {
     const own: "unavailable" | null = null;
     expect(effectiveAnswer(own, "available").status).toBe("available");
+  });
+});
+
+// ── A tournament in progress (docs/specs/tournament-in-progress-record.md) ────
+
+describe("recordCardTournament: which tournament the Record card shows", () => {
+  const T = (id: string, start: string, end: string) => ({ ...SURF_CUP, id, start_time: start, end_time: end });
+  // Saturday noon, Pacific.
+  const SAT_NOON = new Date("2026-12-12T20:00:00.000Z");
+  const CUP = T("cup", SURF_CUP.start_time, SURF_CUP.end_time);
+  const OLD = T("old", "2026-11-06T08:00:00.000Z", "2026-11-09T08:00:00.000Z");
+  const win = (tournamentId: string | null, start = "2026-12-11T17:00:00.000Z") => ({
+    id: `g-${start}`,
+    start_time: start,
+    game_result: "win",
+    tournament_id: tournamentId,
+  });
+
+  it("with none underway, the latest finished one, as before", () => {
+    expect(recordCardTournament([], OLD, [], SAT_NOON)).toEqual({ tournament: OLD, current: false });
+  });
+
+  it("one underway without a result yet leaves the latest finished one", () => {
+    expect(recordCardTournament([CUP], OLD, [], SAT_NOON)).toEqual({ tournament: OLD, current: false });
+    expect(recordCardTournament([CUP], null, [win(null)], SAT_NOON)).toBeNull();
+  });
+
+  it("one underway with a result replaces it, as current (Q9)", () => {
+    expect(recordCardTournament([CUP], OLD, [win("cup")], SAT_NOON)).toEqual({ tournament: CUP, current: true });
+  });
+
+  it("two underway with results: the one that started most recently", () => {
+    const later = T("later", "2026-12-12T08:00:00.000Z", "2026-12-14T08:00:00.000Z");
+    const games = [win("cup"), win("later", "2026-12-12T17:00:00.000Z")];
+    expect(recordCardTournament([CUP, later], null, games, SAT_NOON)?.tournament).toBe(later);
+  });
+
+  it("not before it starts, and not once it ends", () => {
+    expect(recordCardTournament([CUP], OLD, [win("cup", "2026-12-10T17:00:00.000Z")], new Date("2026-12-11T07:59:00.000Z"))?.current).toBe(false);
+    expect(recordCardTournament([CUP], OLD, [win("cup")], new Date("2026-12-14T07:59:00.000Z"))?.current).toBe(true);
+    expect(recordCardTournament([CUP], OLD, [win("cup")], new Date("2026-12-14T08:00:00.000Z"))?.current).toBe(false);
+  });
+});
+
+describe("remainingGames", () => {
+  const SAT_NOON = new Date("2026-12-12T20:00:00.000Z");
+  const game = (id: string, start: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    start_time: start,
+    timezone: LA,
+    opponent: "Rivals FC",
+    home_away: "home",
+    round: null,
+    game_result: null,
+    is_cancelled: false,
+    ...extra,
+  });
+
+  it("lists games without a result, cancelled ones left out, in start order (Q4)", () => {
+    const games = [
+      game("final", "2026-12-13T22:00:00.000Z", { round: "Final", opponent: " " }),
+      game("played", "2026-12-11T17:00:00.000Z", { game_result: "win" }),
+      game("off", "2026-12-13T19:00:00.000Z", { is_cancelled: true }),
+      game("semi", "2026-12-13T17:00:00.000Z", { round: "Semifinal", home_away: "away" }),
+    ];
+    expect(remainingGames(games, SAT_NOON)).toEqual([
+      { id: "semi", startTime: "2026-12-13T17:00:00.000Z", timeZone: LA, opponent: "Rivals FC", homeAway: "away", round: "Semifinal", awaiting: false },
+      { id: "final", startTime: "2026-12-13T22:00:00.000Z", timeZone: LA, opponent: null, homeAway: "home", round: "Final", awaiting: false },
+    ]);
+  });
+
+  it("a game that has started without a result is awaiting one (Q3)", () => {
+    expect(remainingGames([game("now", "2026-12-12T19:00:00.000Z")], SAT_NOON)[0].awaiting).toBe(true);
   });
 });

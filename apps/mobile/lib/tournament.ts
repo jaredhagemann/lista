@@ -73,3 +73,64 @@ export function tournamentRecord(
 export function gameCount(n: number): string {
   return `${n} ${n === 1 ? "game" : "games"}`;
 }
+
+// ── A tournament in progress (docs/specs/tournament-in-progress-record.md) ────
+
+/**
+ * Which tournament the Record card shows, and whether it's still on. A
+ * tournament underway shows from its first game with a result, the most
+ * recently started if two are (rare). Until then, and once it ends, the latest
+ * finished one, as before (D8). Only one shows (Q9).
+ */
+export function recordCardTournament<T extends Timed & { id: string }>(
+  underway: T[],
+  finished: T | null | undefined,
+  games: (ResultGame & { tournament_id?: string | null })[],
+  now: Date = new Date()
+): { tournament: T; current: boolean } | null {
+  const current = underway
+    .filter((t) => isUnderway(t, now) && tournamentRecord(t.id, games, now) !== null)
+    .sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time))[0];
+  if (current) return { tournament: current, current: true };
+  return finished ? { tournament: finished, current: false } : null;
+}
+
+/** A game still to be played, or played and waiting for its result (Q3). */
+export type RemainingGame = {
+  id: string;
+  startTime: string;
+  timeZone: string | null;
+  opponent: string | null;
+  homeAway: string | null;
+  round: string | null;
+  /** Started, with no result yet: it reads "Awaiting result" rather than a time. */
+  awaiting: boolean;
+};
+
+/** A tournament's games without a result, cancelled ones left out (Q4), in start order. */
+export function remainingGames(
+  games: {
+    id: string;
+    start_time: string;
+    timezone?: string | null;
+    opponent?: string | null;
+    home_away?: string | null;
+    round?: string | null;
+    game_result?: string | null;
+    is_cancelled?: boolean | null;
+  }[],
+  now: Date = new Date()
+): RemainingGame[] {
+  return games
+    .filter((g) => !g.is_cancelled && !g.game_result)
+    .sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time))
+    .map((g) => ({
+      id: g.id,
+      startTime: g.start_time,
+      timeZone: g.timezone ?? null,
+      opponent: g.opponent?.trim() || null,
+      homeAway: g.home_away ?? null,
+      round: g.round?.trim() || null,
+      awaiting: Date.parse(g.start_time) <= now.getTime(),
+    }));
+}

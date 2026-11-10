@@ -569,3 +569,115 @@ describe("TL-022: a placed tournament without game results", () => {
     expect(within(card).queryByText("Wins")).toBeNull();
   });
 });
+
+// ── A tournament in progress (docs/specs/tournament-in-progress-record.md) ────
+
+describe("the Record card during a tournament", () => {
+  const at = (hours: number) => new Date(Date.now() + hours * HOUR).toISOString();
+  const UNDERWAY = event({ id: "t-now", title: "Winter Cup", event_type: "tournament", start_time: at(-30), end_time: at(42), placement_rank: null });
+  const FALL_CLASSIC = event({ id: "t-past", title: "Fall Classic", event_type: "tournament", start_time: at(-24 * 10), end_time: at(-24 * 8) });
+  const tg = (id: string, hours: number, extra: Row = {}) =>
+    event({ id, tournament_id: "t-now", opponent: "Eagles", home_away: "home", start_time: at(hours), end_time: at(hours + 1), ...extra });
+
+  function winterCupUnderway(extra: Row[] = []) {
+    mockTables.events = [
+      FALL_CLASSIC,
+      event({ id: "old", tournament_id: "t-past", opponent: "Owls", start_time: at(-24 * 9), end_time: at(-24 * 9), game_result: "loss" }),
+      UNDERWAY,
+      tg("fri", -26, { opponent: "Rivals FC", game_result: "win", score_for: 3, score_against: 1 }),
+      tg("sat", -3, { opponent: "Hawks", game_result: "tie", score_for: 2, score_against: 2 }),
+      tg("final", 24, { round: "Final", opponent: null }),
+      tg("semi", 20, { round: "Semifinal", home_away: "away" }),
+      tg("off", 22, { opponent: "Bears", is_cancelled: true }),
+      ...extra,
+    ];
+  }
+
+  it("shows it from its first result: Current tournament, Now, its latest result and its record (Q9)", async () => {
+    winterCupUnderway();
+    render(<HomeScreen />);
+
+    const card = await screen.findByLabelText("Record");
+    const section = await within(card).findByLabelText("Current tournament");
+    expect(within(section).getByText("Current tournament")).toBeTruthy();
+    expect(within(section).getByText("Now")).toBeTruthy();
+    expect(within(section).getByText("Winter Cup")).toBeTruthy();
+    expect(within(section).getByText("Latest result")).toBeTruthy();
+    expect(within(section).getByLabelText("vs Hawks 2")).toBeTruthy();
+    expect(within(section).getByLabelText("1 win, 0 losses, 1 tie")).toBeTruthy();
+    expect(within(card).queryByText("Fall Classic")).toBeNull();
+    expect(within(card).queryByLabelText("Last tournament")).toBeNull();
+  });
+
+  it("lists the remaining games in start order, cancelled ones left out, each opening its game (Q4, Q7)", async () => {
+    winterCupUnderway();
+    render(<HomeScreen />);
+
+    const list = await screen.findByLabelText("Remaining games");
+    const rows = within(list).getAllByRole("button");
+    expect(rows.map((r) => r.props.accessibilityLabel)).toEqual([
+      expect.stringMatching(/^Semifinal · at Eagles, /),
+      expect.stringMatching(/^Final · Opponent TBD, /),
+    ]);
+    expect(within(list).queryByText(/Bears/)).toBeNull();
+    fireEvent.press(rows[0]);
+    expect(mockPush).toHaveBeenCalledWith("/(app)/schedule/semi");
+  });
+
+  it("a game that has started without a result reads Awaiting result (Q3)", async () => {
+    winterCupUnderway([tg("now", -1, { opponent: "Lions" })]);
+    render(<HomeScreen />);
+
+    const list = await screen.findByLabelText("Remaining games");
+    expect(within(list).getByLabelText("vs Lions, Awaiting result")).toBeTruthy();
+  });
+
+  it("with every game played, no remaining list (Q5)", async () => {
+    winterCupUnderway();
+    mockTables.events = (mockTables.events as Row[]).filter((e) => !["final", "semi", "off"].includes(String(e.id)));
+    render(<HomeScreen />);
+
+    await screen.findByLabelText("Current tournament");
+    expect(screen.queryByLabelText("Remaining games")).toBeNull();
+    expect(screen.queryByText("Remaining games")).toBeNull();
+  });
+
+  it("the latest result shows once, not again as the last game (Q2)", async () => {
+    winterCupUnderway();
+    render(<HomeScreen />);
+
+    const card = await screen.findByLabelText("Record");
+    await within(card).findByLabelText("Current tournament");
+    expect(within(card).queryByText("Last game")).toBeNull();
+  });
+
+  it("a later game outside the tournament still shows as the last game (Q2)", async () => {
+    winterCupUnderway([event({ id: "league", opponent: "Bears", home_away: "home", start_time: at(-2), end_time: at(-1), game_result: "win" })]);
+    render(<HomeScreen />);
+
+    const card = await screen.findByLabelText("Record");
+    await within(card).findByLabelText("Current tournament");
+    expect(within(card).getByText("Last game")).toBeTruthy();
+    expect(within(card).getByLabelText("vs Bears")).toBeTruthy();
+  });
+
+  it("underway with no result yet: the last finished tournament stays", async () => {
+    mockTables.events = [FALL_CLASSIC, UNDERWAY, tg("semi", 20)];
+    render(<HomeScreen />);
+
+    const card = await screen.findByLabelText("Record");
+    expect(within(card).getByLabelText("Last tournament")).toBeTruthy();
+    expect(within(card).getByText("Fall Classic")).toBeTruthy();
+    expect(within(card).queryByLabelText("Current tournament")).toBeNull();
+  });
+
+  it("the remaining games read failing: the card says it couldn't load", async () => {
+    winterCupUnderway();
+    mockFailing.add("events:tournament_id=t-now");
+    render(<HomeScreen />);
+
+    const card = await screen.findByLabelText("Record");
+    expect(await within(card).findByText("Couldn't load the record.")).toBeTruthy();
+    expect(within(card).queryByText("Winter Cup")).toBeNull();
+  });
+});

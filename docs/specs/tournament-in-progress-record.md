@@ -1,6 +1,6 @@
 # Record card: a tournament in progress
 
-**Status:** Decided 2026-11-09; building on `feature/tournament-in-progress-record`
+**Status:** Built on `feature/tournament-in-progress-record` (web and mobile)
 **Requested:** 2026-11-09 by the product owner
 **Builds on:** `docs/specs/tournaments-and-leagues.md` D8 (the dashboard after a tournament, revised
 2026-10-14) and D9 (Record card layout), and the card's visibility rule (decided 2026-10-15)
@@ -66,36 +66,38 @@ All nine accepted as proposed.
 
 ### Web
 
-- `apps/web/src/app/dashboard/page.tsx`
-  - A query for the team's tournaments underway (`event_type = 'tournament'`, not cancelled,
-    `start_time <= now < end_time`), alongside the existing latest-finished query. Its failure sets
-    `recordFailed`, as the other record reads do (TL-026).
-  - Its games without a result: `event_type = 'game'`, `tournament_id` in the underway set, not cancelled,
-    `game_result is null`, ordered by `start_time`, selecting `id, start_time, timezone, opponent, home_away,
-    round`.
-  - Picking the tournament to show (the table above) moves into a helper, `recordCardTournament()`, in
-    `apps/web/src/lib/events/tournament.ts`, so it's testable without the page.
-- `apps/web/src/lib/events/tournament.ts`: `recordCardTournament(underway, finished, resultGames,
-  remainingGames, now)` returns the section's data, or null: `{ status: "current" | "last", title,
-  placement, dates, record, latest, remaining }`. `latest` is the tournament record's `last` game, which
-  `teamRecord()` already computes.
-- `apps/web/src/components/team/record-card.tsx`
-  - `LastTournament` becomes `RecordCardTournament` with `status`, `latest` and `remaining`.
-  - The section: heading per Q1; the summary; the latest result (reusing `LastGame`); `Stats`; then a
-    `RemainingGames` list. Layout as today: summary and latest result in the left column, the record graphic
-    in the right, the remaining list across the section below.
-  - The top "Last game" rule from Q2.
-  - The doc comment's layout list, updated.
+- `apps/web/src/lib/events/tournament.ts`:
+  - `recordCardTournament(underway, finished, resultGames, now)` picks the tournament (the table above) and
+    returns `{ tournament, current }`, or null.
+  - `remainingGames(games, now)` keeps games without a result and not cancelled, in start order, as
+    `{ id, startTime, timeZone, opponent, homeAway, round, awaiting }`. `awaiting` means it has started (Q3).
+- `apps/web/src/lib/events/team-record.ts`: a game's `id` is carried to `last`. The card uses it to tell
+  whether the team's last game is the tournament's latest result (Q2).
+- `apps/web/src/app/dashboard/page.tsx`:
+  - A read of the team's tournaments underway (`event_type = 'tournament'`, not cancelled,
+    `start_time <= now < end_time`), alongside the existing reads.
+  - Only when a tournament is current, a second read of its games without a result (`tournament_id`, game,
+    not cancelled, `game_result is null`, by `start_time`). A tournament weekend costs one extra round trip.
+  - The games-with-a-result read now selects `id`.
+  - Either new read failing sets `recordFailed`, as the other record reads do (TL-026).
+- `apps/web/src/components/team/record-card.tsx`:
+  - The `lastTournament` prop is now `tournament: CardTournament`, with `current` and `remaining`.
+  - While current, the section is "Current tournament" with a "Now" badge. The summary and the latest result
+    ("Latest result", reusing the last-game scoreline) are on the left, the Tournament Record on the right.
+    The "Remaining games" list sits below, each game linking to its page.
+  - The top "Last game" is hidden when it's the same game as the latest result (Q2).
 
 ### Mobile
 
-- `apps/mobile/app/(app)/index.tsx` and `apps/mobile/components/RecordCard.tsx`: the same queries,
-  selection and section. The selection helper goes in `apps/mobile/lib/tournament.ts`, matching the web one.
+- `apps/mobile/lib/tournament.ts` and `lib/team-record.ts`: the same helpers and `id`, copied.
+- `apps/mobile/app/(app)/index.tsx`: the same reads. The remaining-games read is also checked against the
+  latest-read counter (TL-027).
+- `apps/mobile/components/RecordCard.tsx`: the same section. Remaining games are buttons that open the game
+  through `onOpenGame`.
 
 ### Docs
 
-- `docs/specs/tournaments-and-leagues.md`: D8 revised (2026-11-09) to point here, and the Records paragraph's
-  "When the card shows" rule updated.
+- `docs/specs/tournaments-and-leagues.md`: D8 and the Records paragraph point here.
 
 No schema change and no migration: everything needed (`tournament_id`, `round`, `game_result`,
 `is_cancelled`) already exists, and the reads are the team's own events under the existing RLS policies.

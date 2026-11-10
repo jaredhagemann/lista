@@ -17,7 +17,15 @@ import { RecordCard } from "@/components/team/record-card";
 import { leagueRecords } from "@/lib/leagues";
 import { clubSecondaryColor, LISTA_BLUE } from "@/lib/team-branding";
 import { teamRecord } from "@/lib/events/team-record";
-import { isTournament, isUnderway, placementText, tournamentDates, tournamentRecord } from "@/lib/events/tournament";
+import {
+  isTournament,
+  isUnderway,
+  placementText,
+  recordCardTournament,
+  remainingGames,
+  tournamentDates,
+  tournamentRecord,
+} from "@/lib/events/tournament";
 
 type Event = Database["public"]["Tables"]["events"]["Row"] & {
   locations: { name: string } | null;
@@ -71,6 +79,7 @@ export default async function DashboardPage() {
 
   const upcomingEvents = (rawUpcomingEvents ?? []) as Event[];
 
+  const now = new Date().toISOString();
   // The Team card: the club's branding, and the team's games with a result
   // (spec: team-branding-and-labels §4).
   const [
@@ -79,6 +88,7 @@ export default async function DashboardPage() {
     { data: resultGames, error: resultsError },
     { data: placedTournaments, error: placedError },
     { data: teamLeagues, error: leaguesError },
+    { data: underwayTournaments, error: underwayError },
   ] = await Promise.all([
     supabase.from("team_members").select("id, role, profiles(first_name, last_name)").eq("team_id", team.id),
     team.organization_id
@@ -90,7 +100,7 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: null }),
     supabase
       .from("events")
-      .select("start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, league_id")
+      .select("id, start_time, timezone, opponent, home_away, game_result, score_for, score_against, tournament_id, league_id")
       .eq("team_id", team.id)
       .eq("event_type", "game")
       .not("game_result", "is", null),
@@ -107,26 +117,51 @@ export default async function DashboardPage() {
       .limit(1),
     // The team's active leagues, a row each on the Record card (D9, D17).
     supabase.from("leagues").select("id, name, season, archived_at").eq("team_id", team.id).is("archived_at", null),
+    // Tournaments underway: one with a result takes the card's tournament
+    // section (docs/specs/tournament-in-progress-record.md).
+    supabase
+      .from("events")
+      .select("id, title, start_time, end_time, timezone, placement_rank, placement_label")
+      .eq("team_id", team.id)
+      .eq("event_type", "tournament")
+      .eq("is_cancelled", false)
+      .lte("start_time", now)
+      .gt("end_time", now),
   ]);
+
+  // D8, revised 2026-10-14: the latest finished tournament always shows its
+  // results, under the last game, until a newer one finishes. With no game
+  // results at all, it's still shown (review TL-022). A tournament underway
+  // replaces it from its first result (tournament-in-progress-record, Q9).
+  const shown = recordCardTournament(underwayTournaments ?? [], placedTournaments?.[0], resultGames ?? []);
+  // Its games without a result, only read while it's on.
+  const { data: remainingRows, error: remainingError } = shown?.current
+    ? await supabase
+        .from("events")
+        .select("id, start_time, timezone, opponent, home_away, round, game_result, is_cancelled")
+        .eq("team_id", team.id)
+        .eq("tournament_id", shown.tournament.id)
+        .eq("event_type", "game")
+        .eq("is_cancelled", false)
+        .is("game_result", null)
+        .order("start_time", { ascending: true })
+    : { data: [], error: null };
 
   // A read that failed is never shown as no results: the card says it couldn't
   // load rather than "No results yet" or a record missing its leagues (TL-026).
-  const recordFailed = !!(resultsError || placedError || leaguesError);
+  const recordFailed = !!(resultsError || placedError || leaguesError || underwayError || remainingError);
   const record = teamRecord(resultGames ?? []);
   const leagueRows = leagueRecords(teamLeagues ?? [], resultGames ?? []);
-  // D8, revised 2026-10-14: the latest finished tournament always shows its
-  // results, under the last game, until a newer one finishes. With no game
-  // results at all, it's still shown (review TL-022).
-  const placed = placedTournaments?.[0];
-  const lastTournament =
-    placed
-      ? {
-          title: placed.title,
-          placement: placementText(placed) ?? "",
-          record: tournamentRecord(placed.id, resultGames ?? []),
-          dates: tournamentDates(placed, team.timezone),
-        }
-      : null;
+  const cardTournament = shown
+    ? {
+        title: shown.tournament.title,
+        placement: placementText(shown.tournament) ?? "",
+        record: tournamentRecord(shown.tournament.id, resultGames ?? []),
+        dates: tournamentDates(shown.tournament, team.timezone),
+        current: shown.current,
+        remaining: remainingGames(remainingRows ?? []),
+      }
+    : null;
 
   return (
     <div className="space-y-6">
@@ -221,16 +256,17 @@ export default async function DashboardPage() {
 
         <TeamCard team={{ ...team, organizations: org }} members={members ?? []} />
 
-        {/* A result, a finished tournament, or an active league shows the card: a new
-            league reads "No results yet" (decided 2026-10-15, review of #126). */}
-        {(record || lastTournament || leagueRows.length > 0 || recordFailed) && (
+        {/* A result, a finished tournament or one underway with a result, or an active
+            league shows the card: a new league reads "No results yet" (decided
+            2026-10-15, review of #126). */}
+        {(record || cardTournament || leagueRows.length > 0 || recordFailed) && (
           <RecordCard
             failed={recordFailed}
             teamName={team.name}
             record={record}
             teamTimeZone={team.timezone}
             winColor={clubSecondaryColor(org) ?? LISTA_BLUE}
-            lastTournament={lastTournament}
+            tournament={cardTournament}
             leagues={leagueRows}
           />
         )}

@@ -6,6 +6,8 @@
  * Counted over every past game with a result entered; games without one don't count.
  */
 export type ResultGame = {
+  /** Tells the same game apart on the Record card (tournament-in-progress-record Q2). */
+  id?: string;
   start_time: string;
   timezone?: string | null;
   opponent?: string | null;
@@ -27,6 +29,7 @@ export type TeamRecord = {
     homeAway: string | null;
     startTime: string;
     timeZone: string | null;
+    id?: string;
   };
 };
 
@@ -53,6 +56,7 @@ export function teamRecord(games: ResultGame[], now: Date = new Date()): TeamRec
       homeAway: latest.home_away ?? null,
       startTime: latest.start_time,
       timeZone: latest.timezone ?? null,
+      id: latest.id,
     },
   };
 }
