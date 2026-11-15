@@ -149,6 +149,6 @@ Named rather than quietly omitted (spec §13):
 - **Browser navigation tests.** Not run. Component behaviour is covered by the web suite instead
   (908 tests), which exercises the same state machines without a real browser.
 - **The club member directory** is not measured here at all. It is the third query BUG-014 named and is
-  tracked separately as [BUG-024](../bugs/024-club-member-directory-unpaginated.md).
+  tracked separately as [BUG-024](https://github.com/jaredhagemann/lista/issues/165).
 - **Mobile** (spec §15) is a separate workstream with its own PR and release, and is untouched by any of
   this.

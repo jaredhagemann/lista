@@ -39,7 +39,7 @@ acceptance, and proceeds.
 
 The ticket originally carried D9, invitation expiry. The ticket itself said the recipient check ships first and
 expiry follows as a separate change, so **expiry moved to its own ticket on 2026-09-16:
-[BUG-019](../019-invitations-never-expire.md)**, with the D9 decisions and grace policy.
+[BUG-019](https://github.com/jaredhagemann/lista/issues/164)**, with the D9 decisions and grace policy.
 
 ## Cause
 
@@ -94,7 +94,7 @@ existing row; `accept_invitation` refuses to redeem such a row as a team role re
 to `Jane@…` no longer sends a signed-in `jane@…` to the wrong-email screen.
 
 **Not addressed here:**
-- Expiry → [BUG-019](../019-invitations-never-expire.md).
+- Expiry → [BUG-019](https://github.com/jaredhagemann/lista/issues/164).
 - Mobile still accepts every non-guardian invitation as `self`, including when a parent accepts a player
   invitation → [BUG-011](../011-identity-differs-web-vs-mobile.md). The acceptance function is where 011's
   identity-aware flow should extend.

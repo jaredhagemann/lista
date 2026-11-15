@@ -68,4 +68,4 @@ the original bug, because it came from Next adding a file, so one test also fail
 **Deployment verification required:** after deploy, repeat the `curl` above: one icon link, the club's. Then look at the
 tab itself, since browsers cache favicons and a hard refresh or a new tab may be needed. **Not yet done.**
 
-**Found while fixing:** [BUG-043](../043-client-can-supply-tenant-headers.md).
+**Found while fixing:** [BUG-043](https://github.com/jaredhagemann/lista/issues/169).

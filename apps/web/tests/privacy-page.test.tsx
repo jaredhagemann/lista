@@ -51,7 +51,7 @@ describe("the privacy page's sharing section", () => {
     );
   });
 
-  // Photos are left out of that promise until BUG-016 settles how they're served.
+  // Photos are left out of that promise until BUG-016 (#163) settles how they're served.
   it("makes no promise that photos stay within the team", () => {
     const promise = sharingSection().split("can't see")[1];
 

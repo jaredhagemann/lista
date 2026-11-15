@@ -211,7 +211,7 @@ describe("who can read a profile's personal details", () => {
 
   // The link between guardian and child is hidden from them by profile_managers' own
   // RLS. They see a guardian's contact details on the team page, which reads them with
-  // the service role. BUG-041 asks whether the profile itself should stay hidden.
+  // the service role. BUG-041 (#168) asks whether the profile itself should stay hidden.
   it("a player, another guardian and a club director don't read the guardian's profile directly", async () => {
     const { player, director, guardian, child } = await club();
     const otherGuardian = await createTestUser();

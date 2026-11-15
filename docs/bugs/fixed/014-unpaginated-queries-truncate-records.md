@@ -119,7 +119,7 @@ by the maintainer after each.
 ## Remaining work
 
 The **club member directory**, the third query named above, is unchanged and is tracked as
-[BUG-024](../024-club-member-directory-unpaginated.md). The specification excludes it deliberately: it
+[BUG-024](https://github.com/jaredhagemann/lista/issues/165). The specification excludes it deliberately: it
 reads across `organizations → teams → team_members → profiles` rather than events in a window, so the
 cursor work does not transfer directly, and how it should be navigated is an unanswered product
 question. This ticket is closed for the schedule and availability views only.
