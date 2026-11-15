@@ -14,7 +14,7 @@ export const signupLimiter = new Ratelimit({
 });
 
 // 30 invite signups per 10 minutes per IP. Families often sign up together on one
-// network, and the route requires a real invitation (BUG-044).
+// network, and the route requires a real invitation (BUG-044, #171).
 export const inviteSignupLimiter = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(30, "10 m"),
