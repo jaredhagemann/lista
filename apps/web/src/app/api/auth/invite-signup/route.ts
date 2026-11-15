@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   );
 
   // The email comes from the invitation, never the request: the account is
-  // confirmed on the strength of this invitation (BUG-044).
+  // confirmed on the strength of this invitation (BUG-044, #171).
   const { data: invitation } =
     typeof inviteId === "string"
       ? await supabaseAdmin

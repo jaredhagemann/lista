@@ -1,5 +1,5 @@
 /**
- * Integration tests for POST /api/auth/invite-signup (BUG-044).
+ * Integration tests for POST /api/auth/invite-signup (BUG-044, #171).
  *
  * The route creates an account with its email already confirmed, on the grounds
  * that the invite link proved the address. So it must have a real pending

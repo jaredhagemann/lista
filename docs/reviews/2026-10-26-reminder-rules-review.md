@@ -110,7 +110,7 @@ The planner's treatment of rescheduled occurrences predates this PR. This findin
   "This and following" is covered too, and so is a mixed edit reaching a same-day move.
 - **Pre-existing, not fixed here:** the planner's treatment of a date-moved occurrence still recreates its old
   date on a mixed series edit (any field, not just the reminder). That predates PR #142 and is filed as
-  [BUG-038](../bugs/038-series-edit-recreates-moved-occurrence.md).
+  [BUG-038](https://github.com/jaredhagemann/lista/issues/167).
 
 ## Review history
 

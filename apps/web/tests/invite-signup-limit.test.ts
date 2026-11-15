@@ -1,5 +1,5 @@
 /**
- * Invite signups have their own rate limit (BUG-044). Families signing up together
+ * Invite signups have their own rate limit (BUG-044, #171). Families signing up together
  * on one network share an IP, and 5 per 10 minutes stopped them partway through.
  *
  * Whether an invitation is required is covered against the real database in
