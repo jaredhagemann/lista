@@ -7,7 +7,8 @@ import { resolveRequestUser, adminClient } from "@/lib/api-auth";
  * Only the club owner may, and never the owner themselves: ownership changes by
  * transfer. remove_org_director does it in one transaction — the directorship,
  * the director's place on every team it gave them, and their teams, which pass
- * to the owner. Any other role they hold on a team stays.
+ * to the owner. Any other role they hold on a team stays. It says what it did,
+ * for the owner to see (BUG-047).
  */
 export async function POST(request: Request) {
   const user = await resolveRequestUser(request);
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A club and a director are required" }, { status: 400 });
   }
 
-  const { error } = await adminClient().rpc("remove_org_director", {
+  const { data, error } = await adminClient().rpc("remove_org_director", {
     p_actor_id: user.id,
     p_org_id: orgId,
     p_profile_id: profileId,
@@ -35,5 +36,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not remove the director" }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  const done = data as {
+    teams_passed: string[];
+    director_places_removed: number;
+    roles_kept: Array<{ team: string; role: string }>;
+  } | null;
+  return NextResponse.json({
+    success: true,
+    summary: {
+      teamsPassed: done?.teams_passed ?? [],
+      directorPlacesRemoved: done?.director_places_removed ?? 0,
+      rolesKept: done?.roles_kept ?? [],
+    },
+  });
 }

@@ -5,6 +5,7 @@ import { ClubSettingsClient } from "@/components/club/club-settings-client";
 import { ClubOwnershipSection } from "@/components/club/club-ownership-section";
 import { CloseClubSection } from "@/components/club/close-club-section";
 import type { Database } from "@/types/database";
+import type { DirectorImpact } from "@/components/club/remove-director-dialog";
 
 export const metadata = { title: "Club Settings" };
 
@@ -56,6 +57,37 @@ export default async function ClubSettingsPage() {
   };
 
   const members = (directors ?? []) as Director[];
+
+  // For the owner's removal dialog: what removing each director would change
+  // (BUG-047). The removal itself reports what it actually did.
+  const impacts = new Map<string, DirectorImpact>();
+  const directorIds = members.filter((m) => m.role === "director").map((m) => m.profile_id);
+  if (orgRole === "owner" && directorIds.length > 0) {
+    const { data: clubTeams } = await supabase
+      .from("teams")
+      .select("id, name, owner_id")
+      .eq("organization_id", orgId);
+    const teams = clubTeams ?? [];
+    const nameOfTeam = new Map(teams.map((t) => [t.id, t.name]));
+    const { data: rows } = teams.length
+      ? await supabase
+          .from("team_members")
+          .select("team_id, profile_id, role")
+          .in("team_id", teams.map((t) => t.id))
+          .in("profile_id", directorIds)
+      : { data: [] };
+    for (const id of directorIds) {
+      const mine = (rows ?? []).filter((r) => r.profile_id === id);
+      impacts.set(id, {
+        directorTeams: mine.filter((r) => r.role === "director").length,
+        ownedTeams: teams.filter((t) => t.owner_id === id).map((t) => t.name).sort(),
+        otherRoles: mine
+          .filter((r) => r.role !== "director")
+          .map((r) => ({ team: nameOfTeam.get(r.team_id ?? "") ?? "a team", role: r.role }))
+          .sort((a, b) => a.team.localeCompare(b.team)),
+      });
+    }
+  }
   const nameOf = (d: Director) =>
     [d.profiles?.first_name, d.profiles?.last_name].filter(Boolean).join(" ") || d.profiles?.email || "Director";
 
@@ -81,7 +113,7 @@ export default async function ClubSettingsPage() {
           orgNamePublic: org.org_name_public,
         }}
         orgRole={orgRole}
-        directors={members}
+        directors={members.map((m) => ({ ...m, impact: impacts.get(m.profile_id) }))}
         currentUserId={user.id}
       />
       {orgRole === "owner" && (

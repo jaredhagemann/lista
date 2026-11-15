@@ -90,6 +90,13 @@ export function EmailLayout({
   );
 }
 
+// Logos are shown large, to carry a club's branding (invite-email-names, 2026-11-06).
+const LOGO_HEIGHT = 96;
+const LOGO_MAX_WIDTH = 400;
+// lista's mark (107×96, exported at 2x) and the wordmark beside it, scaled together.
+const LISTA_MARK = { width: 107, height: 96 };
+const LISTA_WORDMARK = { margin: 0, fontSize: "69px", lineHeight: 1, fontWeight: 700, color: "#111827", letterSpacing: "-1.3px" };
+// A club without a logo: its name as text, at a size a long name still fits.
 const WORDMARK = { margin: 0, fontSize: "26px", fontWeight: 700, color: "#111827", letterSpacing: "-0.5px" };
 
 /**
@@ -103,12 +110,18 @@ function BrandMark({ brand }: { brand: EmailBrand }) {
         <tbody>
           <tr>
             {brand.logoUrl && (
-              <td style={{ verticalAlign: "middle", paddingRight: "10px" }}>
-                <Img src={brand.logoUrl} alt="" width="40" height="36" style={{ display: "block" }} />
+              <td style={{ verticalAlign: "middle", paddingRight: "16px" }}>
+                <Img
+                  src={brand.logoUrl}
+                  alt=""
+                  width={String(LISTA_MARK.width)}
+                  height={String(LISTA_MARK.height)}
+                  style={{ display: "block" }}
+                />
               </td>
             )}
             <td style={{ verticalAlign: "middle" }}>
-              <Text style={WORDMARK}>lista</Text>
+              <Text style={LISTA_WORDMARK}>lista</Text>
             </td>
           </tr>
         </tbody>
@@ -121,8 +134,14 @@ function BrandMark({ brand }: { brand: EmailBrand }) {
       <Img
         src={brand.logoUrl}
         alt={brand.name}
-        height="48"
-        style={{ display: "inline-block", maxHeight: "48px", maxWidth: "200px", width: "auto", objectFit: "contain" }}
+        height={String(LOGO_HEIGHT)}
+        style={{
+          display: "inline-block",
+          maxHeight: `${LOGO_HEIGHT}px`,
+          maxWidth: `${LOGO_MAX_WIDTH}px`,
+          width: "auto",
+          objectFit: "contain",
+        }}
       />
     );
   }

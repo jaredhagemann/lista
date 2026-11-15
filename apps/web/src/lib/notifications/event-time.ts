@@ -71,7 +71,8 @@ export function formatEventTimeRange(start: string | Date, end: string | Date, t
   return `${formatTime(start, timeZone)} – ${formatTime(end, timeZone)} ${zoneLabel(start, timeZone)}`;
 }
 
-function localDate(instant: Date, timeZone: string): string {
+/** The instant's calendar day in the zone, as "2026-09-17". */
+export function localDate(instant: Date, timeZone: string): string {
   // en-CA formats as YYYY-MM-DD.
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,

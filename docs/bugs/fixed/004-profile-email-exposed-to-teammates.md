@@ -114,7 +114,7 @@ member through RLS first, so someone on another team gets a 404 (also from code 
 **Deployment verification:**
 - **Done, 2026-11-03, by Claude:** fetched `https://www.lista.team/privacy` after #149 deployed. It returned 200 with the
   new sharing text, and the old "visible to team admins" line was gone. It showed the effective date November 2, a day
-  before it went live, so a follow-up PR corrects the date to November 3. Confirm that date after the follow-up deploys.
+  before it went live, so #152 corrected the date to November 3, confirmed on production the same day.
 - **Not yet done:** the deployed profile policies have still not been checked against the local ones. Everything above
   was tested against the local stack only, and the page's claims rely on them matching.
 

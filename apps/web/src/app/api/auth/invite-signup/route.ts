@@ -1,25 +1,25 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { signupLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { inviteSignupLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     "anonymous";
-  const { success } = await signupLimiter.limit(ip);
+  const { success } = await inviteSignupLimiter.limit(ip);
   if (!success) return rateLimitResponse();
 
   const body = await request.json();
-  const { email, password, firstName, lastName } = body as {
-    email: string;
+  const { inviteId, password, firstName, lastName } = body as {
+    inviteId?: string;
     password: string;
     firstName?: string;
     lastName?: string;
   };
 
-  if (!email || !password) {
+  if (!password) {
     return NextResponse.json(
-      { error: "Email and password are required" },
+      { error: "Password is required" },
       { status: 400 }
     );
   }
@@ -30,10 +30,28 @@ export async function POST(request: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
+  // The email comes from the invitation, never the request: the account is
+  // confirmed on the strength of this invitation (BUG-044).
+  const { data: invitation } =
+    typeof inviteId === "string"
+      ? await supabaseAdmin
+          .from("invitations")
+          .select("email, accepted_at")
+          .eq("id", inviteId)
+          .maybeSingle()
+      : { data: null };
+
+  if (!invitation || invitation.accepted_at) {
+    return NextResponse.json(
+      { error: "This invitation is no longer valid. Please ask for a new one." },
+      { status: 403 }
+    );
+  }
+
   // Create user with email pre-confirmed — no confirmation email sent.
   // The invite link itself serves as the verification.
   const { error } = await supabaseAdmin.auth.admin.createUser({
-    email,
+    email: invitation.email,
     password,
     email_confirm: true,
     user_metadata: {

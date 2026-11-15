@@ -306,6 +306,28 @@ describe("remove_org_director", () => {
     expect(b?.owner_id).toBe(owner.user.id);
   });
 
+  // BUG-047: the owner is shown what happened, from the transaction itself.
+  it("reports the teams passed to the owner, the director places removed and the roles kept", async () => {
+    const { owner, orgId, teamA, teamB, director } = await setupWithDirector();
+    // The director owns Team B, and coaches Team A instead of directing it.
+    await adminClient.from("teams").update({ owner_id: director.user.id }).eq("id", teamB);
+    await adminClient.from("team_members").update({ role: "coach" }).eq("team_id", teamA).eq("profile_id", director.user.id);
+    // A role in another club isn't this club's business.
+    const elsewhere = await createTestUser();
+    const { teamId: otherClubTeam } = await createTestTeam(elsewhere.user.id);
+    await addTeamMember(otherClubTeam, director.user.id, "player");
+    const { data: a } = await adminClient.from("teams").select("name").eq("id", teamA).single();
+
+    const { data, error } = await remove(owner.user.id, orgId, director.user.id);
+
+    expect(error).toBeNull();
+    expect(data).toEqual({
+      teams_passed: ["Team B"],
+      director_places_removed: 1,
+      roles_kept: [{ team: a!.name, role: "coach" }],
+    });
+  });
+
   it("keeps any other role the director holds on the club's teams", async () => {
     const { owner, orgId, teamB } = await setupClub();
     const coach = await createTestUser();

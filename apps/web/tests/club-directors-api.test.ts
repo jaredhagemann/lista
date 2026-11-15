@@ -135,7 +135,7 @@ describe("POST /api/club/directors/invite", () => {
 
     const [message] = mocks.sendEmail.mock.calls[0] as unknown as [{ to: string; subject: string; html: string }];
     expect(message.to).toBe("d@test.local");
-    expect(message.subject).toContain("Westside FC");
+    expect(message.subject).toBe("You're invited to join Westside FC");
     expect(message.html).toContain("/invite/inv-1");
     expect(message.html).toContain("Olive Owner");
     expect(message.html).toContain("director");
@@ -210,6 +210,28 @@ describe("POST /api/club/directors/remove", () => {
       p_actor_id: OWNER.id,
       p_org_id: ORG,
       p_profile_id: "dir-1",
+    });
+  });
+
+  it("says what the removal did, for the owner to see (BUG-047)", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        teams_passed: ["12U Girls"],
+        director_places_removed: 3,
+        roles_kept: [{ team: "14U Boys", role: "coach" }],
+      },
+      error: null,
+    });
+
+    const res = await remove(post("/api/club/directors/remove", { orgId: ORG, profileId: "dir-1" }));
+
+    expect(await res.json()).toEqual({
+      success: true,
+      summary: {
+        teamsPassed: ["12U Girls"],
+        directorPlacesRemoved: 3,
+        rolesKept: [{ team: "14U Boys", role: "coach" }],
+      },
     });
   });
 

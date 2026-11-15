@@ -32,8 +32,10 @@ const mocks = vi.hoisted(() => {
   const mockCollectDeletionRecipients = vi.fn();
   const mockSendDeletionNotifications = vi.fn();
   const mockGetActiveProfileId = vi.fn();
+  const mockServerRpc = vi.fn();
 
   return {
+    mockServerRpc,
     makeChain,
     mockGetUser,
     mockServerFrom,
@@ -55,6 +57,7 @@ vi.mock("@/lib/supabase/server", () => ({
     Promise.resolve({
       auth: { getUser: mocks.mockGetUser },
       from: mocks.mockServerFrom,
+      rpc: mocks.mockServerRpc,
     }),
 }));
 
@@ -344,6 +347,7 @@ describe("transferOwnership", () => {
 describe("removeTeamMember — owner removal guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.mockServerRpc.mockResolvedValue({ data: "not_club_admin", error: null });
     mocks.mockGetActiveProfileId.mockResolvedValue(OTHER_ID); // caller is a non-owner admin
   });
 
@@ -404,5 +408,85 @@ describe("removeTeamMember — owner removal guard", () => {
     );
     expect(result).not.toEqual({ error: "You cannot remove yourself from the team" });
     expect(result).not.toEqual({ error: "Transfer ownership before removing the team owner" });
+  });
+});
+
+// ── removeTeamMember — club owners and directors (BUG-046) ────────────────────
+
+describe("removeTeamMember — a club owner or director", () => {
+  const DIRECTOR_ID = "director-profile-id";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupUser(OTHER_ID);
+    mocks.mockGetActiveProfileId.mockResolvedValue(OTHER_ID);
+    // Caller check, then target lookup; anything after would be the removal.
+    mocks.mockServerFrom
+      .mockReturnValueOnce(mocks.makeChain({ data: { role: "coach" }, error: null }))
+      .mockReturnValueOnce(mocks.makeChain({ data: { profile_id: DIRECTOR_ID }, error: null }))
+      .mockReturnValue(mocks.makeChain({ data: { owner_id: DIRECTOR_ID }, error: null }));
+    mocks.mockAdminFrom.mockReturnValue(mocks.makeChain({ data: [], error: null }));
+  });
+
+  // revalidatePath() throws outside a Next.js render context; reaching it is success.
+  const run = () =>
+    removeTeamMember(MEMBER_ROW_ID, TEAM_ID).catch((e: unknown) => {
+      if (String(e).includes("static generation store missing")) return { success: true, revalidated: true };
+      throw e;
+    });
+
+  it("only changes their role to director: nothing is deleted or cleaned up", async () => {
+    mocks.mockServerRpc.mockResolvedValue({ data: "kept_as_director", error: null });
+
+    const result = await run();
+
+    expect(mocks.mockServerRpc).toHaveBeenCalledWith("remove_team_member_role", {
+      p_member_id: MEMBER_ROW_ID,
+      p_team_id: TEAM_ID,
+    });
+    expect(result).toMatchObject({ success: true });
+    expect(result).not.toHaveProperty("error");
+    // Neither the team owner check nor the delete ran, and no chat, availability or invitation cleanup.
+    expect(mocks.mockServerFrom).toHaveBeenCalledTimes(2);
+    expect(mocks.mockAdminFrom).not.toHaveBeenCalled();
+  });
+
+  it("refuses a director row, pointing to club settings", async () => {
+    mocks.mockServerRpc.mockResolvedValue({ data: "director_row", error: null });
+
+    const result = await run();
+
+    expect(result).toEqual({
+      error: "Directors are on every team in the club. Remove them from the club in club settings.",
+    });
+    expect(mocks.mockServerFrom).toHaveBeenCalledTimes(2);
+    expect(mocks.mockAdminFrom).not.toHaveBeenCalled();
+  });
+
+  it("stops if the check fails, rather than deleting the row", async () => {
+    mocks.mockServerRpc.mockResolvedValue({ data: null, error: { message: "boom" } });
+
+    const result = await run();
+
+    expect(result).toEqual({ error: "boom" });
+    expect(mocks.mockServerFrom).toHaveBeenCalledTimes(2);
+    expect(mocks.mockAdminFrom).not.toHaveBeenCalled();
+  });
+
+  it("removes anyone else as before", async () => {
+    mocks.mockServerRpc.mockResolvedValue({ data: "not_club_admin", error: null });
+    mocks.mockServerFrom.mockReset();
+    mocks.mockServerFrom
+      .mockReturnValueOnce(mocks.makeChain({ data: { role: "coach" }, error: null }))
+      .mockReturnValueOnce(mocks.makeChain({ data: { profile_id: "player-id" }, error: null }))
+      .mockReturnValueOnce(mocks.makeChain({ data: { owner_id: OWNER_ID }, error: null }))
+      .mockReturnValue(mocks.makeChain({ data: null, error: null }));
+
+    const result = await run();
+
+    expect(result).toMatchObject({ success: true });
+    // Cleanup ran (profile, channels, events, availability, invitations) and then the delete.
+    expect(mocks.mockAdminFrom).toHaveBeenCalled();
+    expect(mocks.mockServerFrom).toHaveBeenCalledTimes(4);
   });
 });

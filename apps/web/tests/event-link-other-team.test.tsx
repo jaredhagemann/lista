@@ -9,6 +9,7 @@
  * page can't) and comes straight back.
  */
 
+import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -44,6 +45,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/calendar/event-detail", () => ({ EventDetail: () => null }));
 
 import EventDetailPage from "@/app/dashboard/schedule/[eventId]/page";
+import { RefreshAfterTeamSwitch } from "@/components/layout/refresh-after-team-switch";
 import { GET as switchTeam } from "@/app/dashboard/switch-team/route";
 
 const EVENT = { id: "evt-1", team_id: "team-b", title: "Practice", event_type: "practice", profiles: null, locations: null };
@@ -64,6 +66,29 @@ async function openEvent(searchParams: Record<string, string> = {}) {
     return (err as Error).message.replace(/^redirect /, "");
   }
 }
+
+describe("the event page, once on the event's team", () => {
+  const TEAM_B = { team_id: "team-b", role: "coach", profile_id: "coach-1", teams: { id: "team-b", name: "B" } };
+
+  async function refreshes(searchParams: Record<string, string>) {
+    mocks.membership = TEAM_B;
+    const page = (await EventDetailPage({
+      params: Promise.resolve({ eventId: "evt-1" }),
+      searchParams: Promise.resolve(searchParams),
+    })) as React.ReactElement<{ children: React.ReactNode }>;
+    return React.Children.toArray(page.props.children).some(
+      (child) => React.isValidElement(child) && child.type === RefreshAfterTeamSwitch,
+    );
+  }
+
+  it("rebuilds the header when a switch brought the viewer here", async () => {
+    expect(await refreshes({ switched: "1" })).toBe(true);
+  });
+
+  it("leaves the header alone on an ordinary visit", async () => {
+    expect(await refreshes({})).toBe(false);
+  });
+});
 
 describe("the event page, for an event of another team", () => {
   it("hands off to the team switch, returning to this page", async () => {

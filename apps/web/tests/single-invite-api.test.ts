@@ -418,9 +418,9 @@ describe("POST /api/invitations/send — the invitation email", () => {
       { subject: string; html: string; text: string; brandName: string | null },
     ];
     expect(message.brandName).toBe("SLOFC");
-    expect(message.subject).toBe("You've been invited to join Test Team on SLOFC");
+    expect(message.subject).toBe("Invitation for Jane Smith: join Test Team");
     expect(message.html).toContain('src="https://x/slofc.png"');
-    expect(message.text).toContain("Coach User has invited you to join Test Team");
+    expect(message.text).toContain("Coach User has invited Jane Smith to join Test Team as a player.");
     expect(message.text).toMatch(/\/invite\//);
   });
 });

@@ -109,26 +109,21 @@ export async function POST(request: Request) {
   // Auto-enroll all org owners and directors as team members.
   // This gives them a roster row, team notifications, and chat access,
   // and ensures server-side role checks (which query team_members directly)
-  // pass without requiring a separate org membership lookup.
-  const memberRows = (orgMembers ?? []).map((m) => ({
-    id: crypto.randomUUID(),
-    team_id: teamId,
-    profile_id: m.profile_id,
-    role: "director" as const,
-  }));
+  // pass without requiring a separate org membership lookup. The database
+  // enrolls whoever qualifies now: someone in orgMembers may have left since
+  // (BUG-046).
+  const { data: enrolled, error: memberError } = await admin.rpc("enroll_club_admins", {
+    p_team_id: teamId,
+  });
 
-  let creatorEnrolled = false;
-  if (memberRows.length > 0) {
-    const { error: memberError } = await admin
-      .from("team_members")
-      .insert(memberRows);
-    creatorEnrolled = !memberError && memberRows.some((m) => m.profile_id === profile.id);
-
-    if (memberError) {
-      // Non-fatal: team was created successfully; log but don't fail the request.
-      // Members can be added manually via the club portal.
-      console.error("Failed to auto-enroll org members:", memberError.message);
-    }
+  // A team the creator isn't on is one they can't open, so it goes.
+  if (memberError || !(enrolled ?? []).includes(profile.id)) {
+    console.error("Failed to enroll the club's directors:", memberError?.message ?? "creator not enrolled");
+    await admin.from("teams").delete().eq("id", teamId);
+    return NextResponse.json(
+      { error: "Couldn't add you to the new team. Please try again." },
+      { status: 500 }
+    );
   }
 
   // The new team is the creator's last-picked team (the default for their other
@@ -138,7 +133,7 @@ export async function POST(request: Request) {
     .from("profiles")
     .update({ active_team_id: teamId })
     .eq("id", profile.id);
-  if (creatorEnrolled) await saveContextCookie({ accountId: user.id, profileId: profile.id, teamId });
+  await saveContextCookie({ accountId: user.id, profileId: profile.id, teamId });
 
   return NextResponse.json({ ok: true, teamId }, { status: 201 });
 }

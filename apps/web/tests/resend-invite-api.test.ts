@@ -175,6 +175,14 @@ describe("POST /api/invitations/[id]/resend — email_status transitions", () =>
     setupFrom(BASE_INVITATION);
   });
 
+  it("resends addressed to the invitation's name, with the role (invite-email-names)", async () => {
+    await POST(makeRequest(), makeParams());
+
+    const [message] = mocks.mockSendEmail.mock.calls[0] as unknown as [{ subject: string; text: string }];
+    expect(message.subject).toBe("Invitation for Jane Smith: join Test Team");
+    expect(message.text).toContain("Coach User has invited Jane Smith to join Test Team as a player.");
+  });
+
   it("flips email_status to 'sent' and returns emailSent: true when send succeeds", async () => {
     mocks.mockSendEmail.mockResolvedValue(undefined);
 
