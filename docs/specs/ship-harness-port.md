@@ -15,8 +15,8 @@ answer before building, and the order to build in.
 It builds on the product side already in place: Winnow files work as GitHub Issues with a **Done when**
 list, which is what ship reads.
 
-**Before any code is copied:** the workshop repo carries no licence file. Confirm with Equal Experts how
-they intend the harness to be reused (D1).
+Equal Experts encourage reusing the harness (D1), so its files are copied and adapted rather than rewritten
+from scratch.
 
 ## How ship works
 
@@ -59,18 +59,17 @@ three auditors, up to four rounds).
 
 ## Decisions
 
-Each needs an answer before the stage that depends on it. Recommendations are mine; the **Decision**
-column is yours.
+All seven were settled on 2026-11-15.
 
 | # | Question | Recommendation | Decision |
 | --- | --- | --- | --- |
-| D1 | May the harness code be reused in lista? | Ask Equal Experts before stage 1. Without a yes, write lista's own version from the design described here rather than copying files | Open |
-| D2 | How do parallel tickets share Supabase? | One local stack, and a machine-wide lock around every step that resets or uses the database (below) | Open |
-| D3 | What must the gate run? | The layers below, chosen by what the branch changed | Open |
-| D4 | Which changes count as risky (full loop, stronger review)? | The list below | Open |
-| D5 | Scope of the first version | The web app and the database, run from a laptop. Mobile, GitHub Actions and the Learn phase later | Open |
-| D6 | How do agents find lista's docs? | `CLAUDE.md` and the issue's spec only, for now; no front-matter machinery | Open |
-| D7 | Where do ship's specs go, and what are its branches called? | `docs/specs/<issue>-<slug>.md`; `feature/<issue>-<slug>`, or `fix/<issue>-<slug>` for a `bug` issue | Open |
+| D1 | May the harness code be reused in lista? | Ask Equal Experts before copying files | Yes — reuse is encouraged |
+| D2 | How do parallel tickets share Supabase? | One local stack, and a machine-wide lock around every step that resets or uses the database (below) | As recommended |
+| D3 | What must the gate run? | The layers below, chosen by what the branch changed | As recommended |
+| D4 | Which changes count as risky (full loop, stronger review)? | The list below | As recommended |
+| D5 | Scope of the first version | The web app and the database, run from a laptop. Mobile, GitHub Actions and the Learn phase later | As recommended |
+| D6 | How do agents find lista's docs? | `CLAUDE.md` and the issue's spec only, for now; no front-matter machinery | As recommended |
+| D7 | Where do ship's specs go, and what are its branches called? | `docs/specs/<issue>-<slug>.md`; `feature/<issue>-<slug>`, or `fix/<issue>-<slug>` for a `bug` issue | As recommended |
 
 ### D2 — Isolation: worktrees, ports and the database
 
@@ -144,7 +143,7 @@ The workshop's rules are written into its prompts; lista's replace them:
 
 Each stage ends with something usable and checked.
 
-1. **Prerequisites.** D1 answered. Labels created. The sandbox allows local port binding
+1. **Prerequisites.** Labels created. The sandbox allows local port binding
    (`sandbox.network.allowLocalBinding`) so dev servers and Playwright can start; Docker reachable for
    Supabase. **Done when** `pnpm dev` and `pnpm test:rls` both run from a Claude session.
 2. **Gate and lanes.** `scripts/gate.mjs` and `scripts/lane.mjs` for lista; Playwright's port from the
