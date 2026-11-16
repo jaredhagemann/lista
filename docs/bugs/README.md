@@ -1,16 +1,19 @@
-# Bug log
+# Bugs
 
-One markdown file per bug, mirroring the `docs/specs/` convention: **open bugs live here, fixed ones move
-to `fixed/`.** The folder listing is the backlog — there is no separate index to keep in sync.
+Bugs are GitHub Issues on `jaredhagemann/lista`, labelled `bug`. **The open `bug` issues are the backlog.**
+This folder holds the process below, the issue template (`TEMPLATE.md`), and — as numbered files, with
+resolved ones in `fixed/` — the record of bugs handled before tracking moved to GitHub Issues.
 
 ## Filing a bug
 
-1. Copy `TEMPLATE.md` to `NNN-short-slug.md`, taking the next free number (`ls docs/bugs docs/bugs/fixed`).
+1. Open an issue labelled `bug` (`gh issue create --label bug`). Its title is the one-line summary; its body
+   follows `TEMPLATE.md` above the divider.
 2. Fill in **Symptom**, **Reproduction**, **Severity**, **Evidence class**, and whatever **Evidence** you have.
 3. Fill in **Cause** if it is genuinely diagnosed, and **Proposed fix** / **Regression test** if you have a
-   view. Everything above the divider is a **proposal** and may change.
-4. Leave **Fix as implemented** and **Verification** empty — those record completed work only.
-5. Commit it. Filing a bug is not a fix and does not need a spec or a feature branch of its own.
+   view. All of it is a **proposal** and may change.
+4. Leave out **Fix as implemented** and **Verification** — those record completed work, in the fix's PR.
+
+Filing a bug is not a fix and does not need a spec or a branch of its own.
 
 A bug that cannot be reproduced is still worth filing — record what was tried under **Reproduction**
 so the next attempt starts from there.
@@ -56,17 +59,17 @@ Severity is about response urgency, not blame. Do not regrade to make a backlog 
 
 Bug fixes follow the same rules as features — branch, PR, no direct commits to `main`:
 
-1. Branch `fix/<NNN>-<slug>` off `main` — one bug per branch.
-2. Settle any open row in the ticket's **Product decisions** table first. A fix that changes a product
+1. Branch `fix/<issue number>-<slug>` off `main` — one bug per branch.
+2. Settle any open row in the issue's **Product decisions** table first. A fix that changes a product
    contract needs the decision recorded before the code is written, not discovered at review.
 3. **Write the failing regression test first** (per the test-driven rule in `CLAUDE.md`), confirm it fails
    against the unfixed code, then fix it. Cover the legitimate path too, not only the hostile one.
-4. Fill in **Fix as implemented** and **Verification**, and set **Status: Fixed**.
-5. `git mv docs/bugs/NNN-slug.md docs/bugs/fixed/` in the same PR as the fix.
-6. Reference the ID in the commit subject: `Fix BUG-008: cron routes redirected to login`.
+4. Write **Fix as implemented** and **Verification** (the sections below the divider in `TEMPLATE.md`) in
+   the PR description, with `Fixes #<n>`.
+5. Reference the issue in the commit subject: `Fix #42: cron routes redirected to login`.
 
-The bug file moving to `fixed/` in the same PR is what makes the log trustworthy — the backlog is
-accurate because closing it is part of the change, not a follow-up someone has to remember.
+`Fixes #<n>` closing the issue when the PR merges is what keeps the backlog trustworthy — closing it is
+part of the change, not a follow-up someone has to remember.
 
 **Merging is not deploying.** For authorization, storage, cron and delivery fixes, record under
 **Verification** what must be confirmed after deploy, and who confirmed it.
@@ -80,9 +83,9 @@ would also carry.
 
 ## Terminal states other than fixed
 
-Set **Status** to `Won't fix` or `Not reproducible`, record what was tried and why closure is justified,
-and move the file to `fixed/` anyway. The folder is "resolved", not strictly "repaired" — a closed bug with
-reasoning kept is more useful than a deleted one, especially when it resurfaces.
+Close the issue as *not planned* with a comment saying `Won't fix` or `Not reproducible`, what was tried,
+and why closure is justified. A closed issue with its reasoning kept is more useful than a deleted one,
+especially when the bug resurfaces.
 
-Neither status means repaired. Do not close a high-impact risk because one reproduction attempt failed;
+Neither outcome means repaired. Do not close a high-impact risk because one reproduction attempt failed;
 `Not reproducible` on a P0 needs more than a single quiet afternoon.

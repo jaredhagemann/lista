@@ -98,7 +98,7 @@ Writing it against the real behavior turned up more than this ticket listed, and
 - **Coaches and managers can read a guardian's whole profile**, date of birth and gender included.
 
 **Left out on purpose:** the "can't see" sentence doesn't name photos. How they're served is open in
-[BUG-016](../016-storage-buckets-private-vs-public-url.md).
+[BUG-016](https://github.com/jaredhagemann/lista/issues/163).
 
 ## Verification
 
@@ -118,4 +118,4 @@ member through RLS first, so someone on another team gets a 404 (also from code 
 - **Not yet done:** the deployed profile policies have still not been checked against the local ones. Everything above
   was tested against the local stack only, and the page's claims rely on them matching.
 
-**Found while fixing:** [BUG-041](../041-guardian-profile-hidden-from-teammates.md).
+**Found while fixing:** [BUG-041](https://github.com/jaredhagemann/lista/issues/168).

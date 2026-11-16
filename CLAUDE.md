@@ -59,6 +59,26 @@ Defined in `supabase/migrations/`, types generated in `src/types/database.ts`. K
 
 All new feature development must be test-driven: write tests before implementation, and ensure they pass before considering a feature complete. If a feature request does not include enough detail to write meaningful tests (expected behavior, edge cases, access control rules, etc.), ask for clarification before proceeding with implementation.
 
+## Where knowledge lives
+
+- **`CLAUDE.md`** (this file) — how to work on lista: commands, architecture, and the rules every change
+  follows (git, testing, migrations, environment).
+- **`docs/roadmap.md`** — what is not built yet: prioritised feature ideas, product and platform strategy,
+  process notes. Shipped features leave it; their specs stay.
+- **`docs/specs/<feature>.md`** — one per feature: the intended behaviour, the decisions taken and what was
+  left open. Superseded specs move to `docs/specs/archive/`.
+- **GitHub Issues** — open work and bugs (see *Issue Tracking* below).
+- **`docs/bugs/`** — how bugs are graded and fixed (`README.md`), the issue template (`TEMPLATE.md`), and
+  the record of bugs handled before tracking moved to GitHub Issues.
+- **`docs/runbooks/`** — operational procedures for incidents and support cases.
+- **`docs/releases/`** — mobile release notes, one per version.
+- **`docs/reviews/`** — dated review and audit records with their probes; a historical record, not updated
+  afterwards.
+- **`docs/test-data/`** — fixtures for manual testing.
+
+No document yet covers product vision, users or domain vocabulary; it gets one (under `docs/`) when there is
+something to say.
+
 ## Git Workflow
 
 - **All development must happen on feature branches** — never commit directly to `main`.
@@ -66,18 +86,20 @@ All new feature development must be test-driven: write tests before implementati
 - Changes reach `main` exclusively via pull request. Open a PR, get it reviewed/approved, then merge.
 - When a task is complete: commit changes on the feature branch, push, and open a PR to `main`.
 
-## Bug Tracking
+## Issue Tracking
 
-Bugs are tracked as markdown files in `docs/bugs/` — open bugs at the top level, resolved ones in
-`docs/bugs/fixed/`. See `docs/bugs/README.md` for the full process.
+Work and bugs are tracked as GitHub Issues on `jaredhagemann/lista`, read and written with the authenticated
+`gh` CLI (`gh issue list`, `gh issue view <n>`, `gh issue create`).
 
-- When the user reports a bug, file it (`docs/bugs/NNN-slug.md`, copied from `TEMPLATE.md`) before fixing
-  it, unless they ask for an immediate fix.
-- Fixes go on a `fix/<NNN>-<slug>` branch via PR, like any other change — one bug per branch.
-- Settle any open row in the ticket's **Product decisions** table before writing code.
+- **Features and other work** are issues labelled `enhancement`: the goal, then a **Done when** list.
+- **Bugs** are issues labelled `bug`, with a body that follows the sections of `docs/bugs/TEMPLATE.md` above
+  its divider. Severity and evidence class follow `docs/bugs/README.md`, which has the full process.
+- When the user reports a bug, file it as an issue before fixing it, unless they ask for an immediate fix.
+- Fixes go on a `fix/<issue number>-<slug>` branch via PR, like any other change — one bug per branch.
+- Settle any open row in the issue's **Product decisions** table before writing code.
 - Every fix needs a regression test that fails against the unfixed code — write it first.
-- Move the bug file to `docs/bugs/fixed/` **in the same PR as the fix**, with **Fix as implemented** and
-  **Verification** filled in and **Status** set to `Fixed`.
+- The PR description carries **Fix as implemented** and **Verification** and says `Fixes #<n>`, so merging
+  it closes the issue.
 
 ## Database Migrations
 
