@@ -143,12 +143,13 @@ The workshop's rules are written into its prompts; lista's replace them:
 
 Each stage ends with something usable and checked.
 
-1. **Prerequisites.** Labels created. The sandbox allows local port binding
-   (`sandbox.network.allowLocalBinding`) so dev servers and Playwright can start; Docker reachable for
-   Supabase. **Done when** `pnpm dev` and `pnpm test:rls` both run from a Claude session.
+1. **Prerequisites — done 2026-11-16.** The five labels exist on GitHub; `pnpm dev` serves pages and
+   `pnpm test:rls` runs end to end from a Claude session, under the conditions in *What the local
+   environment needs* below.
 2. **Gate and lanes.** `scripts/gate.mjs` and `scripts/lane.mjs` for lista; Playwright's port from the
-   environment. **Done when** the gate prints a green JSON verdict on `main`, and two worktrees running
-   it at once both finish correctly, the second waiting for the database lock.
+   environment. The gate runs outside the sandbox (it starts dev servers and resets the database).
+   **Done when** the gate prints a green JSON verdict on `main`, and two worktrees running it at once
+   both finish correctly, the second waiting for the database lock.
 3. **Red-check.** **Done when** it reports a test that passes without the change, on a branch made to
    check exactly that.
 4. **Ship.** `ship.js`, the playbook, `ship-rote`, progress and cost, and a *What happens to a ticket*
@@ -158,6 +159,28 @@ Each stage ends with something usable and checked.
    confidence. QA needs signed-in test users; it reuses the Playwright auth setup.
 6. **Later:** GitHub Actions (needs an `ANTHROPIC_API_KEY` secret and Supabase in the runner), mobile,
    the Learn phase and doc front-matter.
+
+## What the local environment needs
+
+Found while checking stage 1 on a Mac running Docker through Rancher Desktop.
+
+- **The Next.js dev server runs outside Claude's sandbox.** Inside it, file watching fails (`EMFILE`)
+  and every page returns 404; outside it, the server is ready in under a second. The same applies to
+  anything that starts one: Playwright's `webServer` and the gate.
+- **Docker is reachable only outside the sandbox.** Starting, stopping or resetting Supabase
+  (`supabase start`, `db reset`, `pnpm test:rls`) runs unsandboxed. Tests that only connect to the
+  running stack on `127.0.0.1` work inside it.
+- **Supabase starts without its log collector:** `pnpm exec supabase start -x vector,logflare`. The
+  `vector` container mounts the Docker socket, which Rancher Desktop cannot provide; CI leaves both
+  out too.
+- **The RLS suite takes about six minutes** (739 tests). A database-backed gate holds the lock that
+  long, so `--fast` runs only the RLS files for the tables a branch touches.
+- **The Docker VM's clock drifts.** It ran 1.9 s behind the Mac, and the two expired-transfer tests in
+  `tests/rls/club-ownership.test.ts` fail locally as a result: they back-date `expires_at` by one
+  second of the Mac's time, which the database still reads as the future. CI passes. Restarting Rancher
+  Desktop resyncs the clock; back-dating by a minute instead would make the tests immune.
+- **Playwright's env file is missing.** `playwright.config.ts` loads `.env.local.test`, which does not
+  exist on this machine (`.env.test.local` does). Stage 2 settles which name the browser tests use.
 
 ## Risks
 
